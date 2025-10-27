@@ -15,6 +15,37 @@ A library and GUI application tool for membrane protein preparation and molecula
 
 ### Quick Installation (Recommended)
 
+1. **Create a conda environment with all dependencies:**
+   ```bash
+   conda create -n gatewizard -c conda-forge python sqlite ambertools=24 parmed=4.3.0 -y
+   ```
+
+2. **Activate the environment:**
+   ```bash
+   conda activate gatewizard
+   ```
+
+3. **Install Gatewizard:**
+   ```bash
+   pip install -e .
+   ```
+
+### Alternative: Using environment.yml
+
+1. **Create environment from file:**
+   ```bash
+   conda env create -f environment.yml
+   ```
+
+2. **Activate the environment:**
+   ```bash
+   conda activate gatewizard
+   ```
+
+3. **Install Gatewizard:**
+   ```bash
+   pip install -e .
+   ```
 
 ## Dependencies
 
@@ -65,6 +96,14 @@ gatewizard --version           # Show version
 
 ### Common Issues
 
+**ImportError with numpy.compat:**
+This indicates a version conflict between NumPy and Parmed. Make sure to install Parmed via conda-forge as shown in the installation instructions.
+
+**pdb4amber command not found:**
+Ensure AmberTools is installed via conda-forge and the gatewizard environment is activated.
+
+**GUI not launching:**
+Check that CustomTkinter is properly installed. Try reinstalling with `pip install --force-reinstall customtkinter`.
 
 ## Development
 
@@ -77,10 +116,58 @@ conda activate gatewizard
 pip install -e .
 ```
 
+### Project Structure
+
+```
+gatewizard/
+├── gatewizard/          # Main source code
+│   ├── gui/             # GUI components
+│   ├── analysis/        # Analysis modules
+│   └── ...
+├── docs/                # Documentation (GitHub Pages)
+├── tests/               # Test suite
+├── environment.yml      # Conda environment
+├── pyproject.toml      # Project configuration
+└── README.md           # This file
+```
+
+### Running Tests
+
+All tests are in the `tests/` directory. See [tests/README.md](tests/README.md) for detailed testing documentation.
+
+```bash
+# Run all tests
+python -m pytest tests/
+
+# Run with verbose output
+python -m pytest tests/ -v
+
+# Run specific test file
+python -m pytest tests/test_propka_improvements.py
+
+# Run with coverage
+python -m pytest tests/ --cov=gatewizard --cov-report=html
+```
 
 ### Documentation
 
-Documentation is and hosted on GitHub Pages.
+Documentation is built with MkDocs and hosted on GitHub Pages.
+
+```bash
+# Install MkDocs
+pip install mkdocs mkdocs-material
+
+# Serve documentation locally
+mkdocs serve
+
+# Build documentation
+mkdocs build
+
+# Deploy to GitHub Pages
+mkdocs gh-deploy
+```
+
+View documentation at: `http://localhost:8000` (when serving locally)
 
 ## Contributing
 
@@ -95,13 +182,21 @@ Contributions are welcome! Please:
 7. Push to the branch (`git push origin feature/amazing-feature`)
 8. Open a Pull Request
 
+### Code Style
+
+- Follow PEP 8 guidelines
+- Add docstrings to functions and classes
+- Include type hints where appropriate
+- Write tests for new features
 
 ## License
 
-MIT
+GateWizard is licensed under the [MIT License](LICENSE).
+
+Copyright (c) 2025 Constanza González and Mauricio Bedoya
 
 ## Authors
 
-- Constanza González 
-- Mauricio Bedoya
+- Constanza González <constanza.gonzalez.villagra@gmail.com>
+- Mauricio Bedoya <mbedoya@ucm.cl>
 
