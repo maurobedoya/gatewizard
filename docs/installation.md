@@ -16,20 +16,7 @@ This is the fastest way to get GateWizard up and running:
 
 ```bash
 # 1. Create conda environment with all dependencies
-conda create -n gatewizard -c conda-forge python sqlite ambertools=24 parmed=4.3.0 -y
-
-# 2. Activate the environment
-conda activate gatewizard
-
-# 3. Clone the repository (if not already done)
-git clone <repository-url>
-cd gatewizard
-
-# 4. Install GateWizard in development mode
-pip install -e .
-
-# 5. Launch GateWizard
-gatewizard
+conda ...
 ```
 
 ## Alternative: Using environment.yml
