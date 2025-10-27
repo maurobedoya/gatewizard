@@ -1,0 +1,15 @@
+name: gatewizard
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python>=3.8
+  - ambertools=24
+  - parmed=4.3.0  # Must be from conda-forge for compatibility with AmberTools
+  - propka
+  - matplotlib>=3.5.0
+  - requests>=2.25.0
+  - pip
+  - pip:
+    - customtkinter>=5.0.0
+    - biopython
