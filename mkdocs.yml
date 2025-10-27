@@ -1,0 +1,115 @@
+# GitHub Pages Configuration for MkDocs
+site_name: GateWizard Documentation
+site_description: A tool for membrane protein preparation, molecular dynamics simulation setting, run and analysis
+site_author: Constanza González, Mauricio Bedoya
+site_url: https://maurobedoya.github.io/gatewizard/
+
+# Repository
+repo_name: gatewizard
+repo_url: https://github.com/yourusername/gatewizard
+edit_uri: edit/main/docs/
+
+# Copyright
+copyright: Copyright &copy; 2025 Constanza González, Mauricio Bedoya
+
+# Theme
+theme:
+  name: material
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: green
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: green
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Roboto
+    code: Roboto Mono
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky  # Keep tabs visible when scrolling
+    - navigation.indexes      # Enable section index pages
+    - navigation.top
+    - navigation.tracking
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.annotation
+    - content.code.copy
+    - toc.follow              # Sidebar table of contents follows scroll
+  icon:
+    repo: fontawesome/brands/github
+
+# Navigation
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - User Guide: user-guide.md
+  - Analysis: analysis.md
+  - Troubleshooting: troubleshooting.md
+  - API Reference:
+      - Overview: api/index.md
+      - Preparation Module: api/preparation.md
+      - Builder Module: api/builder.md
+      - Equilibration: api/equilibration.md
+      - Analysis: api/analysis.md
+      - Quick Reference: QUICK_REFERENCE.md
+
+# Extensions
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - pymdownx.details
+  - pymdownx.arithmatex:
+      generic: true
+  - footnotes
+  - pymdownx.critic
+  - pymdownx.caret
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.tilde
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+# Plugins
+plugins:
+  - search
+  - minify:
+      minify_html: true
+
+# Extra
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/yourusername/gatewizard
+  version:
+    provider: mike
+
+# CSS
+extra_css:
+  - stylesheets/extra.css
+
+# JavaScript
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
