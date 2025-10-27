@@ -1,0 +1,164 @@
+
+==================================================
+Summary of pdb4amber for: bilayer_protein_protonated_prepared.pdb
+===================================================
+
+----------Chains
+The following (original) chains have been found:
+A
+B
+C
+D
+E
+F
+G
+H
+
+---------- Alternate Locations (Original Residues!))
+
+The following residues had alternate locations:
+None
+-----------Non-standard-resnames
+PC, OL, PA
+
+---------- Gaps (Renumbered Residues!)
+gap of 3.599898 A between ACE 1 and PRO 3
+gap of 3.394700 A between LEU 2 and ALA 4
+gap of 3.245649 A between PRO 3 and GLY 5
+gap of 3.622898 A between ALA 4 and ILE 6
+gap of 3.449680 A between GLY 5 and LEU 7
+gap of 3.362048 A between ILE 6 and ALA 8
+gap of 3.297982 A between LEU 7 and VAL 9
+gap of 3.383047 A between ALA 8 and PHE 10
+gap of 3.465928 A between VAL 9 and TRP 11
+gap of 3.227666 A between PHE 10 and ALA 12
+gap of 3.599059 A between TRP 11 and ASP 13
+gap of 3.349946 A between ALA 12 and GLU 14
+gap of 3.328146 A between ASP 13 and ARG 15
+gap of 3.474498 A between GLU 14 and HIE 16
+gap of 3.434410 A between ARG 15 and LYS 17
+gap of 3.311154 A between HIE 16 and SER 18
+gap of 3.460296 A between LYS 17 and CYX 19
+gap of 3.334582 A between SER 18 and THR 20
+gap of 3.317950 A between CYX 19 and MET 21
+gap of 3.392418 A between THR 20 and ASN 22
+gap of 3.466705 A between MET 21 and GLU 23
+gap of 3.333211 A between ASN 22 and ALA 24
+gap of 3.439758 A between GLU 23 and ALA 25
+gap of 3.308060 A between ALA 24 and ARG 26
+gap of 3.573654 A between ALA 25 and ASP 27
+gap of 3.717602 A between ARG 26 and ALA 28
+gap of 3.396083 A between ASP 27 and ALA 29
+gap of 3.608414 A between ALA 28 and ALA 30
+gap of 3.348525 A between ALA 29 and ALA 31
+gap of 3.467486 A between ALA 30 and ALA 32
+gap of 3.320893 A between ALA 31 and ALA 33
+gap of 3.486364 A between ALA 32 and ALA 34
+gap of 3.441545 A between ALA 33 and CYX 35
+gap of 3.462362 A between ALA 34 and ALA 36
+gap of 3.349864 A between CYX 35 and ALA 37
+gap of 3.387502 A between ALA 36 and LEU 38
+gap of 3.356457 A between ALA 37 and CYS 39
+gap of 3.324329 A between LEU 38 and ALA 40
+gap of 3.261834 A between CYS 39 and ALA 41
+gap of 3.611731 A between ALA 40 and LEU 42
+gap of 3.302951 A between ALA 41 and TYR 43
+gap of 3.309136 A between LEU 42 and ALA 44
+gap of 3.462380 A between TYR 43 and VAL 45
+gap of 3.418732 A between ALA 44 and ALA 46
+gap of 3.316904 A between VAL 45 and ALA 47
+gap of 3.420113 A between ALA 46 and ALA 48
+gap of 3.399784 A between ALA 47 and LEU 49
+gap of 3.371804 A between ALA 48 and ALA 50
+gap of 3.307746 A between LEU 49 and ALA 51
+
+---------- Missing heavy atom(s)
+
+None
+-I: Adding /home/white/anaconda3/envs/gatewizard/dat/leap/prep to search path.
+-I: Adding /home/white/anaconda3/envs/gatewizard/dat/leap/lib to search path.
+-I: Adding /home/white/anaconda3/envs/gatewizard/dat/leap/parm to search path.
+-I: Adding /home/white/anaconda3/envs/gatewizard/dat/leap/cmd to search path.
+-f: Source leap_parametrize.in.
+
+Welcome to LEaP!
+(no leaprc in search path)
+Sourcing: ./leap_parametrize.in
+----- Source: /home/white/anaconda3/envs/gatewizard/dat/leap/cmd/leaprc.protein.ff14SB
+----- Source of /home/white/anaconda3/envs/gatewizard/dat/leap/cmd/leaprc.protein.ff14SB done
+Log file: ./leap.log
+Loading parameters: /home/white/anaconda3/envs/gatewizard/dat/leap/parm/parm10.dat
+Reading title:
+PARM99 + frcmod.ff99SB + frcmod.parmbsc0 + OL3 for RNA
+Loading parameters: /home/white/anaconda3/envs/gatewizard/dat/leap/parm/frcmod.ff14SB
+Reading force field modification type file (frcmod)
+Reading title:
+ff14SB protein backbone and sidechain parameters
+Loading library: /home/white/anaconda3/envs/gatewizard/dat/leap/lib/amino12.lib
+Loading library: /home/white/anaconda3/envs/gatewizard/dat/leap/lib/aminoct12.lib
+Loading library: /home/white/anaconda3/envs/gatewizard/dat/leap/lib/aminont12.lib
+----- Source: /home/white/anaconda3/envs/gatewizard/dat/leap/cmd/leaprc.lipid21
+----- Source of /home/white/anaconda3/envs/gatewizard/dat/leap/cmd/leaprc.lipid21 done
+Log file: ./leap.log
+Loading parameters: /home/white/anaconda3/envs/gatewizard/dat/leap/parm/lipid21.dat
+Reading title:
+AMBER Lipid21 v1.0 C. J. Dickson, R.C. Walker, I.R. Gould.
+Loading library: /home/white/anaconda3/envs/gatewizard/dat/leap/lib/lipid21.lib
+----- Source: /home/white/anaconda3/envs/gatewizard/dat/leap/cmd/leaprc.water.tip3p
+----- Source of /home/white/anaconda3/envs/gatewizard/dat/leap/cmd/leaprc.water.tip3p done
+Loading library: /home/white/anaconda3/envs/gatewizard/dat/leap/lib/atomic_ions.lib
+Loading library: /home/white/anaconda3/envs/gatewizard/dat/leap/lib/solvents.lib
+Loading parameters: /home/white/anaconda3/envs/gatewizard/dat/leap/parm/frcmod.tip3p
+Reading force field modification type file (frcmod)
+Reading title:
+This is the additional/replacement parameter set for TIP3P water
+Loading parameters: /home/white/anaconda3/envs/gatewizard/dat/leap/parm/frcmod.ions1lm_126_tip3p
+Reading force field modification type file (frcmod)
+Reading title:
+Li/Merz ion parameters of monovalent ions for TIP3P water model (12-6 normal usage set)
+Loading parameters: /home/white/anaconda3/envs/gatewizard/dat/leap/parm/frcmod.ionsjc_tip3p
+Reading force field modification type file (frcmod)
+Reading title:
+Monovalent ion parameters for Ewald and TIP3P water from Joung & Cheatham JPCB (2008)
+Loading parameters: /home/white/anaconda3/envs/gatewizard/dat/leap/parm/frcmod.ions234lm_126_tip3p
+Reading force field modification type file (frcmod)
+Reading title:
+Li/Merz ion parameters of divalent to tetravalent ions for TIP3P water model (12-6 normal usage set)
+Loading PDB file: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane/system_for_tleap.pdb
+  total atoms in file: 31595
+  Leap added 19 missing atoms according to residue templates:
+       19 H / lone pairs
+Total unperturbed charge:  -1.000000
+Total perturbed charge:    -1.000000
+1 Na+ ion required to neutralize.
+Adding 1 counter ions to "system". 4895 solvent molecules will remain.
+0: Placed Na+ in system at (-14.20, 24.95, -24.07).
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+addIonsRand: 1st Ion & target unit have charges of the same sign:
+     unit charge = -2.14939e-13; ion1 charge = -1;
+     can't neutralize.
+Checking Unit.
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 625 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	WAT	4895
+  )
+ (no restraints)
+Writing pdb file: system.pdb
+	Quit
+
+Exiting LEaP: Errors = 0; Warnings = 1; Notes = 0.

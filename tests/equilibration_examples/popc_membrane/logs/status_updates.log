@@ -1,0 +1,111 @@
+Traceback (most recent call last):
+  File "/mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane/status_utils.py", line 37, in update_status
+    status['step_messages'][step-1] = msg
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^
+IndexError: list assignment index out of range
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+ERROR updating status: list assignment index out of range
+Traceback (most recent call last):
+  File "/mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane/status_utils.py", line 37, in update_status
+    status['step_messages'][step-1] = msg
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^
+IndexError: list assignment index out of range
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+ERROR updating status: list assignment index out of range
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: Packmol
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: tleap
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 1: pdb4amber
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 2: tleap
+DEBUG: Working in directory: /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Read existing status file
+DEBUG: Updated status - Step 5: Completed
+DEBUG: Marking job complete in /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane
+DEBUG: Job marked as complete

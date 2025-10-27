@@ -1,0 +1,27 @@
+# Load force field for proteins ff14SB
+source leaprc.protein.ff14SB
+
+# Load force field for lipids lipid21
+source leaprc.lipid21
+
+# Load water model TIP3P
+source leaprc.water.tip3p
+
+# Load PDB file prepared by pdb4amber (protein + membrane + water + neutralized)
+system = loadPDB /mnt/d/Dropbox/comandos_2/github/gatewizard_run/test/01_test_api/system_builder_test/systems/popc_membrane/system_for_tleap.pdb
+
+# Check total system charge
+charge system
+
+# Neutralize total charge
+addIonsRand system Na+ 0
+addIonsRand system Cl- 0
+
+# Save parameter and coordinate files
+saveAmberParm system system.prmtop system.inpcrd
+
+# Save the system processed by tleap as PDB
+savePDB system system.pdb
+
+# Exit
+quit

@@ -1,0 +1,65 @@
+{
+  "protocol_name": "NPT Equilibration Protocol",
+  "total_stages": 3,
+  "scheme_type": "NPT",
+  "stages": {
+    "Strong Restraints Phase": {
+      "name": "Strong Restraints Phase",
+      "ensemble": "NPT",
+      "custom_template": "step6.1_equilibration.inp",
+      "time_ns": 0.25,
+      "timestep": 1.0,
+      "temperature": 310.15,
+      "pressure": 1.0,
+      "minimize_steps": 10000,
+      "constraints": {
+        "protein_backbone": 10.0,
+        "protein_sidechain": 5.0,
+        "lipid_head": 5.0,
+        "lipid_tail": 5.0,
+        "water": 0.0,
+        "ions": 10.0,
+        "other": 0.0
+      }
+    },
+    "Medium Restraints Phase": {
+      "name": "Medium Restraints Phase",
+      "ensemble": "NPT",
+      "custom_template": "step6.3_equilibration.inp",
+      "time_ns": 0.5,
+      "timestep": 1.0,
+      "temperature": 310.15,
+      "pressure": 1.0,
+      "constraints": {
+        "protein_backbone": 5.0,
+        "protein_sidechain": 2.5,
+        "lipid_head": 2.5,
+        "lipid_tail": 2.5,
+        "water": 0.0,
+        "ions": 0.0,
+        "other": 0.0
+      }
+    },
+    "Light Restraints Phase": {
+      "name": "Light Restraints Phase",
+      "ensemble": "NPAT",
+      "custom_template": "step6.5_equilibration.inp",
+      "time_ns": 1.0,
+      "timestep": 2.0,
+      "temperature": 310.15,
+      "pressure": 1.0,
+      "surface_tension": 0.0,
+      "constraints": {
+        "protein_backbone": 1.0,
+        "protein_sidechain": 0.5,
+        "lipid_head": 0.5,
+        "lipid_tail": 0.0,
+        "water": 0.0,
+        "ions": 0.0,
+        "other": 0.0
+      }
+    }
+  },
+  "namd_executable": "namd3",
+  "force_field": "AMBER"
+}

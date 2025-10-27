@@ -1,0 +1,1063 @@
+-I: Adding /home/white/anaconda3/envs/gatewizard/dat/leap/prep to search path.
+-I: Adding /home/white/anaconda3/envs/gatewizard/dat/leap/lib to search path.
+-I: Adding /home/white/anaconda3/envs/gatewizard/dat/leap/parm to search path.
+-I: Adding /home/white/anaconda3/envs/gatewizard/dat/leap/cmd to search path.
+-f: Source leap.in.
+
+Welcome to LEaP!
+(no leaprc in search path)
+Sourcing: ./leap.in
+----- Source: /home/white/anaconda3/envs/gatewizard/dat/leap/cmd/leaprc.lipid21
+----- Source of /home/white/anaconda3/envs/gatewizard/dat/leap/cmd/leaprc.lipid21 done
+Log file: ./leap.log
+Loading parameters: /home/white/anaconda3/envs/gatewizard/dat/leap/parm/lipid21.dat
+Reading title:
+AMBER Lipid21 v1.0 C. J. Dickson, R.C. Walker, I.R. Gould.
+Loading library: /home/white/anaconda3/envs/gatewizard/dat/leap/lib/lipid21.lib
+----- Source: /home/white/anaconda3/envs/gatewizard/dat/leap/cmd/leaprc.protein.ff14SB
+----- Source of /home/white/anaconda3/envs/gatewizard/dat/leap/cmd/leaprc.protein.ff14SB done
+Log file: ./leap.log
+Loading parameters: /home/white/anaconda3/envs/gatewizard/dat/leap/parm/parm10.dat
+Reading title:
+PARM99 + frcmod.ff99SB + frcmod.parmbsc0 + OL3 for RNA
+Loading parameters: /home/white/anaconda3/envs/gatewizard/dat/leap/parm/frcmod.ff14SB
+Reading force field modification type file (frcmod)
+Reading title:
+ff14SB protein backbone and sidechain parameters
+Loading library: /home/white/anaconda3/envs/gatewizard/dat/leap/lib/amino12.lib
+Loading library: /home/white/anaconda3/envs/gatewizard/dat/leap/lib/aminoct12.lib
+Loading library: /home/white/anaconda3/envs/gatewizard/dat/leap/lib/aminont12.lib
+----- Source: /home/white/anaconda3/envs/gatewizard/dat/leap/cmd/leaprc.water.tip3p
+----- Source of /home/white/anaconda3/envs/gatewizard/dat/leap/cmd/leaprc.water.tip3p done
+Loading library: /home/white/anaconda3/envs/gatewizard/dat/leap/lib/atomic_ions.lib
+Loading library: /home/white/anaconda3/envs/gatewizard/dat/leap/lib/solvents.lib
+Loading parameters: /home/white/anaconda3/envs/gatewizard/dat/leap/parm/frcmod.tip3p
+Reading force field modification type file (frcmod)
+Reading title:
+This is the additional/replacement parameter set for TIP3P water
+Loading parameters: /home/white/anaconda3/envs/gatewizard/dat/leap/parm/frcmod.ions1lm_126_tip3p
+Reading force field modification type file (frcmod)
+Reading title:
+Li/Merz ion parameters of monovalent ions for TIP3P water model (12-6 normal usage set)
+Loading parameters: /home/white/anaconda3/envs/gatewizard/dat/leap/parm/frcmod.ionsjc_tip3p
+Reading force field modification type file (frcmod)
+Reading title:
+Monovalent ion parameters for Ewald and TIP3P water from Joung & Cheatham JPCB (2008)
+Loading parameters: /home/white/anaconda3/envs/gatewizard/dat/leap/parm/frcmod.ions234lm_126_tip3p
+Reading force field modification type file (frcmod)
+Reading title:
+Li/Merz ion parameters of divalent to tetravalent ions for TIP3P water model (12-6 normal usage set)
+Loading PDB file: ./bilayer_protein_protonated_prepared.pdb
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 1 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 1 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 2 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 2 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 3 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 3 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 4 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 4 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 5 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 5 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 6 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 6 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 7 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 7 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 8 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 8 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 9 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 9 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 10 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 10 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 11 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 11 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 12 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 12 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 13 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 13 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 14 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 14 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 15 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 15 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 16 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 16 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 17 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 17 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 18 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 18 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 19 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 19 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 20 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 20 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 21 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 21 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 22 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 22 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 23 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 23 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 24 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 24 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 25 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 25 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 26 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 26 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 27 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 27 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 28 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 28 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 29 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 29 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 30 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 30 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 31 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 31 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 32 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 32 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 33 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 33 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 34 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 34 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 35 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 35 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 36 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 36 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 37 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 37 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 38 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 38 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 39 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 39 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 40 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 40 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 41 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 41 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 42 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 42 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 43 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 43 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 44 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 44 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 45 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 45 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 46 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 46 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 47 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 47 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 48 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 48 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 49 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 49 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 50 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 50 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 51 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 51 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 52 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 52 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 53 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 53 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 54 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 54 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 55 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 55 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 56 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 56 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 57 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 57 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 58 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 58 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 59 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 59 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 60 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 60 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 61 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 61 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 1 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 1 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 2 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 2 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 3 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 3 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 4 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 4 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 5 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 5 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 6 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 6 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 7 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 7 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 8 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 8 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 9 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 9 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 10 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 10 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 11 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 11 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 12 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 12 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 13 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 13 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 14 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 14 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 15 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 15 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 16 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 16 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 17 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 17 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 18 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 18 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 19 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 19 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 20 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 20 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 21 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 21 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 22 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 22 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 23 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 23 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 24 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 24 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 25 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 25 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 26 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 26 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 27 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 27 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 28 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 28 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 29 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 29 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 30 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 30 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 31 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 31 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 32 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 32 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 33 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 33 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 34 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 34 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 35 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 35 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 36 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 36 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 37 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 37 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 38 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 38 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 39 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 39 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 40 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 40 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 41 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 41 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 42 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 42 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 43 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 43 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 44 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 44 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 45 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 45 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 46 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 46 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 47 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 47 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 48 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 48 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 49 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 49 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 50 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 50 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 51 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 51 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 52 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 52 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 53 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 53 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 54 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 54 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 55 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 55 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 56 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 56 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 57 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 57 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 58 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 58 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 59 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 59 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 60 ;
+this residue is split into PA and PC.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+Name change in pdb file residue 60 ;
+this residue is split into PC and OL.
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Note.
+242 residues had naming warnings.
+Thus, there are split residues;
+residue sequence numbers will not correspond to those in the pdb.
+  total atoms in file: 31595
+  Leap added 19 missing atoms according to residue templates:
+       19 H / lone pairs
+Box dimensions:  72.437000 72.700000 85.446600
+1 K+ ion required to neutralize.
+Adding 1 counter ions to "SYS". 4895 solvent molecules will remain.
+0: Placed K+ in SYS at (-21.69, -19.97, 28.02).
+
+/home/white/anaconda3/envs/gatewizard/bin/teLeap: Warning!
+addIonsRand: 1st Ion & target unit have charges of the same sign:
+     unit charge = -2.14939e-13; ion1 charge = -1;
+     can't neutralize.
+Writing pdb file: bilayer_protein_protonated_prepared_lipid.pdb
+   printing CRYST1 record to PDB file with box info
+Checking Unit.
+Building topology.
+Building atom parameters.
+Building bond parameters.
+Building angle parameters.
+Building proper torsion parameters.
+Building improper torsion parameters.
+ total 625 improper torsions applied
+Building H-Bond parameters.
+Incorporating Non-Bonded adjustments.
+Not Marking per-residue atom chain types.
+Marking per-residue atom chain types.
+  (Residues lacking connect0/connect1 - 
+   these don't have chain types marked:
+
+	res	total affected
+
+	WAT	4895
+  )
+ (no restraints)
+There are 31612 atoms
+Using the unit box
+Successfully saved NetCDF inpcrd file "bilayer_protein_protonated_prepared_lipid.crd"
+	Quit
+
+Exiting LEaP: Errors = 0; Warnings = 243; Notes = 1.

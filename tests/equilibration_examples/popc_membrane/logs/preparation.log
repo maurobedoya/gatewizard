@@ -1,0 +1,100 @@
+INFO: Workflow steps: Packmol pdb4amber tleap
+Starting membrane preparation at Sun Oct 19 18:40:16 -03 2025
+Command: packmol-memgen --pdb protein_protonated_prepared.pdb --lipids POPC//POPC --ratio 1//1 --ffwat tip3p --ffprot ff14SB --fflip lipid21 --preoriented --parametrize --salt --saltcon 0.15 --dist_wat 17.5
+Updating initial status...
+Launching main command...
+Background completion checker started
+PMEMD not found. Setting path to SANDER
+
+
+ _____           _                    _
+|  __ \         | |                  | |
+| |__) |_ _  ___| | ___ __ ___   ___ | |
+|  ___/ _` |/ __| |/ / '_ ` _ \ / _ \| |
+| |  | (_| | (__|   <| | | | | | (_) | |
+|_|   \__,_|\___|_|\_\_| |_| |_|\___/|_|
+                                         ___
+                  /\/\   ___ _ __ ___   / _ \___ _ __
+                 /    \ / _ \ '_ ` _ \ / /_\/ _ \ '_ \ 
+                / /\/\ \  __/ | | | | / /_ \  __/ | | |
+                \/    \/\___|_| |_| |_\____/\___|_| |_| 
+
+
+###############################################################
+Stephan Schott-Verdugo 2016-11-07        VERSION: 2025.1.29
+Generated at CPCLab at Heinrich Heine University Duesseldorf
+      &      CBCLab at Forschungszentrum Juelich
+###############################################################
+
+--verbose for details of the packing process
+Preprocessing protein_protonated_prepared.pdb. This might take a minute.
+
+     Information for packing:
+    
+     Input PDB(s)                     = ['protein_protonated_prepared.pdb']
+     Output PDB                       = bilayer_protein_protonated_prepared.pdb
+     Packmol output and log prefix    = packmol  
+     Lipids                           = ['POPC//POPC']
+     Lipid ratio                      = ['1//1'] 
+     Solvents                         = WAT      
+     Solvent ratio                    = 1        
+     Salt concentration            (M)= 0.15     
+     Distance to boundaries        (A)= 15.0     
+     Minimum water distance        (A)= 17.5     
+     Packmol loops                    = 20       
+     Packmol loops for All-together   = 100      
+
+Running Packmol...
+Found output files matching bilayer_*.pdb - job progressing
+Found output files matching bilayer_*.pdb - job progressing
+Found output files matching bilayer_*.pdb - job progressing
+  0%|          | 0/260 [00:00<?, ?it/s]Molecule segment 2/9:   0%|          | 0/260 [00:00<?, ?it/s]Molecule segment 2/9:   0%|          | 1/260 [00:00<01:21,  3.19it/s]Molecule segment 2/9:   1%|          | 2/260 [00:00<01:35,  2.69it/s]Molecule segment 2/9:   1%|          | 3/260 [00:01<01:53,  2.26it/s]Molecule segment 2/9:   2%|▏         | 4/260 [00:01<02:18,  1.85it/s]Molecule segment 2/9:   2%|▏         | 5/260 [00:02<02:34,  1.65it/s]Molecule segment 2/9:   2%|▏         | 6/260 [00:03<02:38,  1.60it/s]Molecule segment 2/9:   3%|▎         | 7/260 [00:04<02:43,  1.55it/s]Molecule segment 2/9:   3%|▎         | 8/260 [00:04<03:01,  1.39it/s]Molecule segment 2/9:   3%|▎         | 9/260 [00:05<03:18,  1.26it/s]Molecule segment 2/9:   4%|▍         | 10/260 [00:07<03:51,  1.08it/s]Molecule segment 2/9:   4%|▍         | 11/260 [00:11<08:30,  2.05s/it]Molecule segment 2/9:   5%|▍         | 12/260 [00:13<08:26,  2.04s/it]Molecule segment 2/9:   5%|▌         | 13/260 [00:15<08:26,  2.05s/it]Molecule segment 2/9:   5%|▌         | 14/260 [00:18<08:38,  2.11s/it]Molecule segment 2/9:   6%|▌         | 15/260 [00:19<07:38,  1.87s/it]Molecule segment 2/9:   6%|▌         | 16/260 [00:20<06:55,  1.70s/it]Molecule segment 2/9:   7%|▋         | 17/260 [00:22<06:36,  1.63s/it]Molecule segment 2/9:   7%|▋         | 18/260 [00:23<06:18,  1.56s/it]Molecule segment 2/9:   7%|▋         | 19/260 [00:24<06:02,  1.51s/it]Molecule segment 2/9:   8%|▊         | 20/260 [00:26<05:50,  1.46s/it]Molecule segment 3/9:   8%|▊         | 20/260 [00:31<05:50,  1.46s/it]Molecule segment 3/9:   8%|▊         | 21/260 [00:31<10:29,  2.63s/it]Molecule segment 3/9:   8%|▊         | 22/260 [00:32<07:59,  2.02s/it]Molecule segment 3/9:   9%|▉         | 23/260 [00:32<06:17,  1.59s/it]Molecule segment 3/9:   9%|▉         | 24/260 [00:33<05:14,  1.33s/it]Molecule segment 3/9:  10%|▉         | 25/260 [00:34<04:38,  1.18s/it]Molecule segment 3/9:  10%|█         | 26/260 [00:35<04:13,  1.09s/it]Molecule segment 3/9:  10%|█         | 27/260 [00:36<03:56,  1.01s/it]Molecule segment 3/9:  11%|█         | 28/260 [00:37<03:54,  1.01s/it]Molecule segment 3/9:  11%|█         | 29/260 [00:38<04:12,  1.09s/it]Molecule segment 3/9:  12%|█▏        | 30/260 [00:39<04:00,  1.05s/it]Molecule segment 3/9:  12%|█▏        | 31/260 [00:43<07:34,  1.99s/it]Molecule segment 3/9:  12%|█▏        | 32/260 [00:44<06:48,  1.79s/it]Molecule segment 3/9:  13%|█▎        | 33/260 [00:46<06:23,  1.69s/it]Molecule segment 3/9:  13%|█▎        | 34/260 [00:47<06:08,  1.63s/it]Molecule segment 3/9:  13%|█▎        | 35/260 [00:48<04:54,  1.31s/it]Molecule segment 3/9:  14%|█▍        | 36/260 [00:49<04:17,  1.15s/it]Molecule segment 3/9:  14%|█▍        | 37/260 [00:50<04:16,  1.15s/it]Molecule segment 3/9:  15%|█▍        | 38/260 [00:50<03:34,  1.04it/s]Molecule segment 3/9:  15%|█▌        | 39/260 [00:51<03:23,  1.09it/s]Molecule segment 3/9:  15%|█▌        | 40/260 [00:52<03:32,  1.04it/s]Molecule segment 4/9:  15%|█▌        | 40/260 [00:57<03:32,  1.04it/s]Molecule segment 4/9:  16%|█▌        | 41/260 [00:57<07:29,  2.05s/it]Molecule segment 4/9:  23%|██▎       | 60/260 [01:00<01:19,  2.52it/s]Molecule segment 5/9:  23%|██▎       | 60/260 [01:00<01:19,  2.52it/s]Molecule segment 5/9:  31%|███       | 80/260 [01:04<00:48,  3.71it/s]Molecule segment 6/9:  31%|███       | 80/260 [01:04<00:48,  3.71it/s]Molecule segment 6/9:  38%|███▊      | 100/260 [01:07<00:33,  4.77it/s]Molecule segment 7/9:  38%|███▊      | 100/260 [01:07<00:33,  4.77it/s]Molecule segment 7/9:  46%|████▌     | 120/260 [01:09<00:25,  5.48it/s]Molecule segment 8/9:  46%|████▌     | 120/260 [01:09<00:25,  5.48it/s]Molecule segment 8/9:  54%|█████▍    | 140/260 [01:12<00:20,  5.97it/s]Molecule segment 9/9:  54%|█████▍    | 140/260 [01:12<00:20,  5.97it/s]Molecule segment 9/9:  62%|██████▏   | 160/260 [01:15<00:15,  6.34it/s]All-together Packing:  62%|██████▏   | 160/260 [01:15<00:15,  6.34it/s][F
+Found output files matching bilayer_*.pdb - job progressing
+Found output files matching bilayer_*.pdb - job progressing
+Found output files matching bilayer_*.pdb - job progressing
+Found output files matching bilayer_*.pdb - job progressing
+Found output files matching bilayer_*.pdb - job progressing
+Found output files matching bilayer_*.pdb - job progressing
+Found output files matching bilayer_*.pdb - job progressing
+Found output files matching bilayer_*.pdb - job progressing
+Found output files matching bilayer_*.pdb - job progressing
+Found output files matching bilayer_*.pdb - job progressing
+Found output files matching bilayer_*.pdb - job progressing
+Found output files matching bilayer_*.pdb - job progressing
+Found output files matching bilayer_*.pdb - job progressing
+Found output files matching bilayer_*.pdb - job progressing
+Found output files matching bilayer_*.pdb - job progressing
+Found output files matching bilayer_*.pdb - job progressing
+Found output files matching bilayer_*.pdb - job progressing
+Found output files matching bilayer_*.pdb - job progressing
+Found output files matching bilayer_*.pdb - job progressing
+Found output files matching bilayer_*.pdb - job progressing
+Found output files matching bilayer_*.pdb - job progressing
+Found output files matching bilayer_*.pdb - job progressing
+Found output files matching bilayer_*.pdb - job progressing
+Found output files matching bilayer_*.pdb - job progressing
+All-together PackingAll-together Packing:  62%|██████▏   | 162/260 [01:18<00:20,  4.75it/s]All-together Packing:  63%|██████▎   | 163/260 [01:21<00:31,  3.08it/s]All-together Packing:  63%|██████▎   | 164/260 [01:27<00:52,  1.81it/s]All-together Packing:  63%|██████▎   | 165/260 [01:32<01:16,  1.25it/s]All-together Packing:  64%|██████▍   | 166/260 [01:38<01:51,  1.19s/it]All-together Packing:  64%|██████▍   | 167/260 [01:44<02:41,  1.73s/it]All-together Packing:  65%|██████▍   | 168/260 [01:46<02:43,  1.78s/it]All-together Packing:  65%|██████▌   | 169/260 [01:49<02:57,  1.95s/it]All-together Packing:  65%|██████▌   | 170/260 [01:54<03:36,  2.40s/it]All-together Packing:  66%|██████▌   | 171/260 [01:59<04:16,  2.88s/it]All-together Packing:  66%|██████▌   | 172/260 [02:01<04:01,  2.74s/it]All-together Packing:  67%|██████▋   | 173/260 [02:04<03:58,  2.74s/it]All-together Packing:  67%|██████▋   | 174/260 [02:08<04:34,  3.19s/it]All-together Packing:  67%|██████▋   | 175/260 [02:10<04:00,  2.83s/it]All-together Packing:  68%|██████▊   | 176/260 [02:12<03:41,  2.64s/it]All-together Packing:  68%|██████▊   | 177/260 [02:15<03:53,  2.82s/it]All-together Packing:  68%|██████▊   | 178/260 [02:20<04:30,  3.30s/it]All-together Packing:  69%|██████▉   | 179/260 [02:24<04:47,  3.55s/it]All-together Packing:  69%|██████▉   | 180/260 [02:26<03:59,  2.99s/it]All-together Packing:  70%|██████▉   | 181/260 [02:30<04:32,  3.45s/it]All-together Packing:  70%|███████   | 182/260 [02:33<04:06,  3.16s/it]All-together Packing:  70%|███████   | 183/260 [02:36<04:06,  3.21s/it]All-together Packing:  71%|███████   | 184/260 [02:40<04:21,  3.44s/it]All-together Packing:  71%|███████   | 185/260 [02:45<04:50,  3.88s/it]All-together Packing:  72%|███████▏  | 186/260 [02:47<04:01,  3.26s/it]All-together Packing:  72%|███████▏  | 187/260 [02:49<03:29,  2.87s/it]All-together Packing:  72%|███████▏  | 188/260 [02:51<03:22,  2.82s/it]All-together Packing:  73%|███████▎  | 189/260 [02:55<03:33,  3.00s/it]All-together Packing:  73%|███████▎  | 190/260 [02:59<03:53,  3.34s/it]All-together Packing:  73%|███████▎  | 191/260 [03:07<05:37,  4.89s/it]All-together Packing:  74%|███████▍  | 192/260 [03:09<04:32,  4.01s/it]All-together Packing:  74%|███████▍  | 193/260 [03:12<03:57,  3.54s/it]All-together Packing:  75%|███████▍  | 194/260 [03:15<03:39,  3.32s/it]All-together Packing:  75%|███████▌  | 195/260 [03:18<03:38,  3.37s/it]All-together Packing:  75%|███████▌  | 196/260 [03:24<04:17,  4.03s/it]All-together Packing:  76%|███████▌  | 197/260 [03:25<03:30,  3.33s/it]All-together Packing:  76%|███████▌  | 198/260 [03:28<03:05,  3.00s/it]All-together Packing:  77%|███████▋  | 199/260 [03:31<03:04,  3.02s/it]All-together Packing:  77%|███████▋  | 200/260 [03:35<03:19,  3.32s/it]All-together Packing:  77%|███████▋  | 201/260 [03:43<04:36,  4.69s/it]All-together Packing:  78%|███████▊  | 202/260 [03:44<03:41,  3.82s/it]All-together Packing:  78%|███████▊  | 203/260 [03:46<03:04,  3.24s/it]All-together Packing:  78%|███████▊  | 204/260 [03:49<02:47,  2.99s/it]All-together Packing:  79%|███████▉  | 205/260 [03:52<02:43,  2.97s/it]All-together Packing:  79%|███████▉  | 206/260 [03:56<03:02,  3.37s/it]All-together Packing:  80%|███████▉  | 207/260 [04:02<03:41,  4.18s/it]All-together Packing:  80%|████████  | 208/260 [04:08<04:04,  4.69s/it]All-together Packing:  80%|████████  | 209/260 [04:10<03:14,  3.81s/it]All-together Packing:  81%|████████  | 210/260 [04:11<02:41,  3.24s/it]All-together Packing:  81%|████████  | 211/260 [04:14<02:28,  3.02s/it]All-together Packing:  82%|████████▏ | 212/260 [04:17<02:29,  3.11s/it]All-together Packing:  82%|████████▏ | 213/260 [04:21<02:34,  3.29s/it]All-together Packing:  82%|████████▏ | 214/260 [04:26<02:56,  3.84s/it]All-together Packing:  83%|████████▎ | 215/260 [04:32<03:17,  4.39s/it]All-together Packing:  83%|████████▎ | 216/260 [04:34<02:39,  3.62s/it]All-together Packing:  83%|████████▎ | 217/260 [04:36<02:20,  3.27s/it]All-together Packing:  84%|████████▍ | 218/260 [04:39<02:19,  3.31s/it]All-together Packing:  84%|████████▍ | 219/260 [04:44<02:25,  3.55s/it]All-together Packing:  85%|████████▍ | 220/260 [04:49<02:45,  4.14s/it]All-together Packing:  85%|████████▌ | 221/260 [04:51<02:19,  3.57s/it]All-together Packing:  85%|████████▌ | 222/260 [04:54<02:05,  3.30s/it]All-together Packing:  86%|████████▌ | 223/260 [04:57<02:01,  3.27s/it]All-together Packing:  86%|████████▌ | 224/260 [05:02<02:14,  3.73s/it]All-together Packing:  87%|████████▋ | 225/260 [05:09<02:47,  4.79s/it]All-together Packing:  87%|████████▋ | 226/260 [05:16<03:00,  5.32s/it]All-together Packing:  87%|████████▋ | 227/260 [05:18<02:19,  4.24s/it]All-together Packing:  88%|████████▊ | 228/260 [05:19<01:53,  3.54s/it]All-together Packing:  88%|████████▊ | 229/260 [05:22<01:40,  3.24s/it]All-together Packing:  88%|████████▊ | 230/260 [05:25<01:36,  3.23s/it]All-together Packing:  89%|████████▉ | 231/260 [05:30<01:43,  3.58s/it]All-together Packing:  89%|████████▉ | 232/260 [05:35<01:57,  4.19s/it]All-together Packing:  90%|████████▉ | 233/260 [05:37<01:34,  3.49s/it]All-together Packing:  90%|█████████ | 234/260 [05:39<01:19,  3.05s/it]All-together Packing:  90%|█████████ | 235/260 [05:42<01:14,  2.98s/it]All-together Packing:  91%|█████████ | 236/260 [05:46<01:17,  3.23s/it]All-together Packing:  91%|█████████ | 237/260 [05:50<01:23,  3.62s/it]All-together Packing:  92%|█████████▏| 238/260 [05:55<01:25,  3.89s/it]All-together Packing:  92%|█████████▏| 239/260 [06:02<01:40,  4.77s/it]All-together Packing:  92%|█████████▏| 240/260 [06:03<01:17,  3.88s/it]All-together Packing:  93%|█████████▎| 241/260 [06:06<01:04,  3.40s/it]All-together Packing:  93%|█████████▎| 242/260 [06:08<00:55,  3.07s/it]All-together Packing:  93%|█████████▎| 243/260 [06:12<00:58,  3.47s/it]All-together Packing:  94%|█████████▍| 244/260 [06:17<01:01,  3.85s/it]All-together Packing:  94%|█████████▍| 245/260 [06:22<01:03,  4.20s/it]All-together Packing:  95%|█████████▍| 246/260 [06:24<00:48,  3.45s/it]All-together Packing:  95%|█████████▌| 247/260 [06:26<00:38,  2.96s/it]All-together Packing:  95%|█████████▌| 248/260 [06:28<00:34,  2.89s/it]All-together Packing:  96%|█████████▌| 249/260 [06:32<00:33,  3.01s/it]All-together Packing:  96%|█████████▌| 250/260 [06:36<00:33,  3.37s/it]All-together Packing:  97%|█████████▋| 251/260 [06:44<00:43,  4.81s/it]All-together Packing:  97%|█████████▋| 252/260 [06:46<00:30,  3.86s/it]All-together Packing:  97%|█████████▋| 253/260 [06:48<00:23,  3.31s/it]All-together Packing:  98%|█████████▊| 254/260 [06:50<00:18,  3.10s/it]All-together Packing:  98%|█████████▊| 255/260 [06:53<00:15,  3.08s/it]All-together Packing:  98%|█████████▊| 256/260 [06:57<00:12,  3.17s/it]All-together Packing:  99%|█████████▉| 257/260 [07:02<00:10,  3.66s/it]All-together Packing:  99%|█████████▉| 258/260 [07:03<00:06,  3.08s/it]All-together Packing: 100%|█████████▉| 259/260 [07:05<00:02,  2.75s/it]All-together Packing: 100%|██████████| 260/260 [07:08<00:00,  2.81s/it]Transforming to AMBER
+Parametrizing using LEaP with lipid21, ff14SB and tip3p
+#Packing process finished. Check your final structure, particularly for lipids inserted in proteins, protein tunnels or piercing rings!#
+
+########################################################################################################################################
+########################################################################################################################################
+DONE!
+All-together Packing: 100%|██████████| 260/260 [07:25<00:00,  1.71s/it]
+Command completed with exit status 0
+Membrane preparation completed successfully at Sun Oct 19 18:47:47 -03 2025
+Starting parametrization workflow...
+Found bilayer PDB file: bilayer_protein_protonated_prepared.pdb
+Running pdb4amber on bilayer_protein_protonated_prepared.pdb...
+✅ pdb4amber completed successfully
+Running tleap parametrization...
+Force field configuration:
+  Protein FF: ff14SB -> leaprc.protein.ff14SB
+  Lipid FF: lipid21 -> leaprc.lipid21
+  Water model: tip3p -> leaprc.water.tip3p
+✅ tleap parametrization completed successfully
+Generated files:
+   system.prmtop: 9297165 bytes
+   system.inpcrd: 1153858 bytes
+   system.pdb: 2153277 bytes
+✅ All parametrization files created successfully

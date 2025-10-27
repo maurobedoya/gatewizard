@@ -1,0 +1,28 @@
+{
+  "command": "packmol-memgen --pdb protein_protonated_prepared.pdb --lipids POPC//POPC --ratio 1//1 --ffwat tip3p --ffprot ff14SB --fflip lipid21 --preoriented --parametrize --salt --saltcon 0.15 --dist_wat 17.5",
+  "start_time": "2025-10-19T18:40:16.544396",
+  "end_time": "2025-10-19T18:47:56.023915",
+  "current_step": 5,
+  "status": "completed",
+  "error": null,
+  "steps_completed": [
+    "Completed"
+  ],
+  "config": {
+    "water_model": "tip3p",
+    "protein_ff": "ff14SB",
+    "lipid_ff": "lipid21",
+    "preoriented": true,
+    "parametrize": true,
+    "salt_concentration": 0.15,
+    "cation": "K+",
+    "anion": "Cl-",
+    "dist_wat": 17.5,
+    "notprotonate": false,
+    "two_stage_process": false,
+    "pack_only": false,
+    "parametrize_only": false,
+    "output_folder_name": "popc_membrane"
+  },
+  "last_update": "2025-10-19T18:47:55.975591"
+}
