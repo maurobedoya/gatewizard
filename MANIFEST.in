@@ -1,0 +1,18 @@
+# Exclude potentially problematic files and directories
+include gatewizard/
+recursive-include gatewizard *.py
+recursive-include gatewizard/crystal_analysis *.cr *.yml *.lock *.md
+include gatewizard/run_crystal_with_system_libs.sh
+global-exclude *.pyc
+global-exclude __pycache__
+global-exclude *.log
+global-exclude .git*
+global-exclude *.pdb
+global-exclude *.pka
+prune equilibration
+prune restraints
+prune docs
+exclude *.md
+exclude test_*.py
+exclude *.sh
+exclude *.bat
