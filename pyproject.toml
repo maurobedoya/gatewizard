@@ -1,0 +1,73 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gatewizard"
+version = "1.0.0"
+description = "A tool for membrane protein preparation and molecular dynamics analysis"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+    {name = "Constanza González", email = "constanza.gonzalez.villagra@gmail.com"},
+    {name = "Mauricio Bedoya", email = "mbedoya@ucm.cl"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Chemistry",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "customtkinter>=5.0.0",
+    "numpy>=1.21.0",
+    "matplotlib>=3.5.0",
+    "requests>=2.25.0",
+    "MDAnalysis>=2.0.0",
+    "propka>=3.2.0",
+]
+
+[project.optional-dependencies]
+analysis = [
+    "MDAnalysis>=2.0.0",
+]
+all = [
+    "MDAnalysis>=2.0.0",
+]
+
+[project.scripts]
+gatewizard = "gatewizard.main:main"
+
+[tool.setuptools]
+packages = {find = {}}
+
+[tool.setuptools.package-data]
+gatewizard = ["**/*.yml", "**/*.yaml", "**/*.json", "**/*.txt"]
+
+[tool.pytest.ini_options]
+# Filter out expected warnings from dependencies
+filterwarnings = [
+    # Ignore MDAnalysis PDB loading warnings (expected for test files without full metadata)
+    "ignore:Unit cell dimensions not found:UserWarning:MDAnalysis.coordinates.PDB",
+    "ignore:1 A\\^3 CRYST1 record:UserWarning:MDAnalysis.coordinates.PDB",
+    "ignore:Found no information for attr:UserWarning:MDAnalysis.coordinates.PDB",
+    # Ignore numpy compatibility warning from parmed
+    "ignore:`np.compat`:DeprecationWarning:parmed.utils.netcdf",
+    # Ignore matplotlib deprecation warning (will be fixed in future matplotlib update)
+    "ignore:The 'labels' parameter of boxplot.*:DeprecationWarning",
+    # Ignore distutils deprecation from customtkinter
+    "ignore:distutils Version classes are deprecated:DeprecationWarning:customtkinter",
+]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]

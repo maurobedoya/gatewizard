@@ -1,0 +1,14 @@
+# Core dependencies
+customtkinter>=5.0.0
+numpy>=1.21.0
+matplotlib>=3.5.0
+requests>=2.25.0
+MDAnalysis>=2.0.0
+propka>=3.2.0
+
+# Optional dependencies (prefer conda installation for scientific packages)
+biopython  # For PDB file handling
+
+# Note: For AmberTools and Parmed, use conda installation:
+# conda install -c conda-forge ambertools=24 parmed=4.3.0
+
