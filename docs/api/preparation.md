@@ -1,6 +1,7 @@
-# Propka Module
+# Preparation Module
 
 Module for predicting pKa values and managing protonation states in protein structures. This module includes:
+
 - pKa prediction and analysis
 - Protonation state assignment based on pH
 - Disulfide bond detection and application
@@ -34,6 +35,8 @@ PropkaAnalyzer(propka_version: str = "3")
 
 **Example:**
 ```python
+from gatewizard.core.propka import PropkaAnalyzer
+
 analyzer = PropkaAnalyzer(propka_version="3")
 print(f"Using PROPKA version: {analyzer.propka_version}")
 ```
@@ -60,14 +63,18 @@ run_analysis(pdb_file: str, output_dir: Optional[str] = None) -> str
 **Returns:** `str` - Path to generated `.pka` file
 
 **Raises:**
+
 - `FileNotFoundError` - If input PDB file doesn't exist
 - `PropkaError` - If Propka execution fails
 
 **Output Files:**
+
 - `{basename}.pka` - Full Propka output file
 
 **Example:**
 ```python
+from gatewizard.core.propka import PropkaAnalyzer
+
 analyzer = PropkaAnalyzer()
 pka_file = analyzer.run_analysis("protein.pdb")
 # Returns: "protein.pka"
@@ -105,6 +112,14 @@ extract_summary(
 
 **Example:**
 ```python
+from gatewizard.core.propka import PropkaAnalyzer
+
+analyzer = PropkaAnalyzer()
+
+# First run analysis to generate the .pka file
+analyzer.run_analysis("protein.pdb")
+
+# Then extract summary
 summary_file = analyzer.extract_summary("protein.pka")
 # Returns: "protein_summary_of_prediction.txt"
 ```
@@ -144,12 +159,14 @@ parse_summary(summary_file: Optional[str] = None) -> List[Dict[str, Any]]
 PROPKA analyzes both **protein residues** and **ligand molecules** for ionizable groups:
 
 **For Protein Residues:**
+
 - `res_id`: Actual residue number (12, 52, 115, etc.)
 - `atom`: Empty string (protein residues are treated at residue level)
 - `atom_type`: Empty string
 - Example: `ASP 52 A` means Aspartate at position 52 in chain A
 
 **For Ligand Atoms:**
+
 - `res_id`: Set to 0 (ligands don't have meaningful residue numbers)
 - `atom`: Specific atom name in the ligand (`N`, `CAX`, `O15`, etc.)
 - `atom_type`: Atom type classification (`N31`, `OCO`, `OP`, etc.)
@@ -169,6 +186,7 @@ PROPKA analyzes both **protein residues** and **ligand molecules** for ionizable
 ```
 
 **Common Atom Type Classifications:**
+
 - **N31** - Tertiary amine nitrogen (sp³, 3 bonds)
 - **N33** - Quaternary nitrogen (sp³, 4 bonds, charged)
 - **OCO** - Carboxyl oxygen (in -COO⁻)
@@ -177,11 +195,21 @@ PROPKA analyzes both **protein residues** and **ligand molecules** for ionizable
 - **S3** - Thiol sulfur (sp³)
 
 **Raises:**
+
 - `FileNotFoundError` - If summary file doesn't exist
 - `PropkaError` - If no ionizable residues found
 
 **Example:**
 ```python
+from gatewizard.core.propka import PropkaAnalyzer
+
+analyzer = PropkaAnalyzer()
+
+# First run analysis and extract summary to generate the summary file
+analyzer.run_analysis("protein.pdb")
+analyzer.extract_summary("protein.pka")
+
+# Now parse the summary file
 residues = analyzer.parse_summary("protein_summary_of_prediction.txt")
 print(residues)
 # Returns: [
@@ -324,6 +352,7 @@ apply_protonation_states(
 | `"record_changes"` | `int` | Total number of PDB records (atoms) modified |
 
 **Raises:**
+
 - `FileNotFoundError` - If input PDB file doesn't exist
 - `PropkaError` - If no residue data available (need to run `parse_summary()` first)
 
@@ -355,6 +384,7 @@ The method automatically determines protonation states based on pKa vs pH:
 **Custom States Format:**
 
 Custom states can be specified with or without chain identifiers:
+
 - `{"ASP12": "ASH"}` - Applies to all chains
 - `{"ASP12_A": "ASH"}` - Applies only to chain A
 - `{"HIS15": "HID"}` - Use delta-protonated histidine instead of epsilon
@@ -362,7 +392,6 @@ Custom states can be specified with or without chain identifiers:
 **Example:**
 ```python
 from gatewizard.core.propka import PropkaAnalyzer
-from gatewizard.utils.protein_capping import ProteinCapper
 
 analyzer = PropkaAnalyzer()
 pka_file = analyzer.run_analysis("protein.pdb")
@@ -419,7 +448,6 @@ get_default_protonation_state(
 **Example:**
 ```python
 from gatewizard.core.propka import PropkaAnalyzer
-from gatewizard.utils.protein_capping import ProteinCapper
 
 analyzer = PropkaAnalyzer()
 pka_file = analyzer.run_analysis("protein.pdb")
@@ -455,7 +483,6 @@ get_available_states(residue_type: str) -> Dict[str, str]
 **Example:**
 ```python
 from gatewizard.core.propka import PropkaAnalyzer
-from gatewizard.utils.protein_capping import ProteinCapper
 
 analyzer = PropkaAnalyzer()
 his_states = analyzer.get_available_states("HIS")
@@ -510,6 +537,9 @@ detect_disulfide_bonds(
 
 **Example:**
 ```python
+from gatewizard.core.propka import PropkaAnalyzer
+
+analyzer = PropkaAnalyzer()
 # Detect with default 2.5 Å threshold
 bonds = analyzer.detect_disulfide_bonds("protein.pdb")
 print(f"Found {len(bonds)} disulfide bonds:")
@@ -563,6 +593,9 @@ apply_disulfide_bonds(
 
 **Example:**
 ```python
+from gatewizard.core.propka import PropkaAnalyzer
+
+analyzer = PropkaAnalyzer()
 # Auto-detect and apply
 num_bonds = analyzer.apply_disulfide_bonds(
     input_pdb="protein.pdb",
@@ -587,7 +620,6 @@ Disulfide bonds should be applied **after** protonation states:
 **Example:**
 ```python
 from gatewizard.core.propka import PropkaAnalyzer
-from gatewizard.utils.protein_capping import ProteinCapper
 
 analyzer = PropkaAnalyzer()
 pka_file = analyzer.run_analysis("protein.pdb")
@@ -625,7 +657,6 @@ get_residue_statistics() -> Dict[str, int]
 **Example:**
 ```python
 from gatewizard.core.propka import PropkaAnalyzer
-from gatewizard.utils.protein_capping import ProteinCapper
 
 analyzer = PropkaAnalyzer()
 pka_file = analyzer.run_analysis("protein.pdb")
@@ -916,6 +947,7 @@ for res_type, data in sorted(residue_data.items()):
 **Module:** `gatewizard.utils.protein_capping`
 
 Protein capping adds **ACE** (N-acetyl) and **NME** (N-methylamide) groups to protein termini to:
+
 - Neutralize charges at termini
 - Improve Propka analysis accuracy
 - Better represent membrane protein environments
@@ -950,6 +982,7 @@ remove_hydrogens_and_cap(
 | `target_dir` | `str/Path` | `None` | Directory for mapping file |
 
 **Returns:** `Tuple[str, Dict]`
+
 - `str` - Path to capped PDB file
 - `Dict` - Residue mapping dictionary
 
@@ -1041,6 +1074,243 @@ result = subprocess.run([
 ], capture_output=True, text=True, check=True)
 ```
 
+### ACE/NME Cap HETATM Fix
+
+**Critical Note:** When using protein capping (ACE/NME), pdb4amber converts cap ATOM records to HETATM records, which can cause compatibility issues with downstream tools like packmol-memgen.
+
+**The Problem:**
+```
+# Before pdb4amber (correct for caps):
+ATOM      1  C   ACE A   1      12.640  -9.437  14.871  1.00  0.00      A
+ATOM      2  CH3 ACE A   1      12.660 -10.927  15.173  1.00  0.00      A
+
+# After pdb4amber (incorrect - becomes heteroatom):
+HETATM    1  C   ACE A   1      12.640  -9.437  14.871  1.00  0.00           C
+HETATM    2  CH3 ACE A   1      12.660 -10.927  15.173  1.00  0.00           C
+```
+
+### Method: run_pdb4amber_with_cap_fix()
+
+Run pdb4amber to add hydrogens and prepare PDB for AMBER, with optional ACE/NME cap HETATM fix.
+
+```python
+run_pdb4amber_with_cap_fix(
+    input_pdb: str,
+    output_pdb: str,
+    fix_caps: bool = True,
+    pdb4amber_options: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `input_pdb` | `str` | Required | Path to input PDB file |
+| `output_pdb` | `str` | Required | Path for output PDB file |
+| `fix_caps` | `bool` | `True` | If True, automatically converts ACE/NME HETATM→ATOM after pdb4amber |
+| `pdb4amber_options` | `Dict[str, Any]` | `None` | Optional dictionary of pdb4amber command-line options |
+
+**Returns:** `Dict[str, Any]` - Result dictionary with execution details
+
+**Return Dictionary:**
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `"success"` | `bool` | Whether pdb4amber execution succeeded |
+| `"output_file"` | `str` | Path to the output PDB file |
+| `"hetatm_fixed"` | `int` | Number of HETATM records converted to ATOM (0 if fix_caps=False) |
+| `"stdout"` | `str` | Standard output from pdb4amber command |
+| `"stderr"` | `str` | Standard error from pdb4amber command |
+
+**Raises:**
+
+- `FileNotFoundError` - If input PDB file doesn't exist
+- `RuntimeError` - If pdb4amber command fails or is not found
+
+**What This Method Does:**
+
+**Runs pdb4amber**: Executes the AmberTools pdb4amber utility to:
+
+   - Prepare PDB structure for AMBER force field
+   - Remove problematic records
+   - Renumber atoms and residues if needed
+
+**Optionally Fixes ACE/NME Caps** (if `fix_caps=True`):
+
+   - Detects ACE (N-acetyl) and NME (N-methylamide) cap residues
+   - Converts their HETATM records back to ATOM records
+   - This fixes compatibility issues with tools like packmol-memgen
+
+**The ACE/NME Cap HETATM Problem:**
+
+When protein capping is used, pdb4amber incorrectly converts cap ATOM records to HETATM:
+
+```
+# Before pdb4amber (correct):
+ATOM      1  C   ACE A   1      12.640  -9.437  14.871  1.00  0.00           C
+ATOM      2  CH3 ACE A   1      12.660 -10.927  15.173  1.00  0.00           C
+
+# After pdb4amber (incorrect - becomes heteroatom):
+HETATM    1  C   ACE A   1      12.640  -9.437  14.871  1.00  0.00           C
+HETATM    2  CH3 ACE A   1      12.660 -10.927  15.173  1.00  0.00           C
+```
+
+This causes compatibility issues because:
+
+- packmol-memgen expects caps as ATOM records
+- Other MD preparation tools may skip HETATM records
+- Caps should be treated as part of the protein chain
+
+**pdb4amber_options Dictionary:**
+
+You can pass custom pdb4amber command-line options:
+
+```python
+options = {
+    "reduce": True,        # Use reduce for hydrogen addition (default: True)
+    "dry": False,          # Keep water molecules (default: False)
+    "keep-altlocs": False, # Remove alternative locations (default: False)
+    "strip-waters": True,  # Remove water molecules (default: True)
+}
+```
+
+**Example - Basic Usage:**
+
+```python
+from gatewizard.core.propka import PropkaAnalyzer
+
+analyzer = PropkaAnalyzer()
+
+# Run pdb4amber with automatic cap fix (recommended for capped proteins)
+result = analyzer.run_pdb4amber_with_cap_fix(
+    input_pdb="protein_capped_ph7_ss.pdb",
+    output_pdb="protein_prepared.pdb",
+    fix_caps=True  # Default: automatically fix ACE/NME caps
+)
+
+if result['success']:
+    print(f"✓ pdb4amber completed successfully")
+    print(f"✓ Output: {result['output_file']}")
+    if result['hetatm_fixed'] > 0:
+        print(f"✓ Fixed {result['hetatm_fixed']} HETATM records for ACE/NME caps")
+else:
+    print(f"✗ pdb4amber failed")
+    print(f"Error: {result['stderr']}")
+```
+
+**Example - Without Cap Fix:**
+
+```python
+from gatewizard.core.propka import PropkaAnalyzer
+
+analyzer = PropkaAnalyzer()
+
+# Run pdb4amber without cap fix (for uncapped proteins)
+result = analyzer.run_pdb4amber_with_cap_fix(
+    input_pdb="protein_uncapped_ph7_ss.pdb",
+    output_pdb="protein_prepared.pdb",
+    fix_caps=False  # No cap fix needed
+)
+
+print(f"Success: {result['success']}")
+print(f"HETATM records fixed: {result['hetatm_fixed']}")  # Will be 0
+```
+
+**Example - With Custom pdb4amber Options:**
+
+```python
+from gatewizard.core.propka import PropkaAnalyzer
+
+analyzer = PropkaAnalyzer()
+
+# Run with custom pdb4amber options
+custom_options = {
+    "dry": False,          # Keep crystallographic waters
+    "keep-altlocs": True,  # Keep alternative locations
+}
+
+result = analyzer.run_pdb4amber_with_cap_fix(
+    input_pdb="protein_capped_ph7_ss.pdb",
+    output_pdb="protein_prepared.pdb",
+    fix_caps=True,
+    pdb4amber_options=custom_options
+)
+
+print(f"pdb4amber output:\n{result['stdout']}")
+```
+
+**Integration with Complete Workflow:**
+
+```python
+from gatewizard.core.propka import PropkaAnalyzer
+from gatewizard.utils.protein_capping import ProteinCapper
+
+# Step 1: Add caps
+capper = ProteinCapper()
+capped_file, mapping = capper.remove_hydrogens_and_cap("protein.pdb")
+
+# Step 2: Run Propka analysis
+analyzer = PropkaAnalyzer()
+pka_file = analyzer.run_analysis(capped_file)
+summary_file = analyzer.extract_summary(pka_file)
+residues = analyzer.parse_summary(summary_file)
+
+# Step 3: Apply protonation states
+analyzer.apply_protonation_states(
+    input_pdb=capped_file,
+    output_pdb="protein_capped_ph7.pdb",
+    ph=7.4,
+    residues=residues
+)
+
+# Step 4: Apply disulfide bonds
+bonds = analyzer.detect_disulfide_bonds(capped_file)
+analyzer.apply_disulfide_bonds(
+    input_pdb="protein_capped_ph7.pdb",
+    output_pdb="protein_capped_ph7_ss.pdb",
+    disulfide_bonds=bonds
+)
+
+# Step 5: Run pdb4amber with automatic cap fix
+result = analyzer.run_pdb4amber_with_cap_fix(
+    input_pdb="protein_capped_ph7_ss.pdb",
+    output_pdb="protein_prepared.pdb",
+    fix_caps=True  # Critical for capped proteins!
+)
+
+print(f"✓ Final AMBER-ready structure: {result['output_file']}")
+```
+
+**GUI Behavior:**
+
+When using the GUI:
+
+- The "Apply States & Run pdb4amber" button automatically uses this method
+- Automatically detects when capping was used (checks capping checkbox)
+- Sets `fix_caps=True` if capping was applied
+- Reports number of fixed HETATM records in success message
+- Displays pdb4amber output in the GUI log
+
+**Important Notes:**
+
+⚠️ **When to use fix_caps=True:**
+
+- When you used protein capping (ACE/NME groups added)
+- When planning to use packmol-memgen or similar tools
+- When you need caps to be part of the protein chain (ATOM records)
+
+⚠️ **When to use fix_caps=False:**
+
+- When no capping was applied
+- When you want standard pdb4amber behavior
+- When working with uncapped protein structures
+
+⚠️ **Requirements:**
+
+- Requires AmberTools installation (pdb4amber command must be available)
+- Input PDB should already have correct protonation states and disulfide bonds applied
+
 ---
 
 ## Complete Workflow Examples
@@ -1122,7 +1392,17 @@ num_bonds = analyzer.apply_disulfide_bonds(
     auto_detect=False
 )
 
-print(f"✓ Final structure ready: protein_capped_ph7_ss.pdb")
+# Step 6: Run pdb4amber with automatic ACE/NME HETATM fix
+result = analyzer.run_pdb4amber_with_cap_fix(
+    input_pdb="output/protein_capped_ph7_ss.pdb",
+    output_pdb="output/protein_prepared.pdb",
+    fix_caps=True  # Automatically fix ACE/NME HETATM records
+)
+
+print(f"✓ pdb4amber completed: {result['output_file']}")
+if result['hetatm_fixed'] > 0:
+    print(f"✓ Fixed {result['hetatm_fixed']} HETATM records for ACE/NME caps")
+print(f"✓ Final structure ready: protein_prepared.pdb")
 ```
 
 ### Multiple pH Variants
@@ -1282,6 +1562,7 @@ for spec, state in custom_states.items():
 ```
 
 **Use Cases:**
+
 - Force specific protonation for catalytic residues
 - Match experimental conditions or known structures
 - Test different protonation hypotheses
@@ -1376,6 +1657,7 @@ Summary: Found 5 residues with significant pKa shifts
 ```
 
 **Interpretation:**
+
 - **Large upshifts** (more basic): May indicate buried residues, salt bridges, or hydrogen bonding networks
 - **Large downshifts** (more acidic): May indicate proximity to positive charges or unusual electrostatic environments
 - **Extreme shifts (>2 units)**: Often mark functionally important residues like active sites, binding pockets, or structural switches
@@ -1388,6 +1670,7 @@ Summary: Found 5 residues with significant pKa shifts
 ### Output Directory Behavior
 
 ⚠️ **Important**: When using `output_dir`, the code automatically:
+
 - Creates the directory if it doesn't exist
 - Converts input file paths to absolute paths
 - Places all output files in the specified directory
@@ -1395,16 +1678,19 @@ Summary: Found 5 residues with significant pKa shifts
 ### PDB Records vs Residues
 
 ⚠️ **Important distinction**:
+
 - **Residue changes**: Number of unique residues modified
 - **PDB record changes**: Number of ATOM/HETATM lines modified
 
 Example: Changing 1 histidine residue with 10 atoms:
+
 - `residue_changes` = 1
 - `record_changes` = 10
 
 ### Dictionary Key Names
 
 ⚠️ **Common Mistake**: The parsed residues use these exact key names:
+
 - ✓ Correct: `res['residue']` (not `res['residue_name']`)
 - ✓ Correct: `res['res_id']` (not `res['residue_number']`)
 - ✓ Correct: `res['chain']` (not `res['chain_id']`)
@@ -1412,6 +1698,7 @@ Example: Changing 1 histidine residue with 10 atoms:
 - ✓ Correct: `res['atom_type']` (atom type classification like 'N31', 'OCO', 'OP')
 
 **Note on Ligands:**
+
 - Protein residues have `res_id > 0`, `atom == ''`, `atom_type == ''`
 - Ligand atoms have `res_id == 0`, `atom` contains atom name, `atom_type` contains classification
 - Use `res_id` to distinguish: `if res['res_id'] > 0:` → protein, else → ligand
