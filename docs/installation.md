@@ -145,6 +145,33 @@ which pdb4amber  # Should show path in conda environment
 gatewizard --version
 ```
 
+## Upgrading GateWizard
+
+To upgrade to the latest version from PyPI:
+
+```bash
+# Activate environment
+conda activate gatewizard
+
+# Upgrade GateWizard
+pip install --upgrade gatewizard
+
+# Verify new version
+gatewizard --version
+```
+
+**Check for updates:**
+You can check if a newer version is available:
+```bash
+pip list --outdated | grep gatewizard
+```
+
+**Force reinstall (if needed):**
+If you encounter issues after an update:
+```bash
+pip install --force-reinstall gatewizard
+```
+
 ## Troubleshooting Installation
 
 ### Issue: ImportError with numpy.compat
@@ -202,9 +229,10 @@ pip install -e . --force-reinstall
 
 ## Updating GateWizard
 
+### For PyPI Installation (Recommended)
+
 To update to the latest version:
 
-### If installed from PyPI:
 ```bash
 # Activate environment
 conda activate gatewizard
@@ -212,11 +240,16 @@ conda activate gatewizard
 # Update GateWizard
 pip install --upgrade gatewizard
 
-# Restart GateWizard
-gatewizard
+# Verify new version
+gatewizard --version
 ```
 
-### If installed from source (development):
+**Tip:** GateWizard follows [semantic versioning](https://semver.org/). Check the [releases page](https://github.com/maurobedoya/gatewizard/releases) for changelog and new features.
+
+### For Development Installation
+
+If you installed from source:
+
 ```bash
 # Update repository
 cd /path/to/gatewizard

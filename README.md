@@ -81,6 +81,23 @@ gatewizard --debug             # Enable debug logging
 gatewizard --version           # Show version
 ```
 
+## Upgrading
+
+To upgrade to the latest version:
+
+```bash
+# Activate your environment
+conda activate gatewizard
+
+# Upgrade GateWizard
+pip install --upgrade gatewizard
+```
+
+To check your current version:
+```bash
+gatewizard --version
+```
+
 ## Key Features
 
 ### Propka Analysis

@@ -38,6 +38,12 @@ pip install gatewizard
 gatewizard
 ```
 
+### Upgrade
+
+```bash
+pip install --upgrade gatewizard
+```
+
 For more detailed installation instructions, see the [Installation Guide](installation.md).
 
 ## Documentation Sections
