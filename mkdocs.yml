@@ -6,7 +6,7 @@ site_url: https://maurobedoya.github.io/gatewizard/
 
 # Repository
 repo_name: gatewizard
-repo_url: https://github.com/yourusername/gatewizard
+repo_url: https://github.com/maurobedoya/gatewizard
 edit_uri: edit/main/docs/
 
 # Copyright
@@ -100,7 +100,7 @@ plugins:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/yourusername/gatewizard
+      link: https://github.com/maurobedoya/gatewizard
   version:
     provider: mike
 
