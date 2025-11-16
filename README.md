@@ -13,9 +13,9 @@ A library and GUI application tool for membrane protein preparation and molecula
 
 ## Installation
 
-### Quick Installation (Recommended)
+### Quick Installation from PyPI (Recommended)
 
-1. **Create a conda environment with all dependencies:**
+1. **Create a conda environment with scientific dependencies:**
    ```bash
    conda create -n gatewizard -c conda-forge python sqlite ambertools=24 parmed=4.3.0 -y
    ```
@@ -25,24 +25,28 @@ A library and GUI application tool for membrane protein preparation and molecula
    conda activate gatewizard
    ```
 
-3. **Install Gatewizard:**
+3. **Install GateWizard from PyPI:**
    ```bash
-   pip install -e .
+   pip install gatewizard
    ```
 
-### Alternative: Using environment.yml
+### Alternative: Development Installation
 
-1. **Create environment from file:**
+For developers or to install from source:
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/maurobedoya/gatewizard.git
+   cd gatewizard
+   ```
+
+2. **Create environment from file:**
    ```bash
    conda env create -f environment.yml
-   ```
-
-2. **Activate the environment:**
-   ```bash
    conda activate gatewizard
    ```
 
-3. **Install Gatewizard:**
+3. **Install in development mode:**
    ```bash
    pip install -e .
    ```
@@ -109,10 +113,15 @@ Check that CustomTkinter is properly installed. Try reinstalling with `pip insta
 
 ### Setting up for Development
 ```bash
-git clone <repository>
+# Clone the repository
+git clone https://github.com/maurobedoya/gatewizard.git
 cd gatewizard
+
+# Create and activate environment
 conda env create -f environment.yml
 conda activate gatewizard
+
+# Install in development mode
 pip install -e .
 ```
 

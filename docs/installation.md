@@ -10,22 +10,31 @@ Before installing GateWizard, ensure you have:
 - **Git** (for cloning the repository): [Download here](https://git-scm.com/downloads)
 - **Python 3.8+** (will be installed via conda)
 
-## Quick Installation (Recommended)
+## Quick Installation from PyPI (Recommended)
 
 This is the fastest way to get GateWizard up and running:
 
 ```bash
-# 1. Create conda environment with all dependencies
-conda ...
+# 1. Create conda environment with scientific dependencies
+conda create -n gatewizard -c conda-forge python sqlite ambertools=24 parmed=4.3.0 -y
+
+# 2. Activate the environment
+conda activate gatewizard
+
+# 3. Install GateWizard from PyPI
+pip install gatewizard
+
+# 4. Launch GateWizard
+gatewizard
 ```
 
-## Alternative: Using environment.yml
+## Alternative: Development Installation
 
-If you prefer to use the provided environment file:
+For developers or to install from source:
 
 ```bash
 # 1. Clone the repository
-git clone <repository-url>
+git clone https://github.com/maurobedoya/gatewizard.git
 cd gatewizard
 
 # 2. Create environment from file
@@ -34,7 +43,7 @@ conda env create -f environment.yml
 # 3. Activate the environment
 conda activate gatewizard
 
-# 4. Install GateWizard
+# 4. Install in development mode
 pip install -e .
 
 # 5. Launch GateWizard
@@ -89,7 +98,7 @@ export DISPLAY=:0
 # Use Anaconda Prompt
 conda create -n gatewizard -c conda-forge python sqlite ambertools=24 parmed=4.3.0 -y
 conda activate gatewizard
-pip install -e .
+pip install gatewizard
 gatewizard
 ```
 
@@ -195,6 +204,19 @@ pip install -e . --force-reinstall
 
 To update to the latest version:
 
+### If installed from PyPI:
+```bash
+# Activate environment
+conda activate gatewizard
+
+# Update GateWizard
+pip install --upgrade gatewizard
+
+# Restart GateWizard
+gatewizard
+```
+
+### If installed from source (development):
 ```bash
 # Update repository
 cd /path/to/gatewizard

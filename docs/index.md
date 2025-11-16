@@ -28,8 +28,8 @@ conda create -n gatewizard -c conda-forge python sqlite ambertools=24 parmed=4.3
 # Activate environment
 conda activate gatewizard
 
-# Install GateWizard
-pip install -e .
+# Install GateWizard from PyPI
+pip install gatewizard
 ```
 
 ### Launch
