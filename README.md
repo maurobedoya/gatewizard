@@ -74,6 +74,11 @@ For developers or to install from source:
 - **AmberTools 24** - Molecular dynamics preparation and analysis
 - **Parmed 4.3.0** - Parameter/topology file manipulation (must be from conda-forge for compatibility)
 
+### External Requirements
+- **NAMD 3.0.1** - Required for molecular dynamics simulations and equilibration
+  - Download from: [NAMD Official Website](https://www.ks.uiuc.edu/Research/namd/)
+  - Must be installed separately and accessible in your system PATH
+
 ## Usage
 
 ### Launch the GUI
