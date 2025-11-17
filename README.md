@@ -2,7 +2,7 @@
 
 [![PyPI version](https://badge.fury.io/py/gatewizard.svg)](https://badge.fury.io/py/gatewizard)
 [![Python](https://img.shields.io/pypi/pyversions/gatewizard.svg)](https://pypi.org/project/gatewizard/)
-[![Downloads](https://img.shields.io/pypi/dm/gatewizard.svg)](https://pypi.org/project/gatewizard/)
+[![PyPI - Downloads](https://img.shields.io/pypi/dm/gatewizard)](https://pypi.org/project/gatewizard/)
 [![Documentation](https://img.shields.io/badge/docs-latest-blue.svg)](https://maurobedoya.github.io/gatewizard/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub stars](https://img.shields.io/github/stars/maurobedoya/gatewizard.svg)](https://github.com/maurobedoya/gatewizard/stargazers)
