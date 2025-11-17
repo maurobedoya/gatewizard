@@ -386,7 +386,7 @@ class ProteinViewerApp(ctk.CTk):
         # App descriptor placed inline to the right of the title
         self.app_descriptor_label = ctk.CTkLabel(
             self.title_content_frame,
-            text="Membrane Protein Preparation Tool",
+            text="",
             font=FONTS['subtitle'],
             text_color=COLOR_SCHEME['text']
         )
