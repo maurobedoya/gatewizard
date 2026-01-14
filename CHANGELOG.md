@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [1.0.9] - 2026
+
+### Fixed
+- Automatic release creation from tags testing
+
+
 ## [1.0.8] - 2026
 
 ### Fixed
@@ -84,7 +90,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive API documentation
 - User guide and troubleshooting documentation
 
-[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.8...HEAD
+[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.9...HEAD
+[1.0.9]: https://github.com/maurobedoya/gatewizard/compare/v1.0.8...v1.0.9
 [1.0.8]: https://github.com/maurobedoya/gatewizard/compare/v1.0.7...v1.0.8
 [1.0.7]: https://github.com/maurobedoya/gatewizard/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/maurobedoya/gatewizard/compare/v1.0.5...v1.0.6
