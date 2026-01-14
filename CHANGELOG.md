@@ -18,6 +18,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [1.0.7] - 2026
+
+### Added
+- Automatic release creation from tags
+- CHANGELOG.md file to track project changes
+- It was switched to PyPI Trusted Publishing
+
+### Changed
+- Updated test documentation to clarify pytest installation requirement
+
+### Fixed
+- NPAT equilibration protocol was updated to match the NPgT 
+
+### Removed
+- GateWizard version from the main GUI
 
 ## [1.0.6] - 2025
 
@@ -64,6 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive API documentation
 - User guide and troubleshooting documentation
 
-[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.6...HEAD
+[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.7...HEAD
+[1.0.7]: https://github.com/maurobedoya/gatewizard/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/maurobedoya/gatewizard/compare/v1.0.5...v1.0.6
 [1.0.0]: https://github.com/maurobedoya/gatewizard/releases/tag/v1.0.0
