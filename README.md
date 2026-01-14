@@ -111,21 +111,6 @@ To check your current version:
 gatewizard --version
 ```
 
-## Key Features
-
-### Propka Analysis
-- Automatic pKa calculations for protein residues
-- Protonation state assignment at specified pH
-- Optional protein capping with ACE/NME groups
-- Export results for molecular dynamics simulations
-
-### System Building
-- Automated protein preparation workflow
-- Integration with AmberTools for force field assignment
-- Support for different membrane types
-- Equilibration protocol generation
-- Analysis of the equilibrated and production MDs
-
 ## Troubleshooting
 
 ### Common Issues
@@ -236,6 +221,6 @@ Copyright (c) 2025 Constanza González and Mauricio Bedoya
 
 ## Authors
 
-- Constanza González <constanza.gonzalez.villagra@gmail.com>
-- Mauricio Bedoya <mbedoya@ucm.cl>
+- Constanza González
+- Mauricio Bedoya
 
