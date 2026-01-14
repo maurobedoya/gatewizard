@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [1.0.12] - 2026-01-14
+
+### Fixed
+- Fixed PyPI publishing workflow by removing duplicate publish job
+- Corrected workflow configuration to properly trigger PyPI upload on release
+
 ## [1.0.11] - 2026
 
 ### Fixed
