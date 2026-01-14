@@ -11,7 +11,7 @@ set outputname          step1_equilibration;
 outputName              $outputname;        # base name for output from this run
                                             # NAMD writes two files at the end, final coord and vel
                                             # in the format of first-dyn.coor and first-dyn.vel
-firsttimestep           {FIRST_TIMESTEP};                  # last step of previous run
+firsttimestep           {FIRST_TIMESTEP};   # last step of previous run
 restartfreq             1000;               # 1000 steps = every 2ps
 dcdfreq                 {DCD_FREQ};
 dcdUnitCell             yes;                # the file will contain unit cell info in the style of
