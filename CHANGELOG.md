@@ -19,6 +19,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 
+## [1.0.6] - 2025
+
+### Added
+- CHANGELOG.md file to track project changes
+- It was switched to PyPI Trusted Publishing
+
+### Changed
+- Updated test documentation to clarify pytest installation requirement
+
+### Fixed
+- NPAT equilibration protocol was updated to match the NPgT 
+
+### Removed
+- GateWizard version from the main GUI
+
 ## [1.0.5] - 2025
 
 ### Added
@@ -32,7 +47,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 - GateWizard version from the main GUI
-
 
 ## [1.0.4] - 2025
 
