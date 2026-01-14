@@ -72,7 +72,7 @@ wrapNearest             off;                # use for non-rectangular cells (wra
 useGroupPressure        yes;                # use a hydrogen-group based pseudo-molecular viral to calcualte pressure and
                                             # has less fluctuation, is needed for rigid bonds (rigidBonds/SHAKE)
 useFlexibleCell         yes;                # yes for anisotropic system like membrane
-useConstantArea         yes;                # keep the x-y cross sectional area constant while varying the z dimension
+useConstantRatio        yes;                # keeps the ratio of the unit cell in the x-y plane constant A=B (NPgT settings)
 
 langevin                on
 langevinDamping         1.0
@@ -85,6 +85,8 @@ langevinPistonTarget    1.01325
 langevinPistonPeriod    50.0
 langevinPistonDecay     25.0
 langevinPistonTemp      $temp
+
+SurfaceTensionTarget    0                  # (NPgT settings)
 
 # GATEWIZARD RESTRAINTS SYSTEM
 {RESTRAINTS_BLOCK}
