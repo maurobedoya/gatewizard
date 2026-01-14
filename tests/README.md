@@ -95,11 +95,11 @@ python -m pytest tests/test_equilibration.py::TestNAMDEquilibrationManager::test
 
 ## Test Requirements
 
-All testing dependencies are included in the main environment:
+Install testing dependencies in your gatewizard environment:
 
 ```bash
 conda activate gatewizard
-# pytest and dependencies are already installed
+pip install pytest pytest-cov
 ```
 
 ## Test Coverage
