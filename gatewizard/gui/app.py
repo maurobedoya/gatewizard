@@ -175,7 +175,7 @@ class ProteinViewerApp(ctk.CTk):
     
     def _setup_window(self):
         """Setup main window properties."""
-        self.title(f"Gatewizard v{__version__} - Membrane Protein Preparation Tool")
+        self.title(f"GateWizard v{__version__} - Membrane Protein Preparation Tool")
 
         # Get screen dimensions first to validate window size
         screen_width = self.winfo_screenwidth()
@@ -378,7 +378,7 @@ class ProteinViewerApp(ctk.CTk):
         # Title label
         self.title_label = ctk.CTkLabel(
             self.title_content_frame,
-            text=f"Gatewizard v{__version__}",
+            text=f"GateWizard",
             font=FONTS['title'],
             text_color=COLOR_SCHEME['text']
         )
@@ -968,7 +968,7 @@ Shift: {'Yes' if event.state & 0x1 else 'No'}
     def _show_help(self):
         """Show help dialog."""
         help_text = f"""
-Gatewizard v{__version__} - Help
+GateWizard v{__version__} - Help
 
 Keyboard Shortcuts:
 - Ctrl+O: Open PDB file (only in Visualize tab)
