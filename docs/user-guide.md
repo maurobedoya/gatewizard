@@ -259,30 +259,6 @@ After successful preparation, you'll find:
 - `system_solv.pdb` - Solvated system PDB
 - Various log files for troubleshooting
 
-### Common Use Cases
-
-**Case 1: Simple Symmetric Membrane**
-```
-Upper Leaflet: POPC 100%
-Lower Leaflet: POPC 100%
-Force Field: ff14SB + lipid21
-Salt: 0.15 M NaCl
-```
-
-**Case 2: Asymmetric Membrane**
-```
-Upper Leaflet: POPC 70% + CHOL 30%
-Lower Leaflet: POPE 50% + POPS 50%
-```
-
-**Case 3: Custom Protonation**
-```
-1. Run Propka at pH 5.0
-2. Modify residue names in PDB (GLU → GLH for protonated)
-3. Enable "Skip protonation" in Builder tab
-4. Run preparation
-```
-
 ### Tips and Best Practices
 
 1. **Always run Propka first** to determine correct protonation states
