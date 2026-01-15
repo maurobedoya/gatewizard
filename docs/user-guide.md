@@ -27,15 +27,6 @@ gatewizard --screen 1
 gatewizard --debug
 ```
 
-### First Time Setup
-
-When you first launch GateWizard:
-
-1. The main window will appear with multiple tabs
-2. Each tab represents a different workflow or feature
-3. Start with the **Preparation** tab for structure preparation
-4. Use the **Analysis** tab for trajectory analysis
-
 ## Main Interface
 
 The GateWizard interface consists of several main tabs:
@@ -45,18 +36,30 @@ The GateWizard interface consists of several main tabs:
 - **Analysis**: Trajectory and energy analysis
 - **Visualize**: Structure and simulation visualization
 
+**Main Interface:**
+
+![GUI](../images/user-guide/main_window.png)
+
+*GUI: Visualize tab.*
+
+
 ### Navigation
 
 - Click on tabs to switch between different features
 - Each tab has its own input/output sections
 - Status messages appear at the bottom of the window
 - Use keyboard shortcuts for quick access (Ctrl+Q to quit)
+- Use F1 to see all available shortcuts
 
 ## Preparation Tab - Structure Preparation
 
 The Preparation tab is used for protein structure preparation and protonation state analysis.
 
 ### Basic Workflow
+
+![GUI](../images/user-guide/main_window_propka.png)
+
+*GUI: Propka analysis.*
 
 1. **Load PDB File**
    - Click "Browse" to select your PDB file
@@ -67,14 +70,16 @@ The Preparation tab is used for protein structure preparation and protonation st
    - This determines protonation states of ionizable residues
 
 3. **Configure Options**
-   - **Keep Hydrogens**: Retain existing hydrogen atoms
-   - **Clean PDB**: Remove heteroatoms and non-standard residues
    - **Protein Capping**: Add ACE/NME caps to termini
 
 4. **Run Analysis**
-   - Click "Run Propka"
+   - Click "Run Analysis"
    - Results will show pKa values for each ionizable residue
    - Protonation states are assigned based on pH
+
+5. **Detect Bonds**
+   - Select Auto-detect disulfide bonds
+   - Set the maximum distance between S-S atoms to be considered
 
 5. **Export Results**
    - Save the prepared structure
@@ -93,22 +98,31 @@ Protein capping adds protective groups to protein termini:
 - Before molecular dynamics simulations of protein segments
 
 **How to use:**
-1. Enable "Protein Capping" checkbox
+
+1. Enable "Cap protein termini" checkbox
+
 2. Run Propka analysis
+
 3. Capped structure will be saved automatically
 
 ### Understanding pKa Results
 
 The results table shows:
+
 - **Residue**: Amino acid and position
+- **ID**: Residue ID
+- **Chain**: Chain of the protein
 - **pKa**: Calculated pKa value
-- **Protonation**: State at specified pH
-- **Model pKa**: Standard pKa value
-- **Shift**: Difference from standard (environmental effects)
+- **State at pH**: State at specified pH
+- **Custom State**: State to define
 
 ## Builder Tab - System Building
 
-The **Builder** tab provides a comprehensive interface for building membrane protein systems using **packmol-memgen** and **AmberTools**.
+![GUI](../images/user-guide/main_window_builder.png)
+
+*GUI: Builder tab.*
+
+The **Builder** tab provides an interface for building membrane protein systems using **packmol-memgen** and **AmberTools**.
 
 ### Overview
 

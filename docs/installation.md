@@ -108,12 +108,13 @@ gatewizard
 
 Automatically installed via pip:
 
-- **customtkinter** >= 5.0.0 - Modern GUI framework
-- **numpy** >= 1.21.0 - Numerical computing
-- **matplotlib** >= 3.5.0 - Plotting and visualization
-- **MDAnalysis** >= 2.0.0 - Molecular analysis
-- **propka** >= 3.2.0 - pKa calculations
-- **biopython** - PDB file handling
+- **Python** ≥ 3.8
+- **CustomTkinter** ≥ 5.0.0 - Modern GUI framework
+- **NumPy** ≥ 1.21.0 - Numerical computing
+- **Matplotlib** ≥ 3.5.0 - Plotting and visualization
+- **MDAnalysis** ≥ 2.0.0 - Molecular analysis toolkit
+- **Propka** ≥ 3.2.0 - pKa calculations
+- **BioPython** - PDB file handling
 
 ### Scientific Computing Dependencies
 
@@ -121,6 +122,11 @@ Must be installed via conda:
 
 - **AmberTools 24** - Molecular dynamics preparation and analysis
 - **Parmed 4.3.0** - Parameter/topology manipulation (must be from conda-forge)
+
+### External Requirements
+- **NAMD 3.0.1** - Required for molecular dynamics simulations and equilibration
+  - Download from: [NAMD Official Website](https://www.ks.uiuc.edu/Research/namd/)
+  - Must be installed separately and accessible in your system PATH
 
 ## Verifying Installation
 
@@ -225,23 +231,6 @@ conda activate gatewizard
 # Reinstall in development mode
 cd /path/to/gatewizard
 pip install -e . --force-reinstall
-```
-
-## Updating GateWizard
-
-### For PyPI Installation (Recommended)
-
-To update to the latest version:
-
-```bash
-# Activate environment
-conda activate gatewizard
-
-# Update GateWizard
-pip install --upgrade gatewizard
-
-# Verify new version
-gatewizard --version
 ```
 
 **Tip:** GateWizard follows [semantic versioning](https://semver.org/). Check the [releases page](https://github.com/maurobedoya/gatewizard/releases) for changelog and new features.

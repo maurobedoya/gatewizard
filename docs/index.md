@@ -1,14 +1,14 @@
 # GateWizard Documentation
 
-Welcome to GateWizard, a comprehensive tool for membrane protein preparation and molecular dynamics analysis.
+Welcome to GateWizard, a tool for membrane protein preparation and molecular dynamics analysis.
 
 ## Overview
 
-GateWizard is a Python-based GUI application designed to streamline the workflow of preparing protein structures for molecular dynamics simulations, with a special focus on membrane proteins. It integrates various computational tools to provide a unified interface for structure preparation, analysis, and visualization.
+GateWizard is a Python-based GUI application designed to prepare protein membrane structures for molecular dynamics simulations. It integrates various computational tools to provide a unified interface for structure preparation, analysis, and plot customization.
 
 ## Key Features
 
-- **Protein Structure Preparation**: Clean PDB files, add missing atoms, and optimize protein structures
+- **Protein Structure Preparation**: Clean PDB files, and add missing atoms.
 - **Propka Integration**: Automatic pKa calculations with protonation state assignment
 - **Protein Capping**: Add ACE/NME caps to protein termini for proper MD simulations
 - **Force Field Support**: Compatible with Amber force fields (ff14SB, ff19SB, etc.)
@@ -88,8 +88,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ## Authors
 
-- **Constanza González** - constanza.gonzalez.villagra@gmail.com
-- **Mauricio Bedoya** - mbedoya@ucm.cl
+- **Constanza González**
+- **Mauricio Bedoya**
 
 ## Citation
 
@@ -101,4 +101,4 @@ If you use GateWizard in your research, please cite:
 
 ---
 
-*Last updated: October 2025*
+*Last updated: January 2026*
