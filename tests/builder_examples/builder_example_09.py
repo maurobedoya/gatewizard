@@ -1,36 +1,34 @@
-from gatewizard.core.job_monitor import JobMonitor
-from pathlib import Path
+from gatewizard.core.builder import Builder
 
-# Create monitor for your working directory
-monitor = JobMonitor(working_directory=Path("./systems"))
+builder = Builder()
 
-# Scan for jobs
-monitor.scan_for_jobs(force=True)
+# Configure system
+builder.set_configuration(
+    water_model="tip3p",
+    protein_ff="ff14SB",
+    lipid_ff="lipid21",
+    salt_concentration=0.15,
+    cation="K+",
+    anion="Cl-"
+)
 
-# Get active jobs
-active_jobs = monitor.get_active_jobs()
+# Prepare system with 100% POPC (symmetric)
+success, message, job_dir = builder.prepare_system(
+    pdb_file="protein_protonated_prepared.pdb",
+    working_dir="./systems",
+    upper_lipids=["POPC"],
+    lower_lipids=["POPC"],
+    lipid_ratios="1//1",  # 100% POPC both leaflets
+    output_folder_name="popc_membrane"
+)
 
-if active_jobs:
-    print(f"✓ Found {len(active_jobs)} active job(s)")
-    
-    for job_id, job_info in active_jobs.items():
-        print(f"Job: {job_info.job_dir.name}")
-        print(f"  Status: {job_info.status.value}")
-        print(f"  Progress: {job_info.progress:.1f}%")
-        print(f"  Current step: {job_info.current_step}")
-        print(f"  Elapsed: {job_info.elapsed_time:.1f}s")
-        
-        # Show completed steps
-        if job_info.steps_completed:
-            print(f"  Completed steps:")
-            for step in job_info.steps_completed:
-                print(f"    ✓ {step}")
+if success:
+    print(f"✓ System preparation started in background")
+    print(f"  {message}")
+    print(f"  Job directory: {job_dir}")
+    print(f"  Monitor progress: {job_dir / 'preparation.log'}")
+    print(f"  When complete, files will be at:")
+    print(f"    - Topology: {job_dir / 'system.prmtop'}")
+    print(f"    - Coordinates: {job_dir / 'system.inpcrd'}")
 else:
-    print("No active jobs found")
-
-# Check for completed jobs
-completed_jobs = monitor.get_completed_jobs()
-if completed_jobs:
-    print(f"✓ Found {len(completed_jobs)} completed job(s)")
-    for job_id, job_info in completed_jobs.items():
-        print(f"  - {job_info.job_dir.name}: {job_info.status.value}")
+    print(f"✗ Preparation failed: {message}")

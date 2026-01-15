@@ -26,7 +26,7 @@ analyzer = TrajectoryAnalyzer(
     file_times={
         "step1_equilibration.dcd": 0.1,  # 100 ps
         "step2_equilibration.dcd": 0.1,  # 100 ps
-        "step3_equilibration.dcd": 0.1,   # 100 ps
+        "step3_equilibration.dcd": 0.1,  # 100 ps
         "step4_equilibration.dcd": 0.1,  # 100 ps
         "step5_equilibration.dcd": 0.1,  # 100 ps
         "step6_equilibration.dcd": 0.1,  # 100 ps
@@ -43,8 +43,10 @@ analyzer.plot_distances(
     fig_bg_color="white",
     text_color="black",
     line_width=3,
-    save="trajectory_analysis_example_08_distances.png",
     dpi=300,
+    show_mean_lines=False,
+    figsize=(5, 4),
+    save="trajectory_analysis_example_08_distances.png",
 )
 
 print(f"Distances plot saved: trajectory_analysis_example_08_distances.png")

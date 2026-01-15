@@ -2,24 +2,23 @@ from gatewizard.core.builder import Builder
 
 builder = Builder()
 
-# High salt concentration for ionic strength studies
+# Only pack the system, don't parametrize
+# Useful for visual inspection before parametrization
 success, message, job_dir = builder.prepare_system(
     pdb_file="protein_protonated_prepared.pdb",
     working_dir="./systems",
-    upper_lipids=["POPC", "POPS"],
-    lower_lipids=["POPC", "POPS"],
-    lipid_ratios="8:2//8:2",  # 80% POPC, 20% POPS
-    output_folder_name="high_salt",
-    salt_concentration=2.0,  # 2000 mM (high salt)
-    cation="Na+",
-    anion="Cl-"
+    upper_lipids=["POPC"],
+    lower_lipids=["POPC"],
+    lipid_ratios="1//1",
+    output_folder_name="packed_only",
+    parametrize=False  # Skip parametrization
 )
 
 if success:
-    print(f"✓ System preparation started in background")
+    print(f"✓ Packing started in background (no parametrization)")
     print(f"  {message}")
-    print(f"  High salt: 2.0 M NaCl")
     print(f"  Job directory: {job_dir}")
     print(f"  Monitor: {job_dir / 'logs/preparation.log'}")
+    print(f"  When complete, inspect: {job_dir / 'bilayer_*.pdb'}")
 else:
     print(f"✗ Preparation failed: {message}")

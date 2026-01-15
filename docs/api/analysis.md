@@ -250,7 +250,7 @@ The same applies to all properties - use whatever format is most convenient for 
 | `"VDW"` | `"vdw"`, `"Vdw"`, `"Van der Waals Energy"` | van der Waals energy | kcal/mol or kJ/mol |
 | `"TEMP"` | `"temp"`, `"Temp"`, `"Temperature"` | Temperature | K |
 | `"PRESSURE"` | `"pressure"`, `"Pressure"`, `"press"`, `"Press"` | Pressure | bar |
-| `"VOLUME"` | `"volume"`, `"Volume"`, `"vol"`, `"Vol"` | System volume | Ų |
+| `"VOLUME"` | `"volume"`, `"Volume"`, `"vol"`, `"Vol"` | System volume | Å² |
 | `"BOND"` | `"bond"`, `"Bond"`, `"Bond Energy"` | Bond energy | kcal/mol or kJ/mol |
 | `"ANGLE"` | `"angle"`, `"Angle"`, `"Angle Energy"` | Angle energy | kcal/mol or kJ/mol |
 | `"DIHEDRAL"` | `"dihedral"`, `"Dihedral"`, `"Dihedral Energy"` | Dihedral energy | kcal/mol or kJ/mol |

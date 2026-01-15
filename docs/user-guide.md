@@ -63,7 +63,6 @@ The Preparation tab is used for protein structure preparation and protonation st
 
 1. **Load PDB File**
    - Click "Browse" to select your PDB file
-   - Or drag and drop a PDB file into the window
 
 2. **Set pH Value**
    - Enter the desired pH (default: 7.0)
@@ -127,7 +126,8 @@ The **Builder** tab provides an interface for building membrane protein systems 
 ### Overview
 
 The Builder tab automates the process of:
-1. Packing your protein into a lipid membrane
+
+1. Packing the protein into a lipid membrane
 2. Adding water and ions
 3. Parametrizing the system for molecular dynamics simulations
 4. Generating all necessary input files (topology, coordinates, restraints)
@@ -151,73 +151,86 @@ The Builder tab automates the process of:
 
 #### 3. Set Output Folder Name
 
-- **Default**: "preparation"
+- **Default**: "preparation_protein"
 - **Customizable**: Give a meaningful name for your system
 - **Result**: Creates a subfolder within working directory
 
 #### 4. Configure Lipid Composition
 
 **Upper Leaflet:**
+
 - Select one or more lipid types (POPC, POPE, POPS, etc.)
-- Set molar ratios (must sum to 1.0)
-- Common: 100% POPC for simple systems
+- Set molar ratios (1:1, 1:2, ...)
+- Common: 100% POPC for simple systems (1.0 ratio)
+
+![GUI](../images/user-guide/main_window_preparation_lipid_ratios.png)
 
 **Lower Leaflet:**
+
 - Can match upper leaflet (symmetric) or differ (asymmetric)
 - Supports complex compositions (e.g., 70% POPC + 30% CHOL)
 
 **Available Lipid Types**:
+
 - Phospholipids: POPC, POPE, POPS, DOPC, DPPC
 - Cholesterol: CHOL
-- Specialized: POPG, DOPE, and many more
+- Specialized: POPG, DOPE, and many more, please check the [Available Lipid Models](api/builder.md/#example-4-available-lipid-models) example in the API to see the full lipid list.
 
 #### 5. Select Force Fields
 
 **Water Model**: TIP3P, TIP4P, SPC/E
+
 - Default: TIP3P (most common for biological systems)
 
 **Protein Force Field**: ff14SB, ff19SB, ff14IDPSFF
+
 - Default: ff14SB (reliable for most proteins)
 - ff19SB: Improved backbone parameters
 
 **Lipid Force Field**: lipid21, lipid17, lipid14
+
 - Default: lipid21 (most recent)
 
 #### 6. System Options
 
 **Protein is pre-oriented** (checked by default)
+
 - Your protein is already positioned correctly in membrane
 - Uncheck if protein needs automatic orientation
 
 **Run parametrization with tleap** (checked by default)
+
 - Generates topology (.prmtop) and coordinates (.inpcrd)
 - Required for MD simulations
 - Uncheck to only pack the system
 
 **Add salt** (checked by default)
+
 - Neutralizes system and adds physiological ionic strength
 - Concentration: 0.15 M (default, physiological)
-- Cation: Na+ (default)
+- Cation: K+ (default)
 - Anion: Cl- (default)
 
 **Water layer thickness**: 17.5 Å (default)
+
 - Distance of water above and below membrane/protein
 - Adjust for larger proteins or specific requirements
 
 **Skip protonation (preserve propka results)** (checked by default)
+
 - Preserves your protonation states from Propka analysis
 - Residue names like GLH, ASH, HIP are kept
 - Prevents tleap from re-protonating based on default pKa
 
 #### 7. Validate and Start Preparation
 
-1. **Click "Validate Inputs"**
+##### 1. **Click "Validate Inputs"**
    - Checks all parameters
    - Verifies file existence
    - Ensures lipid ratios are valid
    - Enables "Start Preparation" button
 
-2. **Click "Start Preparation"**
+##### 2. **Click "Start Preparation"**
    - Launches packmol-memgen to pack the system
    - Runs tleap for parametrization (if enabled)
    - Generates all necessary files
@@ -239,6 +252,7 @@ The **Progress** section shows:
 After successful preparation, you'll find:
 
 **In `{output_folder_name}/` directory:**
+
 - `bilayer_*.pdb` - Packed system structure
 - `system.prmtop` - AMBER topology file
 - `system.inpcrd` - AMBER coordinate file
@@ -273,16 +287,13 @@ Lower Leaflet: POPE 50% + POPS 50%
 
 1. **Always run Propka first** to determine correct protonation states
 2. **Use "Load Defaults"** to quickly populate recommended force fields
-3. **Verify lipid ratios** sum to 1.0 for each leaflet
-4. **Check log files** if preparation fails
-5. **Use meaningful names** for output folders to organize multiple systems
-6. **Keep parametrization enabled** unless you have specific reasons not to
+3. **Check log files** if preparation fails
+4. **Use meaningful names** for output folders to organize multiple systems
+5. **Keep parametrization enabled** unless you have specific reasons not to
 
 ### Troubleshooting
 
 **"PDB file not found"**: Check file path and permissions
-
-**"Invalid lipid ratios"**: Ensure ratios sum to exactly 1.0
 
 **"Parametrization failed"**: 
 - Check for non-standard residues
@@ -295,14 +306,19 @@ Lower Leaflet: POPE 50% + POPS 50%
 
 ## Equilibration Tab - MD Equilibration
 
+![GUI](../images/user-guide/main_window_equilibration.png)
+
+*GUI: Equilibration tab.*
+
 The **Equilibration** tab automates the generation and execution of multi-stage equilibration protocols for molecular dynamics simulations using **NAMD**.
 
 ### Overview
 
 Equilibration is critical before production MD simulations. This tab:
+
 1. Generates a series of equilibration stages with gradually relaxing restraints
 2. Creates NAMD input files based on CHARMM-GUI protocols
-3. Handles minimization, heating, and equilibration
+3. Handles minimization, and equilibration
 4. Supports NVT, NPT, NPAT, and NPγT ensembles
 5. Can run simulations in the background
 
@@ -322,13 +338,15 @@ Equilibration is critical before production MD simulations. This tab:
 #### 3. Select MD Engine
 
 Currently supported: **NAMD**
+
 - NAMD 2.x and NAMD 3 compatible
 - GPU acceleration supported
-- Future: GROMACS, AMBER support planned
+- Future: GROMACS, AMBER, OpenMM support planned
 
 #### 4. Configure NAMD Settings
 
 **NAMD Executable**:
+
 - Default: "namd3"
 - Change if using namd2 or custom path
 
@@ -337,34 +355,39 @@ Currently supported: **NAMD**
 **Available Schemes:**
 
 **NVT (Constant Volume, Temperature)**
+
 - For initial equilibration
 - No pressure control
 - Quick equilibration
 
 **NPT (Constant Pressure, Temperature)**
+
 - Most common for protein systems
 - Isotropic pressure coupling
 - Standard for protein-water systems
 
 **NPAT (Constant Pressure, Area, Temperature)**
-- **Recommended for membrane systems**
+
 - Fixed membrane area (XY plane)
 - Semi-isotropic pressure (Z-axis only)
 - Prevents membrane from shrinking/expanding
 
 **NPγT (Constant Surface Tension)**
+
 - Surface tension control
 - Membrane-water interface systems
 
 #### 6. Set Simulation Parameters
 
 **Temperature**: 310.15 K (default, 37°C physiological)
+
 - Range: 273-350 K typically
 - Higher for denaturation studies
 
 **Pressure**: 1.0 bar (default, atmospheric)
 
 **Timestep**: 1.0-2.0 fs
+
 - 1.0 fs for minimization/initial stages
 - 2.0 fs for production with constrained hydrogens
 
@@ -373,42 +396,50 @@ Currently supported: **NAMD**
 The equilibration protocol consists of 6 stages + production:
 
 **Stage 1: Equilibration 1 - Strong Restraints**
+
 - Duration: 0.125 ns (125 ps)
 - Includes initial minimization (10,000 steps)
-- Strong restraints on protein backbone (10 kcal/mol/Ų)
+- Strong restraints on protein backbone (10 kcal/mol/Å²)
 - Purpose: Remove bad contacts
 
 **Stage 2: Equilibration 2 - Heavy Restraints**
+
 - Duration: 0.125 ns
-- Moderate restraints (5-10 kcal/mol/Ų)
+- Moderate restraints (2.5-5.0 kcal/mol/Å²)
 - Purpose: Allow side chains to relax
 
 **Stage 3: Equilibration 3 - Moderate Restraints**
+
 - Duration: 0.125 ns
-- Reduced restraints (2-5 kcal/mol/Ų)
+- Reduced restraints (1.0-2.5 kcal/mol/Å²)
 - Purpose: Relax protein-lipid interface
 
 **Stage 4: Equilibration 4 - Light Restraints**
+
 - Duration: 0.125 ns
-- Minimal restraints (1-2 kcal/mol/Ų)
+- Minimal restraints (0.5-1.0 kcal/mol/Å²)
 - Purpose: Equilibrate lipid headgroups
 
 **Stage 5: Equilibration 5 - Minimal Restraints**
+
 - Duration: 0.125 ns
-- Very light restraints (0.5-1 kcal/mol/Ų)
+- Very light restraints (0.1-0.5 kcal/mol/Å²)
 - Purpose: Final equilibration
 
 **Stage 6: Equilibration 6 - Final Equilibration**
+
 - Duration: 0.125 ns
-- Nearly unrestrained
+- Nearly unrestrained (0.1 kcal/mol/Å²)
 - Purpose: Verify system stability
 
 **Production**
-- Duration: 1.0 ns (customizable)
+
+- Duration: 100.0 ns (customizable)
 - No restraints
 - Full dynamics
 
 **Per-Stage Customization**:
+
 - Adjust duration (time_ns)
 - Set CPU cores or enable GPU
 - Modify restraint strengths
@@ -419,6 +450,7 @@ The equilibration protocol consists of 6 stages + production:
 **Click "Generate Input Files"**
 
 This creates:
+
 - NAMD configuration files for each stage
 - Restraint files (PDB format with beta factors)
 - Run script (`run_equilibration.sh`)
@@ -444,12 +476,14 @@ equilibration/namd/
 **Click "Run Equilibration"**
 
 Options:
+
 - **Background process**: Runs independently, terminal can be closed
 - **Progress tracking**: Monitor via log files
 - **Stage-by-stage**: Each stage runs sequentially
 - **Automatic**: Stops on error
 
 **Monitoring:**
+
 - Check `.log` files for each stage
 - Review DCD trajectory files
 - Monitor energy output
@@ -458,17 +492,17 @@ Options:
 
 Restraints gradually released across stages:
 
-| Stage | Protein Backbone | Protein Sidechain | Lipid Heads | Water |
-|-------|------------------|-------------------|-------------|-------|
-| 1     | 10.0            | 5.0               | 2.0         | 0.0   |
-| 2     | 5.0             | 2.5               | 1.0         | 0.0   |
-| 3     | 2.5             | 1.0               | 0.5         | 0.0   |
-| 4     | 1.0             | 0.5               | 0.1         | 0.0   |
-| 5     | 0.5             | 0.1               | 0.0         | 0.0   |
-| 6     | 0.1             | 0.0               | 0.0         | 0.0   |
-| Prod  | 0.0             | 0.0               | 0.0         | 0.0   |
+| Stage | Protein Backbone | Protein Sidechain | Lipid Heads | Water | Ions |
+|-------|------------------|-------------------|-------------|-------|-------|
+| 1     | 10.0            | 5.0               | 2.5         | 0.0   | 10.0 
+| 2     | 5.0             | 2.5               | 2.5         | 0.0   | 0.0
+| 3     | 2.5             | 1.0               | 1.0         | 0.0   | 0.0
+| 4     | 1.0             | 0.5               | 0.5         | 0.0   | 0.0
+| 5     | 0.5             | 0.1               | 0.1         | 0.0   | 0.0
+| 6     | 0.1             | 0.0               | 0.0         | 0.0   | 0.0
+| Prod  | 0.0             | 0.0               | 0.0         | 0.0   | 0.0
 
-Units: kcal/mol/Ų
+Units: kcal/mol/Å²
 
 ### Common Use Cases
 
@@ -499,7 +533,7 @@ For large conformational changes
 ### Best Practices
 
 1. **Always minimize first**: Stage 1 includes minimization
-2. **Use NPAT for membranes**: Preserves membrane area
+2. **Use NPgT for membranes**: Preserves membrane surface tension
 3. **Monitor energy**: Should stabilize without drift
 4. **Check temperature**: Should be stable within ±1-2 K
 5. **Verify pressure**: Fluctuates but centered on target
@@ -509,6 +543,7 @@ For large conformational changes
 ### Running on HPC Clusters
 
 The generated `run_equilibration.sh` can be adapted for:
+
 - SLURM job scheduler
 - PBS/Torque systems
 - SGE clusters
@@ -526,20 +561,24 @@ Modify the script header to add:
 **"No topology files found"**: Run Builder tab first
 
 **"NAMD executable not found"**: 
+
 - Install NAMD or specify full path
 - Test: `namd3 --version`
 
 **"Simulation crashes"**:
+
 - Check for atom overlaps (increase minimization)
 - Verify system was properly prepared
 - Review energy components in log files
 
 **"System explodes"**:
+
 - Timestep too large (try 1.0 fs)
 - Insufficient minimization
 - Bad initial structure
 
 **"Slow performance"**:
+
 - Enable GPU if available
 - Increase CPU cores for non-GPU stages
 - Check system size vs hardware

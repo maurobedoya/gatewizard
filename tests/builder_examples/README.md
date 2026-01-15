@@ -24,15 +24,15 @@ The System Builder module provides tools for:
 All examples correspond directly to code examples in the API documentation
 (`docs/api/system-builder.md`).
 
-### Basic API (01-05)
+### Basic API (01-06)
 - **Example 01**: SystemBuilder constructor - Basic initialization
 - **Example 02**: set_configuration() - Custom configuration
 - **Example 03**: Available water models - ForceFieldManager queries
-- **Example 04**: Available protein force fields - ForceFieldManager queries
-- **Example 05**: Available lipid force fields - ForceFieldManager queries
+- **Example 04**: Available lipid models - ForceFieldManager queries
+- **Example 05**: Available protein force fields - ForceFieldManager queries
+- **Example 06**: Available lipid force fields - ForceFieldManager queries
 
-### System Preparation (06-11)
-- **Example 06**: Simple symmetric membrane (100% POPC)
+### System Preparation (07-11)
 - **Example 07**: Asymmetric membrane with multiple lipids
 - **Example 08**: Complex composition (plasma membrane mimic)
 - **Example 09**: Packing only (no parametrization)

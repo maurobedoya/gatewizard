@@ -1,21 +1,12 @@
-from gatewizard.core.builder import Builder
+from gatewizard.tools.force_fields import ForceFieldManager
 
-builder = Builder()
+ff_manager = ForceFieldManager()
 
-# Validate inputs before preparation
-valid, error_msg = builder.validate_system_inputs(
-    pdb_file="protein_protonated_prepared.pdb",
-    upper_lipids=["POPC", "POPE"],
-    lower_lipids=["POPC", "POPE"],
-    lipid_ratios="7:3//7:3",
-    water_model="tip3p",
-    protein_ff="ff14SB",
-    lipid_ff="lipid21"
-)
+# Get available lipid force fields
+lipid_ffs = ff_manager.get_lipid_force_fields()
 
-if valid:
-    print("✓ All inputs are valid, proceed with preparation")
-    # Now call prepare_system()
-else:
-    print(f"✗ Validation failed: {error_msg}")
-    # Fix issues before proceeding
+print("\nAvailable Lipid Force Fields:")
+for lipid_ff in lipid_ffs:
+    print(f"  - {lipid_ff}")
+
+print(f"\nTotal: {len(lipid_ffs)} lipid force fields available")

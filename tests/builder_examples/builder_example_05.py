@@ -2,11 +2,11 @@ from gatewizard.tools.force_fields import ForceFieldManager
 
 ff_manager = ForceFieldManager()
 
-# Get available lipid force fields
-lipid_ffs = ff_manager.get_lipid_force_fields()
+# Get available protein force fields
+protein_ffs = ff_manager.get_protein_force_fields()
 
-print("\nAvailable Lipid Force Fields:")
-for lipid_ff in lipid_ffs:
-    print(f"  - {lipid_ff}")
+print("\nAvailable Protein Force Fields:")
+for protein_ff in protein_ffs:
+    print(f"  - {protein_ff}")
 
-print(f"\nTotal: {len(lipid_ffs)} lipid force fields available")
+print(f"\nTotal: {len(protein_ffs)} protein force fields available")

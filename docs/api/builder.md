@@ -119,7 +119,27 @@ for water in water_models:
 print(f"\nTotal: {len(water_models)} water models available")
 ```
 
-### Example 4: Available Protein Force Fields
+Similarly can be done for lipids:
+
+### Example 4: Available Lipid Models
+```python
+from gatewizard.tools.force_fields import ForceFieldManager
+
+ff_manager = ForceFieldManager()
+
+# Get all available lipids
+lipids = ff_manager.get_available_lipids()
+
+print(f"Total available lipids: {len(lipids)}\n")
+
+for lipid in lipids:
+     print(f"  - {lipid}")
+
+print(f"\nTotal: {len(lipids)} lipid models available")
+```
+
+
+### Example 5: Available Protein Force Fields
 ```python
 from gatewizard.tools.force_fields import ForceFieldManager
 
@@ -135,7 +155,7 @@ for protein_ff in protein_ffs:
 print(f"\nTotal: {len(protein_ffs)} protein force fields available")
 ```
 
-### Example 5: Available Lipid Force Fields
+### Example 6: Available Lipid Force Fields
 ```python
 from gatewizard.tools.force_fields import ForceFieldManager
 
@@ -195,7 +215,7 @@ validate_system_inputs(
 5. Force field combinations are compatible
 6. Ion types are valid
 
-### Example 6: Input Validation
+### Example 7: Input Validation
 ```python
 from gatewizard.core.system_builder import SystemBuilder
 
@@ -220,7 +240,7 @@ else:
     # Fix issues before proceeding
 ```
 
-### Example 7: Force Field Validation
+### Example 8: Force Field Validation
 ```python
 from gatewizard.tools.force_fields import ForceFieldManager
 
@@ -315,7 +335,7 @@ In `{output_folder_name}/` directory:
 
 **Note:** System preparation runs in the background. The method returns immediately after launching the job. Monitor progress using the log files or the JobMonitor class (see monitoring example below).
 
-### Example 8: Simple Symmetric Membrane
+### Example 9: Simple Symmetric Membrane
 ```python
 from gatewizard.core.system_builder import SystemBuilder
 
@@ -353,7 +373,7 @@ else:
     print(f"✗ Preparation failed: {message}")
 ```
 
-### Example 9: Monitoring Job Progress
+### Example 10: Monitoring Job Progress
 ```python
 from gatewizard.core.job_monitor import JobMonitor
 from pathlib import Path
@@ -394,7 +414,7 @@ if completed_jobs:
         print(f"  - {job_info.job_dir.name}: {job_info.status.value}")
 ```
 
-### Example 10: Asymmetric Membrane with Multiple Lipids
+### Example 11: Asymmetric Membrane with Multiple Lipids
 ```python
 from gatewizard.core.system_builder import SystemBuilder
 
@@ -437,7 +457,7 @@ else:
     print(f"✗ Preparation failed: {message}")
 ```
 
-### Example 11: Complex Composition (Plasma Membrane Mimic)
+### Example 12: Complex Composition (Plasma Membrane Mimic)
 ```python
 from gatewizard.core.system_builder import SystemBuilder
 
@@ -468,7 +488,7 @@ else:
     print(f"✗ Preparation failed: {message}")
 ```
 
-### Example 12: Packing Only (No Parametrization)
+### Example 13: Packing Only (No Parametrization)
 ```python
 from gatewizard.core.system_builder import SystemBuilder
 
@@ -496,7 +516,7 @@ else:
     print(f"✗ Preparation failed: {message}")
 ```
 
-### Example 13: Custom Salt Concentration
+### Example 14: Custom Salt Concentration
 ```python
 from gatewizard.core.system_builder import SystemBuilder
 
@@ -525,7 +545,7 @@ else:
     print(f"✗ Preparation failed: {message}")
 ```
 
-### Example 14: No Salt (Charge Neutralization Only)
+### Example 15: No Salt (Charge Neutralization Only)
 ```python
 from gatewizard.core.system_builder import SystemBuilder
 
@@ -563,7 +583,7 @@ Since system preparation runs in the background, GateWizard provides the `JobMon
 
 Monitor and track system preparation jobs.
 
-### Example 15: JobMonitor class
+### Example 16: JobMonitor class
 ```python
 from gatewizard.core.job_monitor import JobMonitor
 from pathlib import Path
@@ -698,7 +718,7 @@ Each job is represented by a `JobInfo` object with the following attributes:
 
 ---
 
-### Example 16: Real-time Progress Tracking
+### Example 17: Real-time Progress Tracking
 
 ```python
 from gatewizard.core.job_monitor import JobMonitor
@@ -748,7 +768,7 @@ if success:
 
 ---
 
-### Example 17: Monitoring Batch Job Management
+### Example 18: Monitoring Batch Job Management
 
 ```python
 from gatewizard.core.job_monitor import JobMonitor

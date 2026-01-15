@@ -224,7 +224,7 @@ stage = {
     "timestep": 1.0,               # Timestep in fs
     "temperature": 310.15,         # Temperature in K
     "pressure": 1.0,               # Pressure in atm
-    "constraints": {               # Restraints (kcal/mol/Ų)
+    "constraints": {               # Restraints (kcal/mol/Å²)
         "protein_backbone": 10.0,
         "protein_sidechain": 5.0,
         "lipid_head": 2.0,

@@ -191,7 +191,7 @@ around 5 resname LIG                 # Within 5Å of ligand
 - ELECT: Electrostatic energy (kcal/mol)
 - VDW: van der Waals energy (kcal/mol)
 - PRESSURE: Pressure (bar)
-- VOLUME: Volume (Ų)
+- VOLUME: Volume (Å²)
 
 ### Time Distribution for Log Files
 
