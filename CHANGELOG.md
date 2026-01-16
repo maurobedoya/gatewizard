@@ -11,12 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 
 
 ### Changed
-- Documentation was refactored to include some images and to be more clear
+-
 
 ### Fixed
 -
 
 ### Removed
+## [1.0.13] - 2026-01-15
+
+### Added
+- Zenodo link creation
+
+### Fixed
+- PyPI badged was fixed
 
 ## [1.0.12] - 2026-01-14
 
@@ -107,7 +114,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive API documentation
 - User guide and troubleshooting documentation
 
-[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.10...HEAD
+[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.13...HEAD
+[1.0.13]: https://github.com/maurobedoya/gatewizard/compare/v1.0.12...v1.0.13
+[1.0.12]: https://github.com/maurobedoya/gatewizard/compare/v1.0.11...v1.0.12
 [1.0.11]: https://github.com/maurobedoya/gatewizard/compare/v1.0.10...v1.0.11
 [1.0.10]: https://github.com/maurobedoya/gatewizard/compare/v1.0.9...v1.0.10
 [1.0.9]: https://github.com/maurobedoya/gatewizard/compare/v1.0.8...v1.0.9
