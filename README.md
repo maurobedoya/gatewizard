@@ -1,6 +1,6 @@
 # GateWizard
 
-[![PyPI version](https://badge.fury.io/py/gatewizard.svg)](https://badge.fury.io/py/gatewizard)
+[![PyPI version](https://img.shields.io/pypi/v/gatewizard.svg)](https://pypi.org/project/gatewizard/)
 [![Python](https://img.shields.io/pypi/pyversions/gatewizard.svg)](https://pypi.org/project/gatewizard/)
 [![Documentation](https://img.shields.io/badge/docs-latest-blue.svg)](https://maurobedoya.github.io/gatewizard/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
