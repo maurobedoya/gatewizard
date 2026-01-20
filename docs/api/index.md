@@ -14,7 +14,7 @@ Module for predicting pKa values and managing protonation states in protein stru
 - Protein capping with ACE/NME groups
 - pH-dependent protein structure preparation
 
-**Main Classes:** `PropkaAnalyzer`, `ProteinCapper`
+**Main Classes:** `PreparationManager`, `ProteinCapper`
 
 ---
 

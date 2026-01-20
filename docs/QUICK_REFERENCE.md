@@ -8,9 +8,9 @@ Quick reference for common GateWizard API operations.
 
 ### Basic Analysis
 ```python
-from gatewizard.core.propka import PropkaAnalyzer
+from gatewizard.core.propka import PreparationManager
 
-analyzer = PropkaAnalyzer(propka_version="3")
+analyzer = PreparationManager(propka_version="3")
 pka_file = analyzer.run_analysis("protein.pdb")
 summary_file = analyzer.extract_summary(pka_file)
 residues = analyzer.parse_summary(summary_file)
@@ -192,7 +192,7 @@ print(f"Avg Temperature: {sum(log_data['temperature'])/len(log_data['temperature
 from gatewizard.core.propka import PropkaError
 
 try:
-    analyzer = PropkaAnalyzer()
+    analyzer = PreparationManager()
     pka_file = analyzer.run_analysis("protein.pdb")
 except FileNotFoundError as e:
     print(f"File not found: {e}")

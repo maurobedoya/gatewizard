@@ -4,7 +4,7 @@ This directory contains all code examples from the PROPKA API documentation.
 
 ## Files
 
-- `propka_example_01.py` - PropkaAnalyzer initialization
+- `propka_example_01.py` - PreparationManager initialization
 - `propka_example_02.py` - Run PROPKA analysis
 - `propka_example_03.py` - Extract summary from PKA file
 - `propka_example_04.py` - Parse summary and analyze ligands
@@ -78,12 +78,12 @@ Different examples require different imports:
 
 ### Examples 1-14, 17, 19, 21-22
 ```python
-from gatewizard.core.propka import PropkaAnalyzer
+from gatewizard.core.propka import PreparationManager
 ```
 
 ### Examples 13-14 (plotting)
 ```python
-from gatewizard.core.propka import PropkaAnalyzer
+from gatewizard.core.propka import PreparationManager
 import matplotlib.pyplot as plt
 import numpy as np  # Example 14 only
 ```
@@ -97,7 +97,7 @@ from gatewizard.utils.protein_capping import cap_protein
 
 ### Examples 18, 20
 ```python
-from gatewizard.core.propka import PropkaAnalyzer
+from gatewizard.core.propka import PreparationManager
 from gatewizard.utils.protein_capping import ProteinCapper
 ```
 
@@ -117,12 +117,12 @@ These examples demonstrate the full pipeline for preparing capped proteins:
 
 **New Unified Method:** `run_pdb4amber_with_cap_fix()`
 
-This method in the `PropkaAnalyzer` class combines pdb4amber execution with optional ACE/NME HETATM fix:
+This method in the `PreparationManager` class combines pdb4amber execution with optional ACE/NME HETATM fix:
 
 ```python
-from gatewizard.core.propka import PropkaAnalyzer
+from gatewizard.core.propka import PreparationManager
 
-analyzer = PropkaAnalyzer()
+analyzer = PreparationManager()
 
 # Run pdb4amber with automatic cap fix
 result = analyzer.run_pdb4amber_with_cap_fix(
