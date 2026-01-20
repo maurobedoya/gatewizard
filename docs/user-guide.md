@@ -38,7 +38,7 @@ The GateWizard interface consists of several main tabs:
 
 **Main Interface:**
 
-![GUI](../images/user-guide/main_window.png)
+![GUI](images/user-guide/main_window.png)
 
 *GUI: Visualize tab.*
 
@@ -57,7 +57,7 @@ The Preparation tab is used for protein structure preparation and protonation st
 
 ### Basic Workflow
 
-![GUI](../images/user-guide/main_window_propka.png)
+![GUI](images/user-guide/main_window_propka.png)
 
 *GUI: Propka analysis.*
 
@@ -117,7 +117,7 @@ The results table shows:
 
 ## Builder Tab - System Building
 
-![GUI](../images/user-guide/main_window_builder.png)
+![GUI](images/user-guide/main_window_builder.png)
 
 *GUI: Builder tab.*
 
@@ -163,7 +163,7 @@ The Builder tab automates the process of:
 - Set molar ratios (1:1, 1:2, ...)
 - Common: 100% POPC for simple systems (1.0 ratio)
 
-![GUI](../images/user-guide/main_window_preparation_lipid_ratios.png)
+![GUI](images/user-guide/main_window_preparation_lipid_ratios.png)
 
 **Lower Leaflet:**
 
@@ -282,7 +282,7 @@ After successful preparation, you'll find:
 
 ## Equilibration Tab - MD Equilibration
 
-![GUI](../images/user-guide/main_window_equilibration.png)
+![GUI](images/user-guide/main_window_equilibration.png)
 
 *GUI: Equilibration tab.*
 
