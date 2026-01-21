@@ -1465,7 +1465,7 @@ analyzer.plot_rmsf(highlight_threshold=2.0)  # Highlight > 2.0 Å
 
 ## Examples
 
-Complete working examples are available in `tests/analysis_examples/`. Each example demonstrates specific analysis capabilities and can be run directly.
+Complete working examples are available in [Analysis examples](https://github.com/maurobedoya/gatewizard/tree/main/tests/analysis_examples). Each example demonstrates specific analysis capabilities and can be run directly.
 
 ### Example 10: Dark Theme RMSD Analysis - Full Customization
 
@@ -1634,5 +1634,5 @@ print(f"  - High resolution (300 DPI)")
 ## See Also
 
 - [User Guide](../user-guide.md) - Complete usage guide
-- [Examples](../../tests/analysis_examples/) - Working code examples
+- [Examples](https://github.com/maurobedoya/gatewizard/tree/main/tests/analysis_examples) - Working code examples
 - [Troubleshooting](../troubleshooting.md) - Common issues

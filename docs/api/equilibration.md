@@ -1299,5 +1299,5 @@ head bilayer_protein_protonated_prepared_lipid.pdb
 ## See Also
 
 - [User Guide](../user-guide.md) - Complete usage guide
-- [Examples](../../tests/analysis_examples/) - Working code examples
+- [Examples](https://github.com/maurobedoya/gatewizard/tree/main/tests/analysis_examples) - Working code examples
 - [Troubleshooting](../troubleshooting.md) - Common issues
