@@ -7,6 +7,39 @@ Force field management and validation for molecular dynamics simulations.
 
 This module provides utilities for managing force field parameters,
 validating combinations, and providing recommendations.
+
+Validation References:
+[1] Tian, C.; Kasavajhala, K.; Belfon, K. A. A.; Raguette, L.; Huang, H.; Migues, A. N.;
+    Bickel, J.; Wang, Y.; Pincay, J.; Wu, Q.; Simmerling, C. ff19SB: Amino-Acid-Specific
+    Protein Backbone Parameters Trained against Quantum Mechanics Energy Surfaces in Solution.
+    J. Chem. Theory Comput. 2020, 16 (1), 528–552. DOI: 10.1021/acs.jctc.9b00591
+
+[2] Maier, J. A.; Martinez, C.; Kasavajhala, K.; Wickstrom, L.; Hauser, K. E.; Simmerling, C.
+    ff14SB: Improving the Accuracy of Protein Side Chain and Backbone Parameters from ff99SB.
+    J. Chem. Theory Comput. 2015, 11 (8), 3696–3713. DOI: 10.1021/acs.jctc.5b00255
+
+[3] Debiec, K. T.; Cerutti, D. S.; Baker, L. R.; Gronenborn, A. M.; Case, D. A.; Chong, L. T.
+    Further along the Road Less Traveled: AMBER ff15ipq, an Original Protein Force Field Built
+    on a Self-Consistent Physical Model. J. Chem. Theory Comput. 2016, 12 (8), 3926–3947.
+    DOI: 10.1021/acs.jctc.6b00567
+
+[4] Dickson, C. J.; Walker, R. C.; Gould, I. R. Lipid21: Complex Lipid Membrane Simulations
+    with AMBER. J. Chem. Theory Comput. 2022, 18 (3), 1726–1736.
+    DOI: 10.1021/acs.jctc.1c01217
+
+[5] Gould, I. R.; Skjevik, A. A.; Dickson, C. J.; Madej, B. D.; Walker, R. C. Lipid17:
+    A Comprehensive AMBER Force Field for the Simulation of Zwitterionic and Anionic Lipids.
+    Manuscript in preparation, 2018. (This manuscript was never published. Lipid17 parameters are included in Amber since version 17.)
+
+[6] Case, D. A. et al. Amber 2024 Reference Manual; University of California: San Francisco,
+    2024. https://ambermd.org/doc12/Amber24.pdf
+
+Validation Status:
+- ff14SB + Lipid21 + TIP3P: Fully validated [2,4]
+- ff14SB + Lipid17 + TIP3P: Validated (packmol-memgen default) [2,5]
+- ff19SB + Lipid21 + OPC: Amber manual recommendation [1,6]
+- ff19SB + Lipid21 + TIP3P: Suboptimal for protein [1,4]
+- ff15ipq: Only validated for proteins with SPC/Eb [3], no lipid validation
 """
 
 from typing import Dict, List, Set, Tuple, Optional, Any
@@ -51,64 +84,86 @@ class ForceFieldManager:
                 name="TIP3P",
                 description="Three-point transferable intermolecular potential",
                 version="1983",
-                compatible_with=["ff14SB", "ff15ipq", "lipid17", "lipid21"],
+                # Validated: ff14SB+lipid17 [2,5], ff14SB+lipid21 [2,4]
+                # Suboptimal: ff19SB+lipid17/lipid21 (prefer OPC) [1]
+                # Not validated: ff15ipq with any lipid FF
+                compatible_with=["ff14SB", "lipid17", "lipid21"],
                 recommended_for=["general", "membrane"],
                 year=1983,
-                reference="L. Jorgensen, Jayaraman Chandrasekhar, Jeffry D. Madura, Roger W. Impey, Michael L. Klein; Comparison of simple potential functions for simulating liquid water. J. Chem. Phys. 15 July 1983; 79 (2): 926-935. https://doi.org/10.1063/1.445869"
+                reference="L. Jorgensen, Jayaraman Chandrasekhar, Jeffry D. Madura, Roger W. Impey, Michael L. Klein; Comparison of simple potential functions for simulating liquid water. J. Chem. Phys. 15 July 1983; 79 (2): 926-935. https://doi.org/10.1063/1.445869",
+                notes="Validated for ff14SB with both lipid17 and lipid21. Suboptimal for ff19SB (prefer OPC)."
             ),
             "tip4p": ForceFieldInfo(
                 name="TIP4P",
                 description="Four-point transferable intermolecular potential",
                 version="1983",
-                compatible_with=["ff14SB", "ff15ipq", "ff19SB"],
+                # Not validated with any lipid FF for membrane simulations
+                # Protein-only: ff14SB, ff19SB
+                compatible_with=["ff14SB", "ff19SB"],
                 recommended_for=["general"],
                 year=1983,
-                reference="L. Jorgensen, Jayaraman Chandrasekhar, Jeffry D. Madura, Roger W. Impey, Michael L. Klein; Comparison of simple potential functions for simulating liquid water. J. Chem. Phys. 15 July 1983; 79 (2): 926-935. https://doi.org/10.1063/1.445869"
+                reference="L. Jorgensen, Jayaraman Chandrasekhar, Jeffry D. Madura, Roger W. Impey, Michael L. Klein; Comparison of simple potential functions for simulating liquid water. J. Chem. Phys. 15 July 1983; 79 (2): 926-935. https://doi.org/10.1063/1.445869",
+                notes="Not validated with lipid force fields. Use for protein-only simulations."
             ),
             "tip4pew": ForceFieldInfo(
                 name="TIP4P-Ew",
                 description="TIP4P optimized for Ewald summation",
                 version="2004",
-                compatible_with=["ff14SB", "ff15ipq", "ff19SB"],
+                # Not validated with any lipid FF for membrane simulations
+                # Protein-only: ff14SB, ff19SB
+                compatible_with=["ff14SB", "ff19SB"],
                 recommended_for=["PME"],
                 year=2004,
-                reference="Horn, H. W., Swope, W. C., Pitera, J. W., Madura, J. D., Dick, T. J., Hura, G. L., & Head-Gordon, T. (2004). Development of an improved four-site water model for biomolecular simulations: TIP4P-Ew. The Journal of chemical physics, 120(20), 9665-9678. https://doi.org/10.1063/1.1683075"
+                reference="Horn, H. W., Swope, W. C., Pitera, J. W., Madura, J. D., Dick, T. J., Hura, G. L., & Head-Gordon, T. (2004). Development of an improved four-site water model for biomolecular simulations: TIP4P-Ew. The Journal of chemical physics, 120(20), 9665-9678. https://doi.org/10.1063/1.1683075",
+                notes="Not validated with lipid force fields. Use for protein-only simulations."
             ),
             "spce": ForceFieldInfo(
                 name="SPC/E",
                 description="Extended simple point charge model",
                 version="1987",
-                compatible_with=["ff14SB", "ff15ipq", "ff19SB"],
+                # Not validated with any lipid FF for membrane simulations
+                # Protein-only: ff14SB, ff19SB
+                compatible_with=["ff14SB", "ff19SB"],
                 recommended_for=["general"],
                 year=1987,
-                reference="Berendsen, H. J. C., Grigera, J. R., & Straatsma, T. P. (1987). The missing term in effective pair potentials. Journal of Physical Chemistry, 91(24), 6269-6271. https://doi.org/10.1021/j100308a038"
+                reference="Berendsen, H. J. C., Grigera, J. R., & Straatsma, T. P. (1987). The missing term in effective pair potentials. Journal of Physical Chemistry, 91(24), 6269-6271. https://doi.org/10.1021/j100308a038",
+                notes="Not validated with lipid force fields. Use for protein-only simulations."
             ),
             "opc": ForceFieldInfo(
                 name="OPC",
                 description="Optimal point charge water model",
                 version="2014",
-                compatible_with=["ff14SB", "ff15ipq", "ff19SB", "lipid17", "lipid21"],
-                recommended_for=["protein", "latest"],
+                # Amber manual recommendation: ff19SB+lipid21 [1,6]
+                # Not validated: ff14SB+lipid17/lipid21, ff19SB+lipid17, ff15ipq+any lipid
+                compatible_with=["ff19SB", "lipid21"],
+                recommended_for=["protein", "latest", "ff19SB"],
                 year=2014,
-                reference="Izadi, S., Anandakrishnan, R., & Onufriev, A.V. (2014). Building Water Models: A Different Approach. The Journal of Physical Chemistry Letters, 5, 3863 - 3871. https://pubs.acs.org/doi/10.1021/jz501780a"
+                reference="Izadi, S., Anandakrishnan, R., & Onufriev, A.V. (2014). Building Water Models: A Different Approach. The Journal of Physical Chemistry Letters, 5, 3863 - 3871. https://pubs.acs.org/doi/10.1021/jz501780a",
+                notes="Amber manual recommends OPC with ff19SB+lipid21 [6]. Not validated with ff14SB or lipid17."
             ),
             "opc3": ForceFieldInfo(
                 name="OPC3",
                 description="Three-point optimal point charge model",
                 version="2016",
-                compatible_with=["ff14SB", "ff15ipq", "ff19SB"],
+                # Not validated with any lipid FF for membrane simulations
+                # Protein-only: ff14SB, ff19SB
+                compatible_with=["ff14SB", "ff19SB"],
                 recommended_for=["protein"],
                 year=2016,
-                reference="Saeed Izadi, Alexey V. Onufriev; Accuracy limit of rigid 3-point water models. J. Chem. Phys. 21 August 2016; 145 (7): 074501. https://doi.org/10.1063/1.4960175"
+                reference="Saeed Izadi, Alexey V. Onufriev; Accuracy limit of rigid 3-point water models. J. Chem. Phys. 21 August 2016; 145 (7): 074501. https://doi.org/10.1063/1.4960175",
+                notes="Not validated with lipid force fields. Use for protein-only simulations."
             ),
             "spceb": ForceFieldInfo(
                 name="SPC/Eb",
                 description="SPC/E optimized for biomolecules",
                 version="2010",
-                compatible_with=["ff14SB", "ff15ipq"],
-                recommended_for=["protein"],
+                # Only validated with ff15ipq for protein simulations [3]
+                # Not validated with lipid FFs
+                compatible_with=["ff15ipq"],
+                recommended_for=["protein", "ff15ipq"],
                 year=2010,
-                reference="Takemura, K., & Kitao, A. (2012). Water model tuning for improved reproduction of rotational diffusion and NMR spectral density. The journal of physical chemistry. B, 116(22), 6279-6287. https://doi.org/10.1021/jp301100g"
+                reference="Takemura, K., & Kitao, A. (2012). Water model tuning for improved reproduction of rotational diffusion and NMR spectral density. The journal of physical chemistry. B, 116(22), 6279-6287. https://doi.org/10.1021/jp301100g",
+                notes="Specifically validated with ff15ipq for protein simulations [3]. Not validated with lipid force fields."
             ),
             "fb3": ForceFieldInfo(
                 name="FB3",
@@ -128,28 +183,38 @@ class ForceFieldManager:
                 name="ff14SB",
                 description="Amber force field with improved side-chain torsions",
                 version="2014",
-                compatible_with=["tip3p", "tip4p", "tip4pew", "spce", "opc", "opc3", "spceb", "lipid17", "lipid21"],
-                recommended_for=["protein", "general"],
+                # Validated with lipids: tip3p+lipid17 [2,5], tip3p+lipid21 [2,4]
+                # Protein-only: tip4p, tip4pew, spce, opc, opc3
+                compatible_with=["tip3p", "tip4p", "tip4pew", "spce", "opc", "opc3", "lipid17", "lipid21"],
+                recommended_for=["protein", "general", "membrane"],
                 year=2014,
-                reference="Maier et al. (2015) J. Chem. Theory Comput. 11, 3696"
+                reference="Maier, J. A.; Martinez, C.; Kasavajhala, K.; Wickstrom, L.; Hauser, K. E.; Simmerling, C. ff14SB: Improving the Accuracy of Protein Side Chain and Backbone Parameters from ff99SB. J. Chem. Theory Comput. 2015, 11 (8), 3696–3713. DOI: 10.1021/acs.jctc.5b00255",
+                notes="Fully validated for membrane simulations with TIP3P water and lipid17/lipid21 [2,4,5]. Use TIP3P for membrane systems."
             ),
             "ff15ipq": ForceFieldInfo(
                 name="ff15ipq",
                 description="Improved protein backbone parameters",
                 version="2015",
-                compatible_with=["tip3p", "tip4p", "tip4pew", "spce", "opc", "opc3", "lipid17", "lipid21"],
+                # Only validated with SPC/Eb for protein simulations [3]
+                # NOT validated with any lipid force field
+                compatible_with=["spceb"],
                 recommended_for=["protein", "folding"],
                 year=2015,
-                reference="Wang et al. (2020) Nat. Commun. 11, 5596"
+                reference="Debiec, K. T.; Cerutti, D. S.; Baker, L. R.; Gronenborn, A. M.; Case, D. A.; Chong, L. T. Further along the Road Less Traveled: AMBER ff15ipq, an Original Protein Force Field Built on a Self-Consistent Physical Model. J. Chem. Theory Comput. 2016, 12 (8), 3926–3947. DOI: 10.1021/acs.jctc.6b00567",
+                notes="Only validated with SPC/Eb water for protein simulations [3]. NOT validated with any lipid force field - do not use for membrane simulations."
             ),
             "ff19SB": ForceFieldInfo(
                 name="ff19SB",
                 description="Latest Amber protein force field with optimized backbone",
                 version="2019",
-                compatible_with=["tip4p", "tip4pew", "spce", "opc", "opc3", "fb3", "lipid17", "lipid21"],
-                recommended_for=["protein", "membrane", "latest"],
+                # Amber manual recommends: opc+lipid21 [1,6]
+                # Suboptimal: tip3p (prefer OPC) [1]
+                # Protein-only: tip4p, tip4pew, spce, opc3, fb3
+                compatible_with=["tip3p", "tip4p", "tip4pew", "spce", "opc", "opc3", "fb3", "lipid17", "lipid21"],
+                recommended_for=["protein", "latest"],
                 year=2019,
-                reference="Tian et al. (2020) J. Chem. Theory Comput. 16, 528"
+                reference="Tian, C.; Kasavajhala, K.; Belfon, K. A. A.; Raguette, L.; Huang, H.; Migues, A. N.; Bickel, J.; Wang, Y.; Pincay, J.; Wu, Q.; Simmerling, C. ff19SB: Amino-Acid-Specific Protein Backbone Parameters Trained against Quantum Mechanics Energy Surfaces in Solution. J. Chem. Theory Comput. 2020, 16 (1), 528–552. DOI: 10.1021/acs.jctc.9b00591",
+                notes="Amber manual recommends OPC water with lipid21 for membrane simulations [1,6]. TIP3P is suboptimal for ff19SB."
             )
         }
     
@@ -160,19 +225,28 @@ class ForceFieldManager:
                 name="Lipid17",
                 description="Amber lipid force field compatible with protein force fields",
                 version="2017",
-                compatible_with=["ff14SB", "ff15ipq", "ff19SB", "tip3p"],
+                # Validated: ff14SB+tip3p [2,5] (packmol-memgen default)
+                # Suboptimal: ff19SB+tip3p (prefer lipid21+OPC) [1]
+                # Not validated: ff15ipq with any water, ff19SB+OPC
+                compatible_with=["ff14SB", "ff19SB", "tip3p"],
                 recommended_for=["membrane", "lipid"],
                 year=2017,
-                reference="Dickson et al. (2014) J. Chem. Theory Comput. 10, 865"
+                reference="There was a manuscript in preparation by Gould et al. in 2018, but it was never published. Lipid17 parameters are included in Amber since version 17.",
+                notes="Validated with ff14SB+TIP3P (packmol-memgen default) [2,5]. For ff19SB, prefer lipid21."
             ),
             "lipid21": ForceFieldInfo(
                 name="Lipid21",
                 description="Updated Amber lipid force field with improved parameters",
                 version="2021",
-                compatible_with=["ff14SB", "ff15ipq", "ff19SB", "tip3p", "opc"],
+                # Validated: ff14SB+tip3p [2,4]
+                # Recommended: ff19SB+opc [1,6] (Amber manual)
+                # Suboptimal: ff19SB+tip3p [1]
+                # Not validated: ff15ipq with any water
+                compatible_with=["ff14SB", "ff19SB", "tip3p", "opc"],
                 recommended_for=["membrane", "lipid", "latest"],
                 year=2021,
-                reference="Madej et al. (2015) J. Chem. Theory Comput. 11, 2972"
+                reference="Dickson, C. J.; Walker, R. C.; Gould, I. R. Lipid21: Complex Lipid Membrane Simulations with AMBER. J. Chem. Theory Comput. 2022, 18 (3), 1726–1736. DOI: 10.1021/acs.jctc.1c01217",
+                notes="Validated with ff14SB+TIP3P [2,4]. Amber manual recommends ff19SB+OPC for latest combination [1,6]."
             )
         }
     
@@ -271,7 +345,7 @@ class ForceFieldManager:
         water_model: str, 
         protein_ff: str, 
         lipid_ff: str
-    ) -> Tuple[bool, str]:
+    ) -> Tuple[bool, str, bool]:
         """
         Validate a force field combination.
         
@@ -281,36 +355,50 @@ class ForceFieldManager:
             lipid_ff: Lipid force field name
             
         Returns:
-            Tuple of (is_valid, message)
+            Tuple of (is_valid, message, is_warning)
+            - is_valid: False only for unknown components, True otherwise
+            - message: Validation message
+            - is_warning: True if combination is unvalidated but allowed
         """
-        # Check if components exist
+        # Check if components exist (these are actual errors)
         if water_model not in self._water_models:
-            return False, f"Unknown water model: {water_model}"
+            return False, f"Unknown water model: {water_model}", False
         
         if protein_ff not in self._protein_force_fields:
-            return False, f"Unknown protein force field: {protein_ff}"
+            return False, f"Unknown protein force field: {protein_ff}", False
         
         if lipid_ff not in self._lipid_force_fields:
-            return False, f"Unknown lipid force field: {lipid_ff}"
+            return False, f"Unknown lipid force field: {lipid_ff}", False
         
-        # Check compatibility
+        # Check compatibility (these are warnings, not errors)
         water_info = self._water_models[water_model]
         protein_info = self._protein_force_fields[protein_ff]
         lipid_info = self._lipid_force_fields[lipid_ff]
         
+        warnings = []
+        
         # Check water-protein compatibility
         if protein_ff not in water_info.compatible_with:
-            return False, f"Water model {water_model} not compatible with {protein_ff}"
+            warnings.append(f"Water model {water_model} and protein force field {protein_ff}")
         
         # Check water-lipid compatibility
         if lipid_ff not in water_info.compatible_with:
-            return False, f"Water model {water_model} not compatible with {lipid_ff}"
+            warnings.append(f"Water model {water_model} and lipid force field {lipid_ff}")
         
         # Check protein-lipid compatibility
         if lipid_ff not in protein_info.compatible_with:
-            return False, f"Protein force field {protein_ff} not compatible with {lipid_ff}"
+            warnings.append(f"Protein force field {protein_ff} and lipid force field {lipid_ff}")
         
-        return True, "Force field combination is valid"
+        if warnings:
+            warning_msg = (
+                "⚠️ WARNING: The following combination(s) have not been validated in the literature:\n\n"
+                + "\n".join(f"  • {w}" for w in warnings)
+                + "\n\nThis combination may produce unreliable results. "
+                + "You may proceed at your own risk for testing/development purposes."
+            )
+            return True, warning_msg, True
+        
+        return True, "Force field combination is valid and well-tested", False
     
     def get_recommendations(self, system_type: str = "membrane") -> Dict[str, str]:
         """
@@ -323,32 +411,35 @@ class ForceFieldManager:
             Dictionary with recommended force fields
         """
         if system_type == "membrane":
+            # Fully validated combination [2,4]
             return {
                 "water_model": "tip3p",
                 "protein_ff": "ff14SB",
                 "lipid_ff": "lipid21",
-                "reason": "Stable and well-tested combination for membrane proteins"
+                "reason": "Fully validated combination for membrane protein simulations [Refs 2,4]"
             }
         elif system_type == "protein":
             return {
                 "water_model": "opc",
                 "protein_ff": "ff19SB",
                 "lipid_ff": "lipid21",
-                "reason": "Reliable combination for protein dynamics"
+                "reason": "Latest protein force field with recommended water model [Refs 1,6]"
             }
         elif system_type == "latest":
+            # Amber manual recommendation [1,6]
             return {
                 "water_model": "opc",
                 "protein_ff": "ff19SB",
                 "lipid_ff": "lipid21",
-                "reason": "Reliable combination for protein dynamics"
+                "reason": "Amber manual recommended combination for modern simulations [Refs 1,6]"
             }
         else:  # general
+            # packmol-memgen default [2,5]
             return {
                 "water_model": "tip3p",
                 "protein_ff": "ff14SB", 
-                "lipid_ff": "lipid21",
-                "reason": "Stable and well-tested general purpose combination"
+                "lipid_ff": "lipid17",
+                "reason": "Validated general-purpose combination (packmol-memgen default) [Refs 2,5]"
             }
     
     def get_force_field_info(self, ff_name: str, ff_type: str) -> Optional[ForceFieldInfo]:
