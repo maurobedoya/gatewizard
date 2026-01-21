@@ -11,12 +11,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 
 
 ### Changed
-- Documentation update
+-
 
 ### Fixed
 -
 
 ### Removed
+
+## [1.0.15] - 2026-01-21
+
+### Changed
+- Force field validation now shows warnings instead of blocking preparation for unvalidated combinations
+- Updated force field compatibility matrix based on literature validation references
+- Added comprehensive validation references ([1-6]) to force field module with DOI links
+- Updated water model compatibility: TIP3P validated with ff14SB+lipid17/lipid21, OPC with ff19SB+lipid21
+- ff15ipq now correctly marked as protein-only (not validated with lipid force fields)
+- Updated recommendations: membrane (TIP3P+ff14SB+lipid21), latest (OPC+ff19SB+lipid21)
+
+### Fixed
+- Force field combinations now properly categorized as validated, recommended, or unvalidated
+- Users can now test experimental force field combinations at their own risk with clear warnings
+
 ## [1.0.14] - 2026-01-15
 ### Changed
 - Documentation update
@@ -118,7 +133,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive API documentation
 - User guide and troubleshooting documentation
 
-[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.14...HEAD
+[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.15...HEAD
+[1.0.15]: https://github.com/maurobedoya/gatewizard/compare/v1.0.14...v1.0.15
 [1.0.14]: https://github.com/maurobedoya/gatewizard/compare/v1.0.13...v1.0.14
 [1.0.13]: https://github.com/maurobedoya/gatewizard/compare/v1.0.12...v1.0.13
 [1.0.12]: https://github.com/maurobedoya/gatewizard/compare/v1.0.11...v1.0.12
