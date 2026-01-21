@@ -886,16 +886,22 @@ class BuilderFrame(ctk.CTkFrame):
                 return
                     
             # Use validator for detailed validation
-            valid, error_msg = self.validator.validate_system_inputs(**inputs)
+            valid, msg = self.validator.validate_system_inputs(**inputs)
 
             if valid:
                 self.prepare_button.configure(state="normal")
-                messagebox.showinfo("Validation Successful", "All inputs are valid. Ready to start preparation.")
-                if self.status_callback:
-                    self.status_callback("Validation successful")
+                # Check if it's a warning (contains ⚠️) or success
+                if "⚠️ WARNING" in msg:
+                    messagebox.showwarning("Validation Warning", msg)
+                    if self.status_callback:
+                        self.status_callback("Validation warning - proceed with caution")
+                else:
+                    messagebox.showinfo("Validation Successful", "All inputs are valid. Ready to start preparation.")
+                    if self.status_callback:
+                        self.status_callback("Validation successful")
             else:
                 self.prepare_button.configure(state="disabled")
-                messagebox.showerror("Validation Failed", error_msg)
+                messagebox.showerror("Validation Failed", msg)
                 if self.status_callback:
                     self.status_callback("Validation failed")
 

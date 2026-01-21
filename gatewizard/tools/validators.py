@@ -256,7 +256,7 @@ class SystemValidator:
         water_model: str, 
         protein_ff: str, 
         lipid_ff: str
-    ) -> Tuple[bool, str]:
+    ) -> Tuple[bool, str, bool]:
         """
         Validate force field combination.
         
@@ -266,7 +266,10 @@ class SystemValidator:
             lipid_ff: Lipid force field name
             
         Returns:
-            Tuple of (is_valid, error_message)
+            Tuple of (is_valid, message, is_warning)
+            - is_valid: False only for unknown components, True otherwise
+            - message: Validation message
+            - is_warning: True if combination is unvalidated but allowed
         """
         return self.ff_manager.validate_combination(water_model, protein_ff, lipid_ff)
     
@@ -377,9 +380,13 @@ class SystemValidator:
         lipid_ff = kwargs.get('lipid_ff')
         
         if water_model and protein_ff and lipid_ff:
-            valid, error = self.validate_force_fields(water_model, protein_ff, lipid_ff)
+            valid, message, is_warning = self.validate_force_fields(water_model, protein_ff, lipid_ff)
             if not valid:
-                return False, error
+                # Only fail for unknown components, not for compatibility warnings
+                return False, message
+            elif is_warning:
+                # Return the warning message but mark as valid (with warning)
+                return True, message
         
         # Validate salt parameters if salt is enabled
         if kwargs.get('add_salt', False):
