@@ -733,9 +733,13 @@ EOF
                 
                 case "$water_model" in
                     "tip3p") water_leaprc="leaprc.water.tip3p" ;;
-                    "tip4p") water_leaprc="leaprc.water.tip4pew" ;;
+                    "tip4pd") water_leaprc="leaprc.water.tip4pd" ;;
+                    "tip4pew") water_leaprc="leaprc.water.tip4pew" ;;
                     "spce") water_leaprc="leaprc.water.spce" ;;
                     "opc") water_leaprc="leaprc.water.opc" ;;
+                    "opc3") water_leaprc="leaprc.water.opc3" ;;
+                    "spceb") water_leaprc="leaprc.water.spceb" ;;
+                    "fb3") water_leaprc="leaprc.water.fb3" ;;
                     *) water_leaprc="leaprc.water.tip3p" ;;
                 esac
                 
@@ -1057,9 +1061,13 @@ EOF
         # Map water models to leaprc files
         water_leaprc_map = {
             'tip3p': 'leaprc.water.tip3p',
-            'tip4p': 'leaprc.water.tip4pew',
+            'tip4pd': 'leaprc.water.tip4pd',
+            'tip4pew': 'leaprc.water.tip4pew',
             'spce': 'leaprc.water.spce',
-            'opc': 'leaprc.water.opc'
+            'opc': 'leaprc.water.opc',
+            'opc3': 'leaprc.water.opc3',
+            'spceb': 'leaprc.water.spceb',
+            'fb3': 'leaprc.water.fb3'
         }
         
         # Get the appropriate leaprc files

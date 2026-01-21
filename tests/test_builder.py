@@ -129,7 +129,7 @@ class TestForceFieldManager:
         water_models = ff_manager.get_water_models()
         assert len(water_models) > 0
         assert 'tip3p' in water_models
-        assert 'tip4p' in water_models
+        assert 'tip4pd' in water_models
     
     def test_protein_force_fields_available(self, ff_manager):
         """Test that protein force fields are available."""

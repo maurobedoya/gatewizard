@@ -93,16 +93,16 @@ class ForceFieldManager:
                 reference="L. Jorgensen, Jayaraman Chandrasekhar, Jeffry D. Madura, Roger W. Impey, Michael L. Klein; Comparison of simple potential functions for simulating liquid water. J. Chem. Phys. 15 July 1983; 79 (2): 926-935. https://doi.org/10.1063/1.445869",
                 notes="Validated for ff14SB with both lipid17 and lipid21. Suboptimal for ff19SB (prefer OPC)."
             ),
-            "tip4p": ForceFieldInfo(
-                name="TIP4P",
-                description="Four-point transferable intermolecular potential",
-                version="1983",
+            "tip4pd": ForceFieldInfo(
+                name="TIP4P-D",
+                description="Four-point transferable intermolecular potential with dispersion",
+                version="2005",
                 # Not validated with any lipid FF for membrane simulations
                 # Protein-only: ff14SB, ff19SB
                 compatible_with=["ff14SB", "ff19SB"],
                 recommended_for=["general"],
-                year=1983,
-                reference="L. Jorgensen, Jayaraman Chandrasekhar, Jeffry D. Madura, Roger W. Impey, Michael L. Klein; Comparison of simple potential functions for simulating liquid water. J. Chem. Phys. 15 July 1983; 79 (2): 926-935. https://doi.org/10.1063/1.445869",
+                year=2005,
+                reference="Piana, S., Donchev, A. G., Robustelli, P., & Shaw, D. E. (2015). Water dispersion interactions strongly influence simulated structural properties of disordered protein states. The Journal of Physical Chemistry B, 119(16), 5113-5123. https://doi.org/10.1021/jp508971m",
                 notes="Not validated with lipid force fields. Use for protein-only simulations."
             ),
             "tip4pew": ForceFieldInfo(
@@ -184,8 +184,8 @@ class ForceFieldManager:
                 description="Amber force field with improved side-chain torsions",
                 version="2014",
                 # Validated with lipids: tip3p+lipid17 [2,5], tip3p+lipid21 [2,4]
-                # Protein-only: tip4p, tip4pew, spce, opc, opc3
-                compatible_with=["tip3p", "tip4p", "tip4pew", "spce", "opc", "opc3", "lipid17", "lipid21"],
+                # Protein-only: tip4pd, tip4pew, spce, opc, opc3
+                compatible_with=["tip3p", "tip4pd", "tip4pew", "spce", "opc", "opc3", "lipid17", "lipid21"],
                 recommended_for=["protein", "general", "membrane"],
                 year=2014,
                 reference="Maier, J. A.; Martinez, C.; Kasavajhala, K.; Wickstrom, L.; Hauser, K. E.; Simmerling, C. ff14SB: Improving the Accuracy of Protein Side Chain and Backbone Parameters from ff99SB. J. Chem. Theory Comput. 2015, 11 (8), 3696–3713. DOI: 10.1021/acs.jctc.5b00255",
@@ -209,8 +209,8 @@ class ForceFieldManager:
                 version="2019",
                 # Amber manual recommends: opc+lipid21 [1,6]
                 # Suboptimal: tip3p (prefer OPC) [1]
-                # Protein-only: tip4p, tip4pew, spce, opc3, fb3
-                compatible_with=["tip3p", "tip4p", "tip4pew", "spce", "opc", "opc3", "fb3", "lipid17", "lipid21"],
+                # Protein-only: tip4pd, tip4pew, spce, opc3, fb3
+                compatible_with=["tip3p", "tip4pd", "tip4pew", "spce", "opc", "opc3", "fb3", "lipid17", "lipid21"],
                 recommended_for=["protein", "latest"],
                 year=2019,
                 reference="Tian, C.; Kasavajhala, K.; Belfon, K. A. A.; Raguette, L.; Huang, H.; Migues, A. N.; Bickel, J.; Wang, Y.; Pincay, J.; Wu, Q.; Simmerling, C. ff19SB: Amino-Acid-Specific Protein Backbone Parameters Trained against Quantum Mechanics Energy Surfaces in Solution. J. Chem. Theory Comput. 2020, 16 (1), 528–552. DOI: 10.1021/acs.jctc.9b00591",

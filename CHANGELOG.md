@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [1.0.17] - 2026-01-21
+
+### Fixed
+- Corrected water model availability: replaced non-existent `tip4p` with `tip4pd` (TIP4P-D)
+- Fixed leaprc file mappings for all water models (tip4pd, tip4pew, opc3, spceb, fb3)
+- Each water model now correctly maps to its specific leaprc file
+
 ## [1.0.16] - 2026-01-21
 
 ### Changed
@@ -142,7 +149,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive API documentation
 - User guide and troubleshooting documentation
 
-[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.16...HEAD
+[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.17...HEAD
+[1.0.17]: https://github.com/maurobedoya/gatewizard/compare/v1.0.16...v1.0.17
 [1.0.16]: https://github.com/maurobedoya/gatewizard/compare/v1.0.15...v1.0.16
 [1.0.15]: https://github.com/maurobedoya/gatewizard/compare/v1.0.14...v1.0.15
 [1.0.14]: https://github.com/maurobedoya/gatewizard/compare/v1.0.13...v1.0.14
