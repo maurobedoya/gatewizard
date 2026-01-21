@@ -3,7 +3,7 @@ from gatewizard.core.builder import Builder
 builder = Builder()
 
 # Validate inputs before preparation
-valid, error_msg = builder.validate_system_inputs(
+valid, msg = builder.validate_system_inputs(
     pdb_file="protein_protonated_prepared.pdb",
     upper_lipids=["POPC", "POPE"],
     lower_lipids=["POPC", "POPE"],
@@ -14,8 +14,12 @@ valid, error_msg = builder.validate_system_inputs(
 )
 
 if valid:
-    print("✓ All inputs are valid, proceed with preparation")
+    if "⚠️ WARNING" in msg:
+        print(f"⚠️ Inputs valid with warning: {msg}")
+        print("You may proceed at your own risk")
+    else:
+        print("✓ All inputs are valid, proceed with preparation")
     # Now call prepare_system()
 else:
-    print(f"✗ Validation failed: {error_msg}")
+    print(f"✗ Validation failed: {msg}")
     # Fix issues before proceeding
