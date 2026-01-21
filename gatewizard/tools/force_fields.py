@@ -391,8 +391,8 @@ class ForceFieldManager:
         
         if warnings:
             warning_msg = (
-                "⚠️ WARNING: The following combination(s) have not been validated in the literature:\n\n"
-                + "\n".join(f"  • {w}" for w in warnings)
+                "WARNING: The following combination(s) have not been validated in the literature:\n\n"
+                + "\n".join(f"  - {w}" for w in warnings)
                 + "\n\nThis combination may produce unreliable results. "
                 + "You may proceed at your own risk for testing/development purposes."
             )

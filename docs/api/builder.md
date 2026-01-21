@@ -249,12 +249,12 @@ valid, message, is_warning = ff_manager.validate_combination("tip3p", "ff14SB", 
 
 if valid:
     if is_warning:
-        print(f"⚠️ Warning: {message}")
+        print(f"[!] Warning: {message}")
         print("You may proceed at your own risk")
     else:
-        print("✓ Force field combination is compatible")
+        print("[OK] Force field combination is compatible")
 else:
-    print(f"✗ Invalid: {message}")
+    print(f"[ERROR] Invalid: {message}")
 ```
 
 ---

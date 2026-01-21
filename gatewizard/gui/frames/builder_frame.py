@@ -890,8 +890,8 @@ class BuilderFrame(ctk.CTkFrame):
 
             if valid:
                 self.prepare_button.configure(state="normal")
-                # Check if it's a warning (contains ⚠️) or success
-                if "⚠️ WARNING" in msg:
+                # Check if it's a warning (contains WARNING) or success
+                if "WARNING" in msg:
                     messagebox.showwarning("Validation Warning", msg)
                     if self.status_callback:
                         self.status_callback("Validation warning - proceed with caution")

@@ -14,12 +14,12 @@ valid, msg = builder.validate_system_inputs(
 )
 
 if valid:
-    if "⚠️ WARNING" in msg:
-        print(f"⚠️ Inputs valid with warning: {msg}")
+    if "WARNING" in msg:
+        print(f"[!] Inputs valid with warning: {msg}")
         print("You may proceed at your own risk")
     else:
-        print("✓ All inputs are valid, proceed with preparation")
+        print("[OK] All inputs are valid, proceed with preparation")
     # Now call prepare_system()
 else:
-    print(f"✗ Validation failed: {msg}")
+    print(f"[ERROR] Validation failed: {msg}")
     # Fix issues before proceeding
