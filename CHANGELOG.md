@@ -11,12 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 
 
 ### Changed
--
+- Documentation update
 
 ### Fixed
 -
 
 ### Removed
+## [1.0.14] - 2026-01-15
+### Changed
+- Documentation update
+
 ## [1.0.13] - 2026-01-15
 
 ### Added
@@ -114,7 +118,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive API documentation
 - User guide and troubleshooting documentation
 
-[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.13...HEAD
+[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.14...HEAD
+[1.0.14]: https://github.com/maurobedoya/gatewizard/compare/v1.0.13...v1.0.14
 [1.0.13]: https://github.com/maurobedoya/gatewizard/compare/v1.0.12...v1.0.13
 [1.0.12]: https://github.com/maurobedoya/gatewizard/compare/v1.0.11...v1.0.12
 [1.0.11]: https://github.com/maurobedoya/gatewizard/compare/v1.0.10...v1.0.11
