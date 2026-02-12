@@ -2470,27 +2470,33 @@ class EquilibrationFrame(ctk.CTkFrame):
         # Check for AMBER topology and coordinate files
         self._check_amber_files(output_dir)
         
-        # Initialize NAMD manager with working_dir (where system files are located)
+        # Initialize NAMD manager with output_dir (where system files were copied to)
+        # All system files (prmtop, inpcrd, pdb, bilayer_pdb) are now in output_dir
         namd_exe = getattr(self, 'namd_path_var', ctk.StringVar(value="namd3")).get()
-        namd_manager = NAMDEquilibrationManager(working_dir, namd_exe)
+        namd_manager = NAMDEquilibrationManager(output_dir, namd_exe)
         
-        # Check for AMBER files from preparation
-        amber_files = list(working_dir.glob("**/*.top")) + list(working_dir.glob("**/*.inpcrd"))
+        # Get input folder (if specified by user) or use working directory
+        input_folder_str = self.inputfolder_entry.get().strip()
+        source_dir = Path(input_folder_str) if input_folder_str else working_dir
+        
+        # Check for AMBER files from preparation (in source directory)
+        amber_files = list(source_dir.glob("**/*.top")) + list(source_dir.glob("**/*.inpcrd"))
         if amber_files:
             self.logger.info("Found AMBER files from preparation, using AMBER force field")
         else:
             self.logger.warning("No AMBER files found. Please ensure AMBER topology and coordinate files are available.")
         
-        # System files for AMBER - look for .prmtop and .inpcrd files
+        # System files for AMBER are now in output_dir (copied earlier)
+        # Reference them by name only since we're working in output_dir
         system_files = {
             'prmtop': 'system.prmtop',
             'inpcrd': 'system.inpcrd',
             'pdb': 'system.pdb'  # Optional PDB for visualization
         }
         
-        # Try to find actual AMBER files in the working directory
-        prmtop_files = list(working_dir.glob("**/*.prmtop")) + list(working_dir.glob("**/*.top"))
-        inpcrd_files = list(working_dir.glob("**/*.inpcrd")) + list(working_dir.glob("**/*.rst"))
+        # Verify files were copied successfully to output_dir
+        prmtop_files = list(output_dir.glob("*.prmtop")) + list(output_dir.glob("*.top"))
+        inpcrd_files = list(output_dir.glob("*.inpcrd")) + list(output_dir.glob("*.rst"))
         
         if prmtop_files:
             system_files['prmtop'] = prmtop_files[0].name
@@ -2825,6 +2831,25 @@ class EquilibrationFrame(ctk.CTkFrame):
             self.logger.info(f"Copied PDB file: {system_pdb} -> {target_pdb}")
         else:
             self.logger.warning(f"No PDB file found in: {source_dir}")
+        
+        # CRITICAL: Copy bilayer PDB with CRYST1 record (needed for box dimensions)
+        # This file contains the unit cell parameters required for MD simulations
+        if input_folder_str:
+            # Look for bilayer*_lipid.pdb pattern (from packmol-memgen --parametrize)
+            bilayer_pdb_files = list(source_dir.glob("bilayer*_lipid.pdb"))
+        else:
+            # Search recursively in working directory (old behavior)
+            bilayer_pdb_files = list(source_dir.glob("**/bilayer*_lipid.pdb"))
+        
+        if bilayer_pdb_files:
+            # Copy the bilayer PDB with CRYST1 record
+            source_bilayer = bilayer_pdb_files[0]
+            target_bilayer = namd_dir / source_bilayer.name
+            shutil.copy2(source_bilayer, target_bilayer)
+            self.logger.info(f"Copied bilayer PDB with CRYST1: {source_bilayer} -> {target_bilayer}")
+        else:
+            self.logger.warning(f"No bilayer PDB with CRYST1 record (bilayer*_lipid.pdb) found in: {source_dir}")
+            self.logger.warning("Box dimensions will use defaults or estimates")
     
     def _generate_gromacs_files(self):
         """Generate GROMACS input files (placeholder)."""

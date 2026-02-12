@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [1.0.19] - 2026-02-12
+
+### Fixed
+- Fixed equilibration bug where bilayer PDB with CRYST1 record was not being copied to output directory
+- Fixed NAMDEquilibrationManager initialization to use correct directory (output_dir where files are copied)
+- Box dimensions now correctly read from bilayer_*_lipid.pdb file for NAMD equilibration configurations
+
 ## [1.0.18] - 2026-02-12
 
 ### Fixed
@@ -155,7 +162,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive API documentation
 - User guide and troubleshooting documentation
 
-[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.18...HEAD
+[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.19...HEAD
+[1.0.19]: https://github.com/maurobedoya/gatewizard/compare/v1.0.18...v1.0.19
 [1.0.18]: https://github.com/maurobedoya/gatewizard/compare/v1.0.17...v1.0.18
 [1.0.17]: https://github.com/maurobedoya/gatewizard/compare/v1.0.16...v1.0.17
 [1.0.16]: https://github.com/maurobedoya/gatewizard/compare/v1.0.15...v1.0.16
