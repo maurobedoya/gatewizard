@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gatewizard"
-version = "1.0.17"
+version = "1.0.18"
 description = "A tool for membrane protein preparation and molecular dynamics analysis"
 readme = "README.md"
 license = {file = "LICENSE"}

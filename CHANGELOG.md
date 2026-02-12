@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [1.0.18] - 2026-02-12
+
+### Fixed
+- Fixed missing equilibration templates in package distribution by correcting MANIFEST.in
+- Equilibration NAMD template files (.inp) are now properly included when installing the package
+
 ## [1.0.17] - 2026-01-21
 
 ### Fixed
@@ -149,7 +155,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive API documentation
 - User guide and troubleshooting documentation
 
-[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.17...HEAD
+[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.18...HEAD
+[1.0.18]: https://github.com/maurobedoya/gatewizard/compare/v1.0.17...v1.0.18
 [1.0.17]: https://github.com/maurobedoya/gatewizard/compare/v1.0.16...v1.0.17
 [1.0.16]: https://github.com/maurobedoya/gatewizard/compare/v1.0.15...v1.0.16
 [1.0.15]: https://github.com/maurobedoya/gatewizard/compare/v1.0.14...v1.0.15
