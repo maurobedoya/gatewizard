@@ -89,13 +89,13 @@ class SearchableComboBox(ctk.CTkFrame):
             font=FONTS['body']
         )
         
-        # Dropdown button
+        # Dropdown button – use ASCII arrow that renders on all systems
         self.dropdown_button = ctk.CTkButton(
             self,
-            text="▼",
+            text="v",
             width=25,
             height=height,
-            font=("Arial", 10),
+            font=("Arial", 12, "bold"),
             command=self._toggle_dropdown
         )
         
@@ -246,14 +246,14 @@ class SearchableComboBox(ctk.CTkFrame):
         if not self.dropdown_visible:
             self.dropdown_frame.grid()
             self.dropdown_visible = True
-            self.dropdown_button.configure(text="▲")
+            self.dropdown_button.configure(text="^")
     
     def _hide_dropdown(self, event=None):
         """Hide the dropdown list."""
         if self.dropdown_visible:
             self.dropdown_frame.grid_remove()
             self.dropdown_visible = False
-            self.dropdown_button.configure(text="▼")
+            self.dropdown_button.configure(text="v")
     
     def _update_dropdown_options(self):
         """Update the options in the dropdown list."""
