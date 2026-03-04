@@ -82,8 +82,9 @@ class JobInfo:
         """Get elapsed time in seconds."""
         start = self.start_time
         if start:
-            # For completed jobs, use end_time. For running jobs, use current time.
-            if self.status == JobStatus.COMPLETED and self.end_time:
+            # For finished jobs (completed or error), freeze at end_time.
+            # For running jobs, use current time.
+            if self.status in (JobStatus.COMPLETED, JobStatus.ERROR) and self.end_time:
                 end = self.end_time
             else:
                 end = datetime.now()
