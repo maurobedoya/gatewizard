@@ -8,9 +8,35 @@ force field management, validation, and other scientific computing tasks.
 from gatewizard.tools.molecular_viewer import MolecularViewer
 from gatewizard.tools.force_fields import ForceFieldManager
 from gatewizard.tools.validators import SystemValidator
+from gatewizard.tools.ligand_parametrization import (
+    detect_ligands,
+    extract_ligand_pdb,
+    parametrize_ligand,
+    parametrize_all_ligands,
+    get_ligand_2d_image,
+    get_ligand_2d_image_from_pdb_lines,
+    build_ligand_param_args,
+    build_tleap_ligand_lines,
+    LigandInfo,
+    LigandParametrizationError,
+    CHARGE_METHODS,
+    LIGHT_PALETTE,
+)
 
 __all__ = [
     "MolecularViewer",
     "ForceFieldManager", 
     "SystemValidator",
+    "detect_ligands",
+    "extract_ligand_pdb",
+    "parametrize_ligand",
+    "parametrize_all_ligands",
+    "get_ligand_2d_image",
+    "get_ligand_2d_image_from_pdb_lines",
+    "build_ligand_param_args",
+    "build_tleap_ligand_lines",
+    "LigandInfo",
+    "LigandParametrizationError",
+    "CHARGE_METHODS",
+    "LIGHT_PALETTE",
 ]
