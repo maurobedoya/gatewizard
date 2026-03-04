@@ -899,3 +899,34 @@ class LigandParamWidget(ctk.CTkFrame):
         thread = threading.Thread(target=_run, daemon=True)
         thread.start()
 
+    # ------------------------------------------------------------------
+    # Cloud sync error detection
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _is_cloud_sync_error(error_msg: str) -> bool:
+        """Detect if an error is likely caused by cloud sync file locking.
+
+        Checks for PermissionError / Errno 13 patterns and common cloud
+        service paths (Dropbox, OneDrive, Google Drive, iCloud).
+        """
+        msg = error_msg.lower()
+        # Permission denied indicators
+        perm_keywords = [
+            'permission denied',
+            'errno 13',
+            '[errno 13]',
+            'access is denied',
+            'winerror 5',
+            'winerror 32',      # sharing violation
+            'being used by another process',
+        ]
+        if not any(kw in msg for kw in perm_keywords):
+            return False
+        # Cloud-sync path hints
+        cloud_hints = [
+            'dropbox', 'onedrive', 'google drive', 'googledrive',
+            'icloud', 'box sync', 'mega', 'pcloud', 'syncthing',
+            'nextcloud', 'seafile',
+        ]
+        return any(h in msg for h in cloud_hints)
