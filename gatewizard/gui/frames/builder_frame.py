@@ -26,6 +26,7 @@ from gatewizard.gui.constants import (
 from gatewizard.gui.widgets.leaflet_frame import LeafletFrame
 from gatewizard.gui.widgets.progress_tracker import ProgressTracker
 from gatewizard.gui.widgets.searchable_combobox import SearchableComboBox
+from gatewizard.gui.widgets.ligand_param_widget import LigandParamWidget
 from gatewizard.core.builder import Builder, BuilderError
 from gatewizard.tools.force_fields import ForceFieldManager
 from gatewizard.tools.validators import SystemValidator
@@ -240,6 +241,13 @@ class BuilderFrame(ctk.CTkFrame):
         
         # Output folder name section
         self._create_outputname_section()
+        
+        # Ligand parametrization section
+        self.ligand_param_widget = LigandParamWidget(
+            self.main_scroll,
+            status_callback=self.status_callback,
+            working_dir_callback=lambda: self.workdir_entry.get().strip(),
+        )
         
         # Lipid composition section
         self.lipids_section = ctk.CTkFrame(self.main_scroll, fg_color=COLOR_SCHEME['content_inside_bg'])
@@ -627,6 +635,9 @@ class BuilderFrame(ctk.CTkFrame):
         self.outputname_frame.pack(fill="x", padx=LAYOUT['padding_medium'], pady=LAYOUT['padding_small'])
         self.outputname_entry.pack(side="left", fill="x", expand=True, padx=LAYOUT['padding_small'])
         
+        # Ligand parametrization section
+        self.ligand_param_widget.pack(fill="x", padx=LAYOUT['padding_medium'], pady=LAYOUT['padding_medium'])
+        
         # Lipids section
         self.lipids_section.pack(fill="x", padx=LAYOUT['padding_medium'], pady=LAYOUT['padding_medium'])
         
@@ -778,6 +789,9 @@ class BuilderFrame(ctk.CTkFrame):
                 self.outputname_entry.delete(0, "end")
                 self.outputname_entry.insert(0, auto_output_name)
             
+            # Update ligand parametrization widget
+            self.ligand_param_widget.set_pdb_file(file_path)
+            
             if self.status_callback:
                 self.status_callback(f"Selected working file: {Path(file_path).name}")
     
@@ -802,6 +816,9 @@ class BuilderFrame(ctk.CTkFrame):
                 self.preparation_output_name = auto_output_name
                 self.outputname_entry.delete(0, "end")
                 self.outputname_entry.insert(0, auto_output_name)
+            
+            # Update ligand parametrization widget
+            self.ligand_param_widget.set_pdb_file(file_path)
             
             if self.status_callback:
                 self.status_callback(f"Loaded working file: {Path(file_path).name}")
@@ -857,7 +874,8 @@ class BuilderFrame(ctk.CTkFrame):
             'anion': self.anion_combo.get(),
             'dist_wat': self.water_distance_entry.get().strip(),
             'notprotonate': skip_protonation,  # Skip protonation if requested
-            'simplified_workflow': True  # Flag to indicate simplified workflow
+            'simplified_workflow': True,  # Flag to indicate simplified workflow
+            'ligand_params': self.ligand_param_widget.get_parametrized_ligands(),  # Ligand .frcmod/.lib files
         }
 
     def _validate_inputs(self):
@@ -939,6 +957,10 @@ class BuilderFrame(ctk.CTkFrame):
                 'dist_wat': float(inputs['dist_wat']) if inputs['dist_wat'] else 17.5,
                 'notprotonate': inputs['notprotonate']
             }
+
+            # Add ligand parameters if available
+            if inputs.get('ligand_params'):
+                config['ligand_params'] = inputs['ligand_params']
 
             self.system_builder.set_configuration(**config)
 
@@ -1254,6 +1276,10 @@ EXAMPLE WORKFLOW:
                 self.upper_leaflet.update_fonts(scaled_fonts)
             if hasattr(self, 'lower_leaflet') and hasattr(self.lower_leaflet, 'update_fonts'):
                 self.lower_leaflet.update_fonts(scaled_fonts)
+            
+            # Update ligand param widget
+            if hasattr(self, 'ligand_param_widget') and hasattr(self.ligand_param_widget, 'update_fonts'):
+                self.ligand_param_widget.update_fonts(scaled_fonts)
             
         except Exception as e:
             logger.warning(f"Error updating fonts in BuilderFrame: {e}")

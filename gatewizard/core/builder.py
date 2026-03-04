@@ -20,6 +20,10 @@ from typing import List, Dict, Any, Optional, Tuple
 from gatewizard.utils.logger import get_logger
 from gatewizard.tools.force_fields import ForceFieldManager
 from gatewizard.tools.validators import SystemValidator
+from gatewizard.tools.ligand_parametrization import (
+    build_ligand_param_args,
+    build_tleap_ligand_lines,
+)
 
 logger = get_logger(__name__)
 
@@ -56,6 +60,7 @@ class Builder:
             'two_stage_process': False,  # Enable two-stage packing + parametrization
             'pack_only': False,  # Only perform packing stage
             'parametrize_only': False,  # Only perform parametrization stage
+            'ligand_params': {},  # Dict of ligand name -> {frcmod, lib} file paths
         }
     
     def set_configuration(self, **kwargs):
@@ -156,7 +161,7 @@ class Builder:
     
     def _create_job_directory(self, pdb_file: str, working_dir: str, custom_output_name: Optional[str] = None) -> Path:
         """Create unique job directory."""
-        work_dir = Path(working_dir)
+        work_dir = Path(working_dir).resolve()
         work_dir.mkdir(parents=True, exist_ok=True)
         
         if custom_output_name:
@@ -242,6 +247,15 @@ class Builder:
         # Add water layer distance (include even if default value for explicit control)
         if config.get('dist_wat') is not None:
             cmd.extend(["--dist_wat", str(config['dist_wat'])])
+
+        # Add ligand parameters (--ligand_param frcmod:lib for each ligand)
+        ligand_params = config.get('ligand_params', {})
+        if ligand_params:
+            ligand_args = build_ligand_param_args(ligand_params)
+            cmd.extend(ligand_args)
+            # Also add --gaff2 flag when ligands are present
+            cmd.append('--gaff2')
+            logger.info(f"Added ligand parameters for: {list(ligand_params.keys())}")
 
         logger.info(f"Built command: {' '.join(cmd)}")
         return cmd
@@ -759,6 +773,8 @@ source $lipid_leaprc
 # Load water model ${{water_model^^}}
 source $water_leaprc
 
+{self._generate_bash_ligand_tleap_lines(config)}
+
 # Load PDB file prepared by pdb4amber (protein + membrane + water + neutralized)
 system = loadPDB PREPARED_PDB_PLACEHOLDER
 
@@ -1075,6 +1091,10 @@ EOF
         lipid_leaprc = lipid_leaprc_map.get(lipid_ff, 'leaprc.lipid21') 
         water_leaprc = water_leaprc_map.get(water_model, 'leaprc.water.tip3p')
         
+        # Generate ligand parameter lines if ligands are present
+        ligand_params = config.get('ligand_params', {})
+        ligand_lines = build_tleap_ligand_lines(ligand_params)
+
         # Generate tleap input content
         leap_content = f"""# Load force field for proteins {protein_ff}
 source {protein_leaprc}
@@ -1108,6 +1128,21 @@ quit
 """
         
         return leap_content
+
+    def _generate_bash_ligand_tleap_lines(self, config: Dict[str, Any]) -> str:
+        """Generate tleap ligand parameter lines for the bash execution script."""
+        ligand_params = config.get('ligand_params', {})
+        if not ligand_params:
+            return ""
+        lines = ["# Load GAFF2 and ligand parameters", "source leaprc.gaff2"]
+        for name, files in ligand_params.items():
+            frcmod = files.get('frcmod', '')
+            lib = files.get('lib', '')
+            if frcmod:
+                lines.append(f"loadamberparams {frcmod}")
+            if lib:
+                lines.append(f"loadoff {lib}")
+        return "\n".join(lines)
 
     def prepare_system_stage1_for_propka(
         self,
