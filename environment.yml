@@ -9,7 +9,8 @@ dependencies:
   - propka
   - matplotlib>=3.5.0
   - requests>=2.25.0
+  - rdkit  # For ligand 2D structure visualization
+  - pillow>=9.0.0  # For image display in GUI
   - pip
   - pip:
     - customtkinter>=5.0.0
-    - biopython

@@ -114,7 +114,7 @@ Automatically installed via pip:
 - **Matplotlib** ≥ 3.5.0 - Plotting and visualization
 - **MDAnalysis** ≥ 2.0.0 - Molecular analysis toolkit
 - **Propka** ≥ 3.2.0 - pKa calculations
-- **BioPython** - PDB file handling
+- **RDKit** ≥ 2023.3.1 - Ligand 2D structure visualization
 
 ### Scientific Computing Dependencies
 
