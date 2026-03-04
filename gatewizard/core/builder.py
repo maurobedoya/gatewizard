@@ -1076,32 +1076,34 @@ EOF
         water_leaprc = water_leaprc_map.get(water_model, 'leaprc.water.tip3p')
         
         # Generate tleap input content
-        leap_content = f"""# Cargar campo de fuerza para proteínas {protein_ff}
+        leap_content = f"""# Load force field for proteins {protein_ff}
 source {protein_leaprc}
 
-# Cargar campo de fuerza para lípidos {lipid_ff}
+# Load force field for lipids {lipid_ff}
 source {lipid_leaprc}
 
-# Cargar modelo de agua {water_model.upper()}
+# Load water model {water_model.upper()}
 source {water_leaprc}
 
-# Cargar archivo PDB del sistema completo (proteína + membrana + agua + neutralizado)
+{ligand_lines}
+
+# Load PDB file (protein + membrane + water + neutralized)
 system = loadPDB {pdb_path}
 
-# Verificar carga total del sistema
+# Check total system charge
 charge system
 
-# Neutralizar la carga total
+# Neutralize total charge
 addIonsRand system Na+ 0
 addIonsRand system Cl- 0
 
-# Guardar archivos de parámetros y coordenadas
+# Save parameter and coordinate files
 saveAmberParm system system.prmtop system.inpcrd
 
-# Guardar el sistema procesado por tleap como PDB
+# Save the system processed by tleap as PDB
 savePDB system system.pdb
 
-# Salir
+# Exit
 quit
 """
         
