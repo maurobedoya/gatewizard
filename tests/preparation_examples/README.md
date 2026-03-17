@@ -78,12 +78,12 @@ Different examples require different imports:
 
 ### Examples 1-14, 17, 19, 21-22
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 ```
 
 ### Examples 13-14 (plotting)
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 import matplotlib.pyplot as plt
 import numpy as np  # Example 14 only
 ```
@@ -97,7 +97,7 @@ from gatewizard.utils.protein_capping import cap_protein
 
 ### Examples 18, 20
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 from gatewizard.utils.protein_capping import ProteinCapper
 ```
 
@@ -120,7 +120,7 @@ These examples demonstrate the full pipeline for preparing capped proteins:
 This method in the `PreparationManager` class combines pdb4amber execution with optional ACE/NME HETATM fix:
 
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 
 analyzer = PreparationManager()
 

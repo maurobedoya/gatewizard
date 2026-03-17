@@ -8,7 +8,7 @@ Quick reference for common GateWizard API operations.
 
 ### Basic Analysis
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 
 analyzer = PreparationManager(propka_version="3")
 pka_file = analyzer.run_analysis("protein.pdb")
@@ -71,9 +71,9 @@ for ph in [5.0, 6.0, 7.0, 8.0]:
 
 ### Basic Membrane System
 ```python
-from gatewizard.core.system_builder import SystemBuilder
+from gatewizard.core.builder import Builder
 
-builder = SystemBuilder()
+builder = Builder()
 builder.set_configuration(
     salt_concentration=0.15,
     dist_wat=17.5
@@ -189,15 +189,15 @@ print(f"Avg Temperature: {sum(log_data['temperature'])/len(log_data['temperature
 
 ### Standard Pattern
 ```python
-from gatewizard.core.propka import PropkaError
+from gatewizard.core.preparation import PreparationError
 
 try:
     analyzer = PreparationManager()
     pka_file = analyzer.run_analysis("protein.pdb")
 except FileNotFoundError as e:
     print(f"File not found: {e}")
-except PropkaError as e:
-    print(f"Propka error: {e}")
+except PreparationError as e:
+    print(f"Preparation error: {e}")
 except Exception as e:
     print(f"Unexpected error: {e}")
 ```

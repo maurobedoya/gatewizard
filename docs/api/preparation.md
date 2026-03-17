@@ -11,7 +11,7 @@ Module for predicting pKa values and managing protonation states in protein stru
 ## Import
 
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 from gatewizard.utils.protein_capping import ProteinCapper
 ```
 
@@ -35,7 +35,7 @@ PreparationManager(propka_version: str = "3")
 
 **Example:**
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 
 analyzer = PreparationManager(propka_version="3")
 print(f"Using PROPKA version: {analyzer.propka_version}")
@@ -65,7 +65,7 @@ run_analysis(pdb_file: str, output_dir: Optional[str] = None) -> str
 **Raises:**
 
 - `FileNotFoundError` - If input PDB file doesn't exist
-- `PropkaError` - If Propka execution fails
+- `PreparationError` - If Propka execution fails
 
 **Output Files:**
 
@@ -73,7 +73,7 @@ run_analysis(pdb_file: str, output_dir: Optional[str] = None) -> str
 
 **Example:**
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 
 analyzer = PreparationManager()
 pka_file = analyzer.run_analysis("protein.pdb")
@@ -105,14 +105,14 @@ extract_summary(
 **Returns:** `str` - Path to summary file
 
 **Raises:**
-- `PropkaError` - If summary section not found in `.pka` file
+- `PreparationError` - If summary section not found in `.pka` file
 
 **Output Files:**
 - `{basename}_summary_of_prediction.txt` - Extracted summary section
 
 **Example:**
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 
 analyzer = PreparationManager()
 
@@ -197,11 +197,11 @@ PROPKA analyzes both **protein residues** and **ligand molecules** for ionizable
 **Raises:**
 
 - `FileNotFoundError` - If summary file doesn't exist
-- `PropkaError` - If no ionizable residues found
+- `PreparationError` - If no ionizable residues found
 
 **Example:**
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 
 analyzer = PreparationManager()
 
@@ -354,7 +354,7 @@ apply_protonation_states(
 **Raises:**
 
 - `FileNotFoundError` - If input PDB file doesn't exist
-- `PropkaError` - If no residue data available (need to run `parse_summary()` first)
+- `PreparationError` - If no residue data available (need to run `parse_summary()` first)
 
 **Protonation State Logic:**
 
@@ -391,7 +391,7 @@ Custom states can be specified with or without chain identifiers:
 
 **Example:**
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 
 analyzer = PreparationManager()
 pka_file = analyzer.run_analysis("protein.pdb")
@@ -447,7 +447,7 @@ get_default_protonation_state(
 
 **Example:**
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 
 analyzer = PreparationManager()
 pka_file = analyzer.run_analysis("protein.pdb")
@@ -482,7 +482,7 @@ get_available_states(residue_type: str) -> Dict[str, str]
 
 **Example:**
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 
 analyzer = PreparationManager()
 his_states = analyzer.get_available_states("HIS")
@@ -537,7 +537,7 @@ detect_disulfide_bonds(
 
 **Example:**
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 
 analyzer = PreparationManager()
 # Detect with default 2.5 Å threshold
@@ -593,7 +593,7 @@ apply_disulfide_bonds(
 
 **Example:**
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 
 analyzer = PreparationManager()
 # Auto-detect and apply
@@ -619,7 +619,7 @@ Disulfide bonds should be applied **after** protonation states:
 
 **Example:**
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 
 analyzer = PreparationManager()
 pka_file = analyzer.run_analysis("protein.pdb")
@@ -656,7 +656,7 @@ get_residue_statistics() -> Dict[str, int]
 
 **Example:**
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 
 analyzer = PreparationManager()
 pka_file = analyzer.run_analysis("protein.pdb")
@@ -701,7 +701,7 @@ get_ph_titration_curve(
 
 **Example:**
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 
 analyzer = PreparationManager()
 pka_file = analyzer.run_analysis("protein.pdb")
@@ -721,7 +721,7 @@ for residue_id, curve in curves.items():
 You can visualize titration curves using matplotlib. For readability, it's best to plot only specific residues of interest:
 
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 import matplotlib.pyplot as plt
 
 analyzer = PreparationManager()
@@ -1178,7 +1178,7 @@ options = {
 **Example - Basic Usage:**
 
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 
 analyzer = PreparationManager()
 
@@ -1202,7 +1202,7 @@ else:
 **Example - Without Cap Fix:**
 
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 
 analyzer = PreparationManager()
 
@@ -1220,7 +1220,7 @@ print(f"HETATM records fixed: {result['hetatm_fixed']}")  # Will be 0
 **Example - With Custom pdb4amber Options:**
 
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 
 analyzer = PreparationManager()
 
@@ -1243,7 +1243,7 @@ print(f"pdb4amber output:\n{result['stdout']}")
 **Integration with Complete Workflow:**
 
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 from gatewizard.utils.protein_capping import ProteinCapper
 
 # Step 1: Add caps
@@ -1318,7 +1318,7 @@ When using the GUI:
 ### Advanced Workflow with Protonation and Disulfide Bonds
 
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 
 analyzer = PreparationManager()
 
@@ -1355,7 +1355,7 @@ print(f"✓ Applied {num_bonds} disulfide bonds (CYS → CYX)")
 ### Workflow with Protein Capping
 
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 from gatewizard.utils.protein_capping import ProteinCapper
 
 # Step 1: Add ACE/NME caps
@@ -1408,7 +1408,7 @@ print(f"✓ Final structure ready: protein_prepared.pdb")
 ### Multiple pH Variants
 
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 
 analyzer = PreparationManager()
 
@@ -1450,7 +1450,7 @@ When proteins are capped, residue numbers change (all shift by +1). Use the mapp
 
 ```python
 import re
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 from gatewizard.utils.protein_capping import ProteinCapper
 
 # Step 1: Add ACE/NME caps to get residue mapping
@@ -1519,7 +1519,7 @@ print(f"✓ Applied protonation: {stats['residue_changes']} residues modified")
 Override automatic pH-based protonation with custom states for specific residues:
 
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 
 # Step 1: Run standard Propka workflow
 analyzer = PreparationManager()
@@ -1575,7 +1575,7 @@ for spec, state in custom_states.items():
 Identify residues with unusual pKa shifts that may indicate important interactions:
 
 ```python
-from gatewizard.core.propka import PreparationManager
+from gatewizard.core.preparation import PreparationManager
 
 # Step 1: Run Propka analysis
 analyzer = PreparationManager()

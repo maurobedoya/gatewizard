@@ -12,23 +12,23 @@ Module for preparing membrane protein systems with automated lipid bilayer const
 ## Import
 
 ```python
-from gatewizard.core.system_builder import SystemBuilder
+from gatewizard.core.builder import Builder
 from gatewizard.tools.force_fields import ForceFieldManager
 ```
 
-## Class: SystemBuilder
+## Class: Builder
 
 Main class for building membrane protein systems with complete control over lipid composition, force fields, and system parameters.
 
 ### Constructor
 
 ```python
-SystemBuilder()
+Builder()
 ```
 
 **Parameters:** None
 
-**Returns:** `SystemBuilder` instance
+**Returns:** `Builder` instance
 
 **Default Configuration:**
 
@@ -47,11 +47,12 @@ SystemBuilder()
 
 ### Example 1: Basic Configuration
 ```python
-from gatewizard.core.system_builder import SystemBuilder
+from gatewizard.core.builder import Builder
 
-builder = SystemBuilder()
+builder = Builder()
 print(f"Default water model: {builder.config['water_model']}")
 print(f"Default protein force field: {builder.config['protein_ff']}")
+print(f"Default lipid parameters: {builder.config['lipid_ff']}")
 ```
 
 ---
@@ -86,9 +87,9 @@ set_configuration(**kwargs)
 
 ### Example 2: Custom Configuration
 ```python
-from gatewizard.core.system_builder import SystemBuilder
+from gatewizard.core.builder import Builder
 
-builder = SystemBuilder()
+builder = Builder()
 
 # Configure for specific system
 builder.set_configuration(
@@ -217,12 +218,12 @@ validate_system_inputs(
 
 ### Example 7: Input Validation
 ```python
-from gatewizard.core.system_builder import SystemBuilder
+from gatewizard.core.builder import Builder
 
-builder = SystemBuilder()
+builder = Builder()
 
 # Validate inputs before preparation
-valid, error_msg = builder.validate_system_inputs(
+valid, msg = builder.validate_system_inputs(
     pdb_file="protein_protonated_prepared.pdb",
     upper_lipids=["POPC", "POPE"],
     lower_lipids=["POPC", "POPE"],
@@ -233,10 +234,14 @@ valid, error_msg = builder.validate_system_inputs(
 )
 
 if valid:
-    print("✓ All inputs are valid, proceeding with preparation")
+    if "WARNING" in msg:
+        print(f"[!] Inputs valid with warning: {msg}")
+        print("You may proceed at your own risk")
+    else:
+        print("[OK] All inputs are valid, proceed with preparation")
     # Now call prepare_system()
 else:
-    print(f"✗ Validation failed: {error_msg}")
+    print(f"[ERROR] Validation failed: {msg}")
     # Fix issues before proceeding
 ```
 
@@ -250,11 +255,10 @@ valid, message, is_warning = ff_manager.validate_combination("tip3p", "ff14SB", 
 if valid:
     if is_warning:
         print(f"[!] Warning: {message}")
-        print("You may proceed at your own risk")
     else:
         print("[OK] Force field combination is compatible")
 else:
-    print(f"[ERROR] Invalid: {message}")
+    print(f"[ERROR] Incompatible: {message}")
 ```
 
 ---
@@ -286,6 +290,10 @@ prepare_system(
 | `lower_lipids` | `List[str]` | Yes | List of lipid types for lower leaflet |
 | `lipid_ratios` | `str` | No | Lipid molar ratios (format: "ratio1:ratio2//ratio3:ratio4") |
 | `output_folder_name` | `str` | No | Custom output folder name (kwarg) |
+| `wait` | `bool` | No | Block until the job completes or errors (default `False`) |
+| `wait_timeout` | `float` | No | Maximum seconds to wait when `wait=True` (`None` = unlimited) |
+| `wait_poll_interval` | `float` | No | Seconds between status checks (default `5.0`) |
+| `wait_verbose` | `bool` | No | Print elapsed-time progress while waiting (default `True`) |
 | `**kwargs` | `Any` | No | Additional configuration parameters (override defaults) |
 
 **Returns:** `Tuple[bool, str, Optional[Path]]`
@@ -335,15 +343,17 @@ In `{output_folder_name}/` directory:
 **Raises:**
 
 - `FileNotFoundError` - If input PDB file doesn't exist
-- `SystemBuilderError` - If validation fails or system preparation fails
+- `BuilderError` - If validation fails or system preparation fails
 
-**Note:** System preparation runs in the background. The method returns immediately after launching the job. Monitor progress using the log files or the JobMonitor class (see monitoring example below).
+**Note:** By default, system preparation runs in the background and the method returns immediately.
+Pass `wait=True` to block until the job finishes — useful for scripting sequential preparations.
+For asynchronous monitoring, use the log files or the `JobMonitor` class (see examples below).
 
 ### Example 9: Simple Symmetric Membrane
 ```python
-from gatewizard.core.system_builder import SystemBuilder
+from gatewizard.core.builder import Builder
 
-builder = SystemBuilder()
+builder = Builder()
 
 # Configure system
 builder.set_configuration(
@@ -381,7 +391,6 @@ else:
 ```python
 from gatewizard.core.job_monitor import JobMonitor
 from pathlib import Path
-import time
 
 # Create monitor for your working directory
 monitor = JobMonitor(working_directory=Path("./systems"))
@@ -396,7 +405,7 @@ if active_jobs:
     print(f"✓ Found {len(active_jobs)} active job(s)")
     
     for job_id, job_info in active_jobs.items():
-        print(f"\nJob: {job_info.job_dir.name}")
+        print(f"Job: {job_info.job_dir.name}")
         print(f"  Status: {job_info.status.value}")
         print(f"  Progress: {job_info.progress:.1f}%")
         print(f"  Current step: {job_info.current_step}")
@@ -413,16 +422,16 @@ else:
 # Check for completed jobs
 completed_jobs = monitor.get_completed_jobs()
 if completed_jobs:
-    print(f"\n✓ Found {len(completed_jobs)} completed job(s)")
+    print(f"✓ Found {len(completed_jobs)} completed job(s)")
     for job_id, job_info in completed_jobs.items():
         print(f"  - {job_info.job_dir.name}: {job_info.status.value}")
 ```
 
 ### Example 11: Asymmetric Membrane with Multiple Lipids
 ```python
-from gatewizard.core.system_builder import SystemBuilder
+from gatewizard.core.builder import Builder
 
-builder = SystemBuilder()
+builder = Builder()
 
 # Configure for asymmetric membrane
 builder.set_configuration(
@@ -463,9 +472,9 @@ else:
 
 ### Example 12: Complex Composition (Plasma Membrane Mimic)
 ```python
-from gatewizard.core.system_builder import SystemBuilder
+from gatewizard.core.builder import Builder
 
-builder = SystemBuilder()
+builder = Builder()
 
 # Plasma membrane-like composition
 # Upper: PC-rich with cholesterol
@@ -494,9 +503,9 @@ else:
 
 ### Example 13: Packing Only (No Parametrization)
 ```python
-from gatewizard.core.system_builder import SystemBuilder
+from gatewizard.core.builder import Builder
 
-builder = SystemBuilder()
+builder = Builder()
 
 # Only pack the system, don't parametrize
 # Useful for visual inspection before parametrization
@@ -522,9 +531,9 @@ else:
 
 ### Example 14: Custom Salt Concentration
 ```python
-from gatewizard.core.system_builder import SystemBuilder
+from gatewizard.core.builder import Builder
 
-builder = SystemBuilder()
+builder = Builder()
 
 # High salt concentration for ionic strength studies
 success, message, job_dir = builder.prepare_system(
@@ -551,9 +560,9 @@ else:
 
 ### Example 15: No Salt (Charge Neutralization Only)
 ```python
-from gatewizard.core.system_builder import SystemBuilder
+from gatewizard.core.builder import Builder
 
-builder = SystemBuilder()
+builder = Builder()
 
 # Neutralize system charges only (no extra salt)
 success, message, job_dir = builder.prepare_system(
@@ -730,9 +739,9 @@ from pathlib import Path
 import time
 
 # Start a system preparation (runs in background)
-from gatewizard.core.system_builder import SystemBuilder
+from gatewizard.core.builder import Builder
 
-builder = SystemBuilder()
+builder = Builder()
 success, message, job_dir = builder.prepare_system(
     pdb_file="protein_protonated_prepared.pdb",
     working_dir="./systems",
@@ -743,14 +752,14 @@ success, message, job_dir = builder.prepare_system(
 
 if success:
     print(f"✓ Job started: {job_dir}")
-    
+
     # Monitor progress in real-time
     monitor = JobMonitor(working_directory=Path("./systems"))
-    
+
     while True:
         monitor.scan_for_jobs(force=True)
         active_jobs = monitor.get_active_jobs()
-        
+
         if not active_jobs:
             # Job completed
             completed = monitor.get_completed_jobs()
@@ -761,12 +770,12 @@ if success:
                         print(f"  Total time: {job_info.elapsed_time:.1f}s")
                         break
             break
-        
+
         # Show progress
         for job_id, job_info in active_jobs.items():
             if str(job_dir) in job_id:
                 print(f"\rProgress: {job_info.progress:.1f}% - {job_info.current_step}", end="", flush=True)
-        
+
         time.sleep(2)  # Check every 2 seconds
 ```
 
@@ -794,7 +803,7 @@ for job_id, job_info in active_jobs.items():
     print(f"   Progress: {job_info.progress:.1f}%")
     print(f"   Current: {job_info.current_step}")
     print(f"   Runtime: {job_info.elapsed_time:.0f}s")
-    
+
     if job_info.steps_completed:
         print(f"   Completed steps:")
         for step in job_info.steps_completed:

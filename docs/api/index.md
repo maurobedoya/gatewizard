@@ -26,7 +26,7 @@ Module for building and preparing molecular dynamics simulation systems.
 - Integration with CHARMM-GUI
 - Membrane protein system preparation
 
-**Main Classes:** `SystemBuilder`
+**Main Classes:** `Builder`
 
 ---
 

@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-System Builder Example 06: README
+Builder Example 06: README
 
-This README provides an overview of the system builder examples.
+This README provides an overview of the builder examples.
 """
 
-CONTENT = """# System Builder Examples
+CONTENT = """# Builder Examples
 
 This directory contains example scripts demonstrating the usage of the
-GateWizard System Builder module for preparing membrane protein systems.
+GateWizard Builder module for preparing membrane protein systems.
 
 ## Overview
 
-The System Builder module provides tools for:
+The Builder module provides tools for:
 - Building membrane protein systems with lipid bilayers
 - Custom lipid composition (symmetric and asymmetric)
 - Force field selection and validation
@@ -22,10 +22,10 @@ The System Builder module provides tools for:
 ## Examples
 
 All examples correspond directly to code examples in the API documentation
-(`docs/api/system-builder.md`).
+(`docs/api/builder.md`).
 
 ### Basic API (01-06)
-- **Example 01**: SystemBuilder constructor - Basic initialization
+- **Example 01**: Builder constructor - Basic initialization
 - **Example 02**: set_configuration() - Custom configuration
 - **Example 03**: Available water models - ForceFieldManager queries
 - **Example 04**: Available lipid models - ForceFieldManager queries
@@ -43,6 +43,17 @@ All examples correspond directly to code examples in the API documentation
 - **Example 12**: Input validation using validate_system_inputs()
 - **Example 13**: Force field validation and recommendations
 
+### Ligand Parametrization (19-24)
+- **Example 19**: Detect non-standard (ligand) residues in a PDB file
+- **Example 20**: Extract ligand PDB files from a multi-ligand PDB
+- **Example 21**: Build packmol-memgen / tleap command-line arguments from parametrized ligand data
+- **Example 22**: Parametrize all detected ligands (antechamber + parmchk2 + tleap)
+- **Example 23**: Full membrane system with ligand parametrization
+- **Example 24**: Generate 2D structure images of ligands with RDKit
+
+### Advanced Workflow (25)
+- **Example 25**: Blocking (synchronous) preparation with `wait=True` and `wait_for_completion()`
+
 ## Requirements
 
 - packmol-memgen (for system building)
@@ -57,21 +68,21 @@ Examples 06-11 require packmol-memgen and oriented PDB files.
 Run any example script directly:
 
 ```bash
-python system_builder_example_01.py
-python system_builder_example_02.py
+python builder_example_01.py
+python builder_example_02.py
 # ... etc
 ```
 
 Or use pytest to run all examples as tests:
 
 ```bash
-pytest ../test_system_builder.py::TestSystemBuilderExamples -v
+pytest ../test_builder.py::TestBuilderExamples -v
 ```
 
 ## Example Descriptions
 
-### Example 01: SystemBuilder Constructor
-Demonstrates basic SystemBuilder initialization and checking default configuration.
+### Example 01: Builder Constructor
+Demonstrates basic Builder initialization and checking default configuration.
 From: Constructor section in documentation.
 
 ### Example 02: set_configuration()
@@ -114,19 +125,27 @@ From: validate_system_inputs() method documentation.
 Demonstrates force field combination validation and recommendations.
 From: Tips and Best Practices section in documentation.
 
+### Example 19-24: Ligand Parametrization
+Detection, extraction, parametrization, command building, and 2D imaging
+of non-standard ligand residues using AMBER/GAFF2 and RDKit.
+
+### Example 25: Blocking Preparation
+Demonstrates `wait=True` and `wait_for_completion()` for synchronous
+preparation — useful for scripting multiple sequential systems.
+
 ## Notes
 
 - Examples 06-11 show the API usage but require actual PDB files to execute
 - Each example includes commented-out executable code
-- All examples match the code shown in `docs/api/system-builder.md`
+- All examples match the code shown in `docs/api/builder.md`
 - Examples are designed for both learning and testing
 
 ## See Also
 
-- [System Builder API Documentation](../../docs/api/system-builder.md)
+- [Builder API Documentation](../../docs/api/builder.md)
 - [User Guide](../../docs/user-guide.md#prepare-tab-system-building)
 - [Complete Workflow Example](../../examples/complete_workflow.py)
-- [Test Suite](../test_system_builder.py)
+- [Test Suite](../test_builder.py)
 """
 
 def main():

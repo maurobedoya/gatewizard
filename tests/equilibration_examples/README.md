@@ -543,7 +543,7 @@ python equilibration_example_02_basic.py
 
 - [Equilibration API Documentation](../../docs/api/equilibration.md)
 
-- [System Builder](../../docs/api/system-builder.md)# Run three-stage protocol
+- [Builder](../../docs/api/builder.md)# Run three-stage protocol
 
 
 python equilibration_example_03_three_stage.py    stage_params_list=[{...}, {...}],
@@ -682,7 +682,7 @@ result = manager.setup_namd_equilibration(    stage_params_list=[{...}, {...}],#
 
 - [Equilibration API Documentation](../../docs/api/equilibration.md)See the individual examples for complete working code.)
 
-- [System Builder Module](../../docs/api/system-builder.md)
+- [Builder Module](../../docs/api/builder.md)
 
 
 # Ready to run!
