@@ -480,4 +480,62 @@ def create_directory_robust(directory_path: Union[str, Path], max_retries: int =
                 raise
     
     # If we get here, all retries failed
+
+
+def get_clean_env() -> dict:
+    """
+    Return a copy of ``os.environ`` with ``LD_LIBRARY_PATH`` sanitised.
+
+    When multiple conda environments are activated (or stacked), libraries
+    from foreign environments can leak into ``LD_LIBRARY_PATH`` and break
+    compiled tools such as ``antechamber`` / ``sqm`` / ``tleap``.
+
+    This helper keeps only the paths that belong to the **current** conda
+    environment (``CONDA_PREFIX``) or to system directories (``/usr/lib``,
+    ``/lib``), stripping everything else.
+    """
+    env = os.environ.copy()
+    conda_prefix = env.get("CONDA_PREFIX", "")
+    ld_path = env.get("LD_LIBRARY_PATH", "")
+
+    if not ld_path:
+        return env
+
+    clean_parts: list[str] = []
+    for p in ld_path.split(os.pathsep):
+        p = p.strip()
+        if not p:
+            continue
+        # Keep paths from the active conda env
+        if conda_prefix and p.startswith(conda_prefix):
+            clean_parts.append(p)
+            continue
+        # Keep system library paths
+        if p.startswith(("/usr/lib", "/lib", "/usr/local/lib")):
+            clean_parts.append(p)
+            continue
+        # Drop everything else (other conda envs, etc.)
+
+    env["LD_LIBRARY_PATH"] = os.pathsep.join(clean_parts)
+    return env
+
+
+def get_clean_env_shell_snippet() -> str:
+    """
+    Return a bash snippet that sanitises ``LD_LIBRARY_PATH`` at the top of
+    a generated shell script.  Insert this **before** any AmberTools command.
+    """
+    return r'''
+# --- Sanitise LD_LIBRARY_PATH (drop foreign conda envs) ---
+if [ -n "$CONDA_PREFIX" ] && [ -n "$LD_LIBRARY_PATH" ]; then
+    _clean_ldp=""
+    IFS=':' read -ra _parts <<< "$LD_LIBRARY_PATH"
+    for _p in "${_parts[@]}"; do
+        case "$_p" in
+            "$CONDA_PREFIX"/*|/usr/lib*|/lib*|/usr/local/lib*) _clean_ldp="${_clean_ldp:+$_clean_ldp:}$_p" ;;
+        esac
+    done
+    export LD_LIBRARY_PATH="$_clean_ldp"
+fi
+'''
     raise OSError(f"Failed to create directory after {max_retries + 1} attempts: {directory_path}")

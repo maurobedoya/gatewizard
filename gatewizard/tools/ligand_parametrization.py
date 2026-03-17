@@ -29,6 +29,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 
 from gatewizard.utils.logger import get_logger
+from gatewizard.utils.helpers import get_clean_env
 
 logger = get_logger(__name__)
 
@@ -340,6 +341,7 @@ def parametrize_ligand(
             text=True,
             cwd=str(out_dir),
             timeout=600,  # 10 min timeout
+            env=get_clean_env(),
         )
 
         # Save log
@@ -378,6 +380,7 @@ def parametrize_ligand(
             text=True,
             cwd=str(out_dir),
             timeout=120,
+            env=get_clean_env(),
         )
 
         with open(log_dir / "parmchk2.log", 'w') as f:
@@ -420,6 +423,7 @@ quit
             text=True,
             cwd=str(out_dir),
             timeout=120,
+            env=get_clean_env(),
         )
 
         with open(log_dir / "tleap.log", 'w') as f:

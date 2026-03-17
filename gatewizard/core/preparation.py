@@ -15,6 +15,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
 
 from gatewizard.utils.logger import get_logger
+from gatewizard.utils.helpers import get_clean_env
 
 logger = get_logger(__name__)
 
@@ -108,7 +109,8 @@ class PreparationManager:
                 check=True, 
                 capture_output=True, 
                 text=True,
-                cwd=str(output_directory)
+                cwd=str(output_directory),
+                env=get_clean_env()
             )
             
             logger.info("Propka executed successfully")
@@ -715,7 +717,8 @@ class PreparationManager:
                 cmd,
                 capture_output=True,
                 text=True,
-                check=True
+                check=True,
+                env=get_clean_env()
             )
             
             logger.info(f"pdb4amber completed successfully")
@@ -892,7 +895,7 @@ def run_pdb4amber(
     
     try:
         # Set environment variables if needed
-        env = os.environ.copy()
+        env = get_clean_env()
         if env_path:
             env["PATH"] = f"{env_path}/bin:{env.get('PATH', '')}"
         

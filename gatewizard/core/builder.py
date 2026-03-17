@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 
 from gatewizard.utils.logger import get_logger
+from gatewizard.utils.helpers import get_clean_env, get_clean_env_shell_snippet
 from gatewizard.tools.force_fields import ForceFieldManager
 from gatewizard.tools.validators import SystemValidator
 from gatewizard.tools.ligand_parametrization import (
@@ -371,7 +372,7 @@ class Builder:
     #
     # The bilayer*_lipid.pdb file from Stage 1 provides essential CRYST1 box information
     # This workflow produces more reliable .prmtop/.inpcrd files for MD simulations
-
+{get_clean_env_shell_snippet()}
     # Save PID for tracking
     echo $$ > "{job_dir}/process.pid"
 
@@ -891,6 +892,7 @@ EOF
                         [git_bash, str(script_path)],
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
+                        env=get_clean_env(),
                         creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
                     )
                 else:
@@ -899,6 +901,7 @@ EOF
                         ['wsl', 'bash', str(script_path)],
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
+                        env=get_clean_env(),
                         creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
                     )
             else:
@@ -907,6 +910,7 @@ EOF
                     ['bash', str(script_path)],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
+                    env=get_clean_env(),
                     start_new_session=True
                 )
             
@@ -978,7 +982,8 @@ EOF
                 cmd,
                 check=True,
                 capture_output=True,
-                text=True
+                text=True,
+                env=get_clean_env(),
             )
             
             if Path(output_pdb).exists():
@@ -1019,7 +1024,8 @@ EOF
                 cmd,
                 check=True,
                 capture_output=True,
-                text=True
+                text=True,
+                env=get_clean_env(),
             )
             
             # Check if output files were created
