@@ -912,8 +912,17 @@ def build_tleap_ligand_lines(
 
 
 def _write_status(status_file: Path, status: Dict[str, Any]) -> None:
-    """Write status atomically."""
+    """Write status file, with fallback for cloud-sync locked files (Dropbox, etc.)."""
     tmp = str(status_file) + '.tmp'
-    with open(tmp, 'w') as f:
-        json.dump(status, f, indent=2)
-    os.replace(tmp, str(status_file))
+    try:
+        with open(tmp, 'w') as f:
+            json.dump(status, f, indent=2)
+        os.replace(tmp, str(status_file))
+    except PermissionError:
+        # Fallback: write directly (cloud sync may lock the temp rename)
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        with open(str(status_file), 'w') as f:
+            json.dump(status, f, indent=2)
