@@ -227,6 +227,22 @@ class TestBuilderExamples:
         """Create temporary directory for test outputs."""
         with tempfile.TemporaryDirectory() as tmpdir:
             yield Path(tmpdir)
+
+    @pytest.fixture(autouse=True)
+    def cleanup_example_outputs(self):
+        """Clean up output directories created by example scripts."""
+        yield
+        # Remove systems/ directory if any example created it
+        systems_dir = Path("./systems")
+        if systems_dir.exists():
+            # Retry a few times to handle cloud-sync (Dropbox) file locks
+            for attempt in range(3):
+                try:
+                    shutil.rmtree(systems_dir)
+                    break
+                except PermissionError:
+                    import time as _time
+                    _time.sleep(1)
     
     def test_example_01_basic_configuration(self, temp_dir):
         """Test Example 01: Basic configuration (Constructor)."""
@@ -449,7 +465,7 @@ class TestBuilderExamples:
         else:
             print(f"\n🎉 All {len(passed_examples)} examples passed!")
     
-    @pytest.mark.parametrize("example_num", [f"{i:02d}" for i in range(1, 18)])
+    @pytest.mark.parametrize("example_num", [f"{i:02d}" for i in range(1, 26)])
     def test_individual_examples(self, example_num, temp_dir):
         """Test each example individually for better pytest reporting."""
         examples_dir = Path(__file__).parent / "builder_examples"

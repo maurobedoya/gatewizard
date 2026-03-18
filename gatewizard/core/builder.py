@@ -112,7 +112,16 @@ class Builder:
             upper_lipids: List of lipids for upper leaflet
             lower_lipids: List of lipids for lower leaflet
             lipid_ratios: Lipid ratios string
-            **kwargs: Additional configuration parameters
+            **kwargs: Additional configuration parameters.  Notable extras:
+
+                * **wait** (*bool*) – Block until the job finishes or errors
+                  (default ``False``).
+                * **wait_timeout** (*float | None*) – Max seconds to wait
+                  (default ``None`` = unlimited).
+                * **wait_poll_interval** (*float*) – Seconds between status
+                  checks when *wait=True* (default ``5.0``).
+                * **wait_verbose** (*bool*) – Print progress while waiting
+                  (default ``True``).
             
         Returns:
             Tuple of (success, message, job_directory)
@@ -152,6 +161,20 @@ class Builder:
             success = self._launch_preparation(cmd, job_dir, config)
             
             if success:
+                # If wait=True, block until the job finishes
+                wait = config.get('wait', False)
+                if wait:
+                    wait_timeout = config.get('wait_timeout', None)
+                    wait_poll = config.get('wait_poll_interval', 5.0)
+                    wait_verbose = config.get('wait_verbose', True)
+                    completed, wait_msg = self.wait_for_completion(
+                        job_dir,
+                        poll_interval=wait_poll,
+                        timeout=wait_timeout,
+                        verbose=wait_verbose,
+                    )
+                    return completed, wait_msg, job_dir
+
                 return True, "System preparation started successfully", job_dir
             else:
                 return False, "Failed to start system preparation", job_dir
@@ -160,6 +183,125 @@ class Builder:
             logger.error(f"Error preparing system: {e}", exc_info=True)
             return False, f"Error preparing system: {str(e)}", None
     
+    def wait_for_completion(
+        self,
+        job_dir,
+        poll_interval: float = 5.0,
+        timeout: Optional[float] = None,
+        verbose: bool = True,
+    ) -> Tuple[bool, str]:
+        """
+        Block until a preparation job completes or fails.
+
+        This method polls the job's ``status.json`` file and optionally
+        verifies the PID is still alive.  It is useful for scripting
+        multiple sequential preparations.
+
+        Args:
+            job_dir: Path to the job directory (string or Path).
+            poll_interval: Seconds between status checks (default 5).
+            timeout: Maximum seconds to wait.  ``None`` means no limit.
+            verbose: Print elapsed-time progress to stdout.
+
+        Returns:
+            Tuple of (success, message).
+        """
+        job_dir = Path(job_dir)
+        status_file = job_dir / "status.json"
+        pid_file = job_dir / "process.pid"
+        start_wait = time.time()
+
+        if verbose:
+            print(f"Waiting for job to complete: {job_dir.name}")
+
+        while True:
+            # --- timeout check ---
+            elapsed = time.time() - start_wait
+            if timeout is not None and elapsed > timeout:
+                msg = f"Timeout after {timeout:.0f}s waiting for {job_dir.name}"
+                if verbose:
+                    print(f"\n{msg}")
+                return False, msg
+
+            # --- read status.json ---
+            step_label = ""
+            if status_file.exists():
+                try:
+                    with open(status_file, 'r', encoding='utf-8') as f:
+                        content = f.read().strip()
+                    if content:
+                        status_data = json.loads(content)
+                        job_status = status_data.get("status", "unknown")
+                        step_label = status_data.get("current_step", "")
+
+                        if job_status == "completed":
+                            msg = (
+                                f"Job completed successfully: {job_dir.name} "
+                                f"({elapsed:.1f}s)"
+                            )
+                            if verbose:
+                                print(f"\n{msg}")
+                            return True, msg
+
+                        if job_status == "error":
+                            error = status_data.get("error", "Unknown error")
+                            msg = f"Job failed: {error}"
+                            if verbose:
+                                print(f"\n{msg}")
+                            return False, msg
+                except (json.JSONDecodeError, IOError):
+                    pass  # file may be mid-write
+
+            # --- check PID still alive ---
+            if pid_file.exists():
+                try:
+                    pid = int(pid_file.read_text().strip())
+                    os.kill(pid, 0)  # signal 0 = existence check
+                except (ProcessLookupError, PermissionError):
+                    # Process gone — give status.json one last chance to update
+                    time.sleep(2)
+                    if status_file.exists():
+                        try:
+                            with open(status_file, 'r', encoding='utf-8') as f:
+                                status_data = json.loads(f.read().strip())
+                            if status_data.get("status") == "completed":
+                                msg = (
+                                    f"Job completed successfully: {job_dir.name} "
+                                    f"({elapsed:.1f}s)"
+                                )
+                                if verbose:
+                                    print(f"\n{msg}")
+                                return True, msg
+                            if status_data.get("status") == "error":
+                                error = status_data.get("error", "Unknown error")
+                                msg = f"Job failed: {error}"
+                                if verbose:
+                                    print(f"\n{msg}")
+                                return False, msg
+                        except (json.JSONDecodeError, IOError):
+                            pass
+                    msg = (
+                        f"Process terminated without updating status for "
+                        f"{job_dir.name}"
+                    )
+                    if verbose:
+                        print(f"\n{msg}")
+                    return False, msg
+                except (ValueError, IOError):
+                    pass  # PID file not readable yet
+
+            # --- progress line ---
+            if verbose:
+                mins, secs = divmod(int(elapsed), 60)
+                step_str = f" [step {step_label}]" if step_label else ""
+                print(
+                    f"\r  Elapsed: {mins:02d}:{secs:02d}{step_str}   ",
+                    end="",
+                    flush=True,
+                )
+
+            time.sleep(poll_interval)
+
     def _create_job_directory(self, pdb_file: str, working_dir: str, custom_output_name: Optional[str] = None) -> Path:
         """Create unique job directory."""
         work_dir = Path(working_dir).resolve()
