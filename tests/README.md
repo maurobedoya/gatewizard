@@ -61,14 +61,14 @@ python -m pytest tests/ --cov=gatewizard --cov-report=html
 ### Run Specific Test Files
 
 ```bash
-# Run builder tests (includes all 17 examples)
+# Run builder tests (includes all examples)
 python -m pytest tests/test_builder.py -v
 
 # Run only example tests
-python -m pytest tests/test_builder.py::TestSystemBuilderExamples -v
+python -m pytest tests/test_builder.py::TestBuilderExamples -v
 
 # Run specific example (e.g., Example 08)
-python -m pytest tests/test_builder.py::TestSystemBuilderExamples::test_individual_examples[08] -v
+python -m pytest tests/test_builder.py::TestBuilderExamples::test_individual_examples[08] -v
 
 # Run examples manually (outside pytest)
 cd tests && python test_builder.py
