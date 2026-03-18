@@ -62,6 +62,9 @@ filterwarnings = [
     "ignore:Unit cell dimensions not found:UserWarning:MDAnalysis.coordinates.PDB",
     "ignore:1 A\\^3 CRYST1 record:UserWarning:MDAnalysis.coordinates.PDB",
     "ignore:Found no information for attr:UserWarning:MDAnalysis.coordinates.PDB",
+    "ignore:Element information is missing:UserWarning:MDAnalysis.topology.PDBParser",
+    # Ignore MDAnalysis DCDReader deprecation (will be resolved in MDAnalysis 3.0)
+    "ignore:DCDReader currently makes independent timesteps:DeprecationWarning:MDAnalysis.coordinates.DCD",
     # Ignore numpy compatibility warning from parmed
     "ignore:`np.compat`:DeprecationWarning:parmed.utils.netcdf",
     # Ignore matplotlib deprecation warning (will be fixed in future matplotlib update)
