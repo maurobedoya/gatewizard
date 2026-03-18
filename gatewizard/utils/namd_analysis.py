@@ -1762,7 +1762,9 @@ class TrajectoryAnalyzer:
         if ylim:
             ax.set_ylim(ylim)
         
-        ax.legend()
+        handles, labels = ax.get_legend_handles_labels()
+        if handles:
+            ax.legend()
         plt.tight_layout()
         
         if save:
@@ -2180,7 +2182,9 @@ class TrajectoryAnalyzer:
         if ylim:
             ax.set_ylim(ylim)
         
-        ax.legend()
+        handles, labels = ax.get_legend_handles_labels()
+        if handles:
+            ax.legend()
         plt.tight_layout()
         
         if save:
