@@ -518,8 +518,21 @@ class ProgressTracker(ctk.CTkFrame):
                 os.startfile(job_dir)
             elif sys.platform == "darwin":  # macOS
                 subprocess.run(["open", job_dir])
-            else:  # Linux
-                subprocess.run(["xdg-open", job_dir])
+            else:  # Linux / WSL
+                is_wsl = False
+                try:
+                    with open("/proc/version", "r") as f:
+                        is_wsl = "microsoft" in f.read().lower()
+                except (FileNotFoundError, PermissionError):
+                    pass
+                
+                if is_wsl:
+                    win_path = subprocess.check_output(
+                        ["wslpath", "-w", str(job_dir)]
+                    ).decode().strip()
+                    subprocess.Popen(["explorer.exe", win_path])
+                else:
+                    subprocess.run(["xdg-open", job_dir])
                 
         except Exception as e:
             logger.error(f"Error opening job folder: {e}")
@@ -857,8 +870,21 @@ Completed Steps:
                 os.startfile(self.job_info.job_dir)
             elif sys.platform == "darwin":  # macOS
                 subprocess.run(["open", self.job_info.job_dir])
-            else:  # Linux
-                subprocess.run(["xdg-open", self.job_info.job_dir])
+            else:  # Linux / WSL
+                is_wsl = False
+                try:
+                    with open("/proc/version", "r") as f:
+                        is_wsl = "microsoft" in f.read().lower()
+                except (FileNotFoundError, PermissionError):
+                    pass
+                
+                if is_wsl:
+                    win_path = subprocess.check_output(
+                        ["wslpath", "-w", str(self.job_info.job_dir)]
+                    ).decode().strip()
+                    subprocess.Popen(["explorer.exe", win_path])
+                else:
+                    subprocess.run(["xdg-open", self.job_info.job_dir])
                 
         except Exception as e:
             logger.error(f"Error opening job folder: {e}")
