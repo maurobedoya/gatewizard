@@ -1135,6 +1135,693 @@ cat systems/popc_membrane/status.json
 
 ---
 
+## Ligand Parametrization
+
+Module for detecting, extracting, and parametrizing non-standard (ligand) residues found in PDB files.
+Uses the AMBER/GAFF2 workflow (antechamber → parmchk2 → tleap) to generate force field parameters
+that integrate with the Builder's packmol-memgen and final tleap steps.
+
+### Import
+
+```python
+from gatewizard.tools.ligand_parametrization import (
+    detect_ligands,
+    extract_ligand_pdb,
+    parametrize_ligand,
+    parametrize_all_ligands,
+    get_ligand_2d_image,
+    get_ligand_2d_image_from_pdb_lines,
+    build_ligand_param_args,
+    build_tleap_ligand_lines,
+    LigandInfo,
+    LigandParametrizationError,
+    STANDARD_RESIDUES,
+    CHARGE_METHODS,
+)
+```
+
+### Class: LigandInfo
+
+Information container for a detected ligand residue.
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `name` | `str` | 3-letter residue name (e.g., `"AAA"`) |
+| `chain` | `str` | Chain identifier |
+| `res_id` | `int` | Residue sequence number |
+| `num_atoms` | `int` | Number of atoms in the ligand |
+| `elements` | `Dict[str, int]` | Element counts (e.g., `{'C': 9, 'H': 10, 'O': 1}`) |
+| `pdb_lines` | `List[str]` | Raw HETATM lines from the PDB file |
+| `formula` | `str` (property) | Molecular formula string (e.g., `"C9H10O"`) |
+
+**Methods:**
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `to_dict()` | `Dict[str, Any]` | Convert to serializable dictionary |
+
+### Constants
+
+| Constant | Type | Description |
+|----------|------|-------------|
+| `STANDARD_RESIDUES` | `set` | Residue names excluded from detection (amino acids, water, ions, lipids, capping groups) |
+| `CHARGE_METHODS` | `dict` | Antechamber charge methods: `'bcc'` (AM1-BCC, recommended), `'resp'`, `'cm2'`, `'mul'`, `'rc'`, `'esp'`, `'gas'` |
+| `DEFAULT_CHARGE_METHOD` | `str` | `'bcc'` |
+
+### Function: detect_ligands()
+
+Detect non-standard (ligand) residues in a PDB file by scanning HETATM records.
+
+```python
+detect_ligands(pdb_file: str) -> List[LigandInfo]
+```
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `pdb_file` | `str` | Path to the PDB file to analyze |
+
+**Returns:** `List[LigandInfo]` — one entry per unique ligand residue name
+
+**Raises:** `LigandParametrizationError` if the file cannot be read
+
+### Example 19: Detect Ligands
+
+```python
+"""
+Builder Example 19: Detect ligands in a PDB file
+
+Demonstrates how to detect non-standard residues (ligands)
+in a PDB file using the ligand parametrization tools.
+"""
+
+from gatewizard.tools.ligand_parametrization import detect_ligands
+
+# Detect ligands in a PDB file with two ligands (AAA and BBB)
+pdb_file = "tests/2MVJ_2ligs.pdb"
+ligands = detect_ligands(pdb_file)
+
+print(f"Detected {len(ligands)} ligand(s) in {pdb_file}:")
+print(f"{'='*60}")
+
+for lig in ligands:
+    print(f"\nLigand: {lig.name}")
+    print(f"  Chain: {lig.chain}")
+    print(f"  Residue ID: {lig.res_id}")
+    print(f"  Number of atoms: {lig.num_atoms}")
+    print(f"  Molecular formula: {lig.formula}")
+    print(f"  Elements: {lig.elements}")
+    print(f"  As dict: {lig.to_dict()}")
+```
+
+---
+
+### Function: extract_ligand_pdb()
+
+Extract a single ligand from a PDB file into its own file.
+
+```python
+extract_ligand_pdb(pdb_file: str, ligand_name: str, output_dir: str) -> str
+```
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `pdb_file` | `str` | Path to the source PDB file |
+| `ligand_name` | `str` | 3-letter residue name of the ligand |
+| `output_dir` | `str` | Directory to write the extracted PDB file |
+
+**Returns:** `str` — path to the extracted PDB file (`output_dir/LIGAND.pdb`)
+
+**Raises:** `LigandParametrizationError` if the ligand is not found or extraction fails
+
+### Example 20: Extract a Ligand
+
+```python
+"""
+Builder Example 20: Extract a ligand from a PDB file
+
+Demonstrates how to extract a specific ligand into its own PDB file
+for individual parametrization.
+"""
+
+from pathlib import Path
+from gatewizard.tools.ligand_parametrization import detect_ligands, extract_ligand_pdb
+
+pdb_file = "tests/2MVJ_2ligs.pdb"
+output_dir = "./systems/ligand_extraction"
+
+# First detect ligands
+ligands = detect_ligands(pdb_file)
+print(f"Detected ligands: {[l.name for l in ligands]}")
+
+# Extract each ligand to its own subdirectory
+for lig in ligands:
+    lig_dir = str(Path(output_dir) / lig.name)
+    extracted_pdb = extract_ligand_pdb(pdb_file, lig.name, lig_dir)
+
+    # Verify extraction
+    with open(extracted_pdb) as f:
+        lines = [l for l in f if l.startswith("HETATM")]
+
+    print(f"\nExtracted {lig.name}:")
+    print(f"  Output: {extracted_pdb}")
+    print(f"  Atoms: {len(lines)}")
+    print(f"  First line: {lines[0].strip()[:60]}...")
+
+print(f"\nAll extracted ligands saved in: {output_dir}")
+```
+
+---
+
+### Function: parametrize_ligand()
+
+Parametrize a single ligand using the AMBER/GAFF2 workflow (antechamber → parmchk2 → tleap).
+
+```python
+parametrize_ligand(
+    ligand_pdb: str,
+    ligand_name: str,
+    output_dir: str,
+    charge: int = 0,
+    charge_method: str = 'bcc',
+    multiplicity: int = 1,
+) -> Dict[str, str]
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `ligand_pdb` | `str` | — | Path to the ligand PDB file |
+| `ligand_name` | `str` | — | 3-letter residue name (must match PDB) |
+| `output_dir` | `str` | — | Directory for output files |
+| `charge` | `int` | `0` | Net charge of the ligand |
+| `charge_method` | `str` | `'bcc'` | Charge method (see `CHARGE_METHODS`) |
+| `multiplicity` | `int` | `1` | Spin multiplicity |
+
+**Returns:** Dictionary with paths to generated files:
+
+| Key | Description |
+|-----|-------------|
+| `'mol2'` | Typed MOL2 file (GAFF2 atom types + charges) |
+| `'frcmod'` | Force field modification file (missing parameters) |
+| `'lib'` | Residue library file for tleap |
+| `'prmtop'` | AMBER topology file |
+| `'inpcrd'` | AMBER coordinate file |
+
+**Raises:** `LigandParametrizationError` if any step fails
+
+!!! warning "Critical: Variable Name Must Match Residue Name"
+    The tleap variable name **must** match the residue name in the PDB.
+    For example, `AAA = loadmol2 AAA.mol2` — using a generic name like
+    `mol = loadmol2 AAA.mol2` will cause `saveoff` to store the unit under the
+    wrong name and tleap will fail to recognize the residue when loading the full system PDB.
+
+---
+
+### Function: parametrize_all_ligands()
+
+Detect and parametrize all ligands in a PDB file in one call.
+
+```python
+parametrize_all_ligands(
+    pdb_file: str,
+    output_dir: str,
+    charges: Optional[Dict[str, int]] = None,
+    charge_method: str = 'bcc',
+) -> Dict[str, Dict[str, str]]
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `pdb_file` | `str` | — | PDB file containing ligands |
+| `output_dir` | `str` | — | Base directory (each ligand gets a subdirectory) |
+| `charges` | `Dict[str, int]` or `None` | `None` | Map of ligand name → net charge (default: 0 for all) |
+| `charge_method` | `str` | `'bcc'` | Charge method for antechamber |
+
+**Returns:** `Dict[str, Dict[str, str]]` — maps ligand names to their file paths (same structure as `parametrize_ligand()`)
+
+### Example 22: Parametrize All Ligands
+
+```python
+"""
+Builder Example 22: Parametrize all ligands in a PDB file
+
+Demonstrates the full ligand parametrization workflow:
+1. Detect ligands from PDB
+2. Extract each ligand
+3. Run antechamber + parmchk2 + tleap for each
+4. Collect .frcmod and .lib files
+
+NOTE: This example requires AmberTools (antechamber, parmchk2, tleap)
+to be installed and accessible in the PATH.
+"""
+
+from pathlib import Path
+from gatewizard.tools.ligand_parametrization import (
+    parametrize_all_ligands,
+    build_ligand_param_args,
+    build_tleap_ligand_lines,
+)
+
+pdb_file = "tests/2MVJ_2ligs.pdb"
+output_dir = "./systems/ligand_params"
+
+# Set charges for each ligand (default is 0 if not specified)
+charges = {
+    'AAA': 0,
+    'BBB': 0,
+}
+
+print(f"Output directory: {output_dir}")
+
+# Parametrize all ligands
+results = parametrize_all_ligands(
+    pdb_file=pdb_file,
+    output_dir=output_dir,
+    charges=charges,
+    charge_method='bcc',  # AM1-BCC charges (recommended)
+)
+
+print(f"\nParametrized {len(results)} ligand(s):")
+for name, files in results.items():
+    print(f"\n  {name}:")
+    for file_type, file_path in files.items():
+        exists = Path(file_path).exists()
+        print(f"    {file_type}: {file_path} ({'exists' if exists else 'MISSING'})")
+
+# Now these can be passed to Builder.prepare_system()
+print("\n\npackmol-memgen arguments:")
+pmm_args = build_ligand_param_args(results)
+print(f"  {' '.join(pmm_args)}")
+
+print("\ntleap ligand lines:")
+tleap_lines = build_tleap_ligand_lines(results)
+print(tleap_lines)
+
+print(f"\nAll parameter files saved in: {output_dir}")
+```
+
+---
+
+### Function: get_ligand_2d_image()
+
+Generate a publication-quality 2D molecular structure image using RDKit.
+
+```python
+get_ligand_2d_image(
+    ligand_pdb_or_mol2: str,
+    output_image: str,
+    width: int = 400,
+    height: int = 300,
+    *,
+    remove_nonpolar_h: bool = True,
+    remove_all_h: bool = False,
+    dpi: int = 150,
+    bond_line_width: float = 2.5,
+    atom_label_font_size: int = 0,
+    background_color: tuple = (0.11, 0.11, 0.11, 1.0),
+    padding: float = 0.15,
+    kekulize: bool = True,
+    wedge_bonds: bool = True,
+    atom_palette: dict | None = None,
+    highlight_atoms: list[int] | None = None,
+    highlight_color: tuple = (1.0, 0.8, 0.0, 0.3),
+    transparent_background: bool = False,
+) -> Optional[str]
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `ligand_pdb_or_mol2` | `str` | — | Path to PDB or MOL2 file |
+| `output_image` | `str` | — | Path for the output PNG |
+| `width` | `int` | `400` | Image width in pixels (before DPI scaling) |
+| `height` | `int` | `300` | Image height in pixels (before DPI scaling) |
+| `remove_nonpolar_h` | `bool` | `True` | Remove non-polar hydrogens (C-H) for cleaner figures while keeping polar H (O-H, N-H, etc.) |
+| `remove_all_h` | `bool` | `False` | Remove **all** explicit hydrogens. Overrides `remove_nonpolar_h` |
+| `dpi` | `int` | `150` | DPI multiplier. Use `300` for print-quality images |
+| `bond_line_width` | `float` | `2.5` | Thickness of bond lines |
+| `atom_label_font_size` | `int` | `0` | Font size for atom labels (0 = auto) |
+| `background_color` | `tuple` | `(0.11, 0.11, 0.11, 1.0)` | RGBA background colour (0–1 range) |
+| `padding` | `float` | `0.15` | Fractional padding around the molecule (0–1) |
+| `kekulize` | `bool` | `True` | Draw aromatic bonds as alternating single/double |
+| `wedge_bonds` | `bool` | `True` | Draw stereo wedge/dash bonds |
+| `atom_palette` | `dict` | `None` | Custom `{atomic_number: (r, g, b)}` colour map. Uses built-in dark palette when `None` |
+| `highlight_atoms` | `list[int]` | `None` | 0-based atom indices to highlight |
+| `highlight_color` | `tuple` | `(1.0, 0.8, 0.0, 0.3)` | RGBA colour for highlights |
+| `transparent_background` | `bool` | `False` | Produce a transparent PNG |
+
+**Returns:** Path to the generated PNG image, or `None` if generation failed
+
+**Built-in palettes:**
+
+| Palette | Import | Best for |
+|---------|--------|----------|
+| `_DEFAULT_DARK_PALETTE` | (used automatically) | Dark backgrounds |
+| `LIGHT_PALETTE` | `from gatewizard.tools.ligand_parametrization import LIGHT_PALETTE` | White / light backgrounds |
+
+### Function: get_ligand_2d_image_from_pdb_lines()
+
+Generate a 2D image directly from PDB HETATM lines (no file required).
+All keyword arguments are forwarded to `get_ligand_2d_image`.
+
+```python
+get_ligand_2d_image_from_pdb_lines(
+    pdb_lines: List[str],
+    output_image: str,
+    width: int = 400,
+    height: int = 300,
+    **kwargs,
+) -> Optional[str]
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `pdb_lines` | `List[str]` | — | HETATM lines for the ligand |
+| `output_image` | `str` | — | Path for the output PNG |
+| `width` | `int` | `400` | Image width |
+| `height` | `int` | `300` | Image height |
+| `**kwargs` | | | All keyword options from `get_ligand_2d_image` |
+
+**Returns:** Path to the generated PNG image, or `None` if failed
+
+### Example 24: Generate 2D Structure Images
+
+```python
+"""
+Builder Example 24: Generate 2D structure images of ligands
+
+Demonstrates generating 2D molecular structure images from PDB files
+using RDKit, including options for hydrogen removal, DPI control,
+custom colour palettes, and transparent backgrounds.
+"""
+
+from pathlib import Path
+from gatewizard.tools.ligand_parametrization import (
+    detect_ligands,
+    get_ligand_2d_image_from_pdb_lines,
+    get_ligand_2d_image,
+    extract_ligand_pdb,
+    LIGHT_PALETTE,
+)
+
+pdb_file = "tests/2MVJ_2ligs.pdb"
+output_dir = "./systems/ligand_images"
+Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+# Detect ligands
+ligands = detect_ligands(pdb_file)
+print(f"Detected {len(ligands)} ligands\n")
+
+for lig in ligands:
+    # --- Style 1: Default (dark background, non-polar H removed) --------
+    img = str(Path(output_dir) / f"{lig.name}_default.png")
+    result = get_ligand_2d_image_from_pdb_lines(
+        lig.pdb_lines, img, width=400, height=300,
+        remove_nonpolar_h=True,           # cleaner look (default)
+    )
+    if result:
+        print(f"{lig.name} default : {Path(result).stat().st_size:>6} bytes")
+
+    # --- Style 2: All hydrogens removed ----------------------------------
+    img = str(Path(output_dir) / f"{lig.name}_no_h.png")
+    result = get_ligand_2d_image_from_pdb_lines(
+        lig.pdb_lines, img, width=400, height=300,
+        remove_all_h=True,                # skeleton only
+    )
+    if result:
+        print(f"{lig.name} no-H    : {Path(result).stat().st_size:>6} bytes")
+
+    # --- Style 3: High-DPI for publication (white background) ------------
+    img = str(Path(output_dir) / f"{lig.name}_hires.png")
+    lig_dir = str(Path(output_dir) / lig.name)
+    extracted_pdb = extract_ligand_pdb(pdb_file, lig.name, lig_dir)
+    result = get_ligand_2d_image(
+        extracted_pdb, img,
+        width=800, height=600,
+        dpi=300,                           # high DPI
+        remove_all_h=True,
+        background_color=(1, 1, 1, 1),     # white
+        atom_palette=LIGHT_PALETTE,        # colours for light background
+        bond_line_width=1.5,
+    )
+    if result:
+        print(f"{lig.name} hi-res  : {Path(result).stat().st_size:>6} bytes")
+
+    # --- Style 4: Transparent background ---------------------------------
+    img = str(Path(output_dir) / f"{lig.name}_transparent.png")
+    result = get_ligand_2d_image_from_pdb_lines(
+        lig.pdb_lines, img, width=400, height=300,
+        remove_nonpolar_h=True,
+        transparent_background=True,
+    )
+    if result:
+        print(f"{lig.name} transp. : {Path(result).stat().st_size:>6} bytes")
+
+    # --- Style 5: All hydrogens visible, thicker bonds -------------------
+    img = str(Path(output_dir) / f"{lig.name}_all_h.png")
+    result = get_ligand_2d_image_from_pdb_lines(
+        lig.pdb_lines, img, width=500, height=400,
+        remove_nonpolar_h=False,
+        remove_all_h=False,
+        bond_line_width=3.5,
+        padding=0.2,
+    )
+    if result:
+        print(f"{lig.name} all-H   : {Path(result).stat().st_size:>6} bytes")
+
+    print()
+
+print(f"All images saved in: {output_dir}")
+```
+
+---
+
+### Function: build_ligand_param_args()
+
+Build `--ligand_param` command-line arguments for packmol-memgen.
+
+```python
+build_ligand_param_args(
+    ligand_files: Dict[str, Dict[str, str]]
+) -> List[str]
+```
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `ligand_files` | `Dict[str, Dict[str, str]]` | Ligand name → file paths (as returned by `parametrize_ligand`) |
+
+**Returns:** List of CLI arguments — each ligand produces `['--ligand_param', 'path.frcmod:path.lib']`
+
+!!! info "One Flag Per Ligand"
+    packmol-memgen requires a **separate** `--ligand_param` flag per ligand.
+    Combining multiple ligands into a single flag will not work.
+
+### Function: build_tleap_ligand_lines()
+
+Build tleap input lines to load GAFF2 and ligand parameters. Insert these **before** `loadPDB`.
+
+```python
+build_tleap_ligand_lines(
+    ligand_files: Dict[str, Dict[str, str]]
+) -> str
+```
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `ligand_files` | `Dict[str, Dict[str, str]]` | Ligand name → file paths |
+
+**Returns:** Multi-line string with tleap commands (`source leaprc.gaff2`, `loadamberparams`, `loadoff`)
+
+### Example 21: Build packmol-memgen and tleap Arguments
+
+```python
+"""
+Builder Example 21: Build packmol-memgen and tleap commands with ligand parameters
+
+Demonstrates how to construct the packmol-memgen --ligand_param arguments
+and tleap input lines for systems with ligands.
+"""
+
+from gatewizard.tools.ligand_parametrization import (
+    build_ligand_param_args,
+    build_tleap_ligand_lines,
+)
+
+# Simulated parametrization results (paths to .frcmod and .lib files)
+ligand_files = {
+    'AAA': {
+        'frcmod': 'ligand_params/AAA/AAA.frcmod',
+        'lib': 'ligand_params/AAA/AAA.lib',
+        'mol2': 'ligand_params/AAA/AAA.mol2',
+    },
+    'BBB': {
+        'frcmod': 'ligand_params/BBB/BBB.frcmod',
+        'lib': 'ligand_params/BBB/BBB.lib',
+        'mol2': 'ligand_params/BBB/BBB.mol2',
+    },
+}
+
+# Build packmol-memgen arguments
+# Each ligand gets its own --ligand_param flag (CANNOT combine in one flag)
+pmm_args = build_ligand_param_args(ligand_files)
+print("packmol-memgen arguments:")
+for i in range(0, len(pmm_args), 2):
+    print(f"  {pmm_args[i]} {pmm_args[i+1]}")
+
+print()
+
+# Build tleap input lines
+# These go BEFORE loadPDB in the tleap input
+tleap_lines = build_tleap_ligand_lines(ligand_files)
+print("tleap input lines:")
+print(tleap_lines)
+```
+
+---
+
+### Builder Integration: `ligand_params` Config Key
+
+When ligands are parametrized (either through the GUI or programmatically), the Builder uses the `ligand_params` configuration key to integrate them into the build process.
+
+**Config Structure:**
+
+```python
+config['ligand_params'] = {
+    'AAA': {
+        'frcmod': '/path/to/AAA/AAA.frcmod',
+        'lib': '/path/to/AAA/AAA.lib',
+    },
+    'BBB': {
+        'frcmod': '/path/to/BBB/BBB.frcmod',
+        'lib': '/path/to/BBB/BBB.lib',
+    },
+}
+```
+
+**What happens during build:**
+
+1. **packmol-memgen** receives `--ligand_param frcmod:lib` for each ligand, plus `--gaff2`
+2. **tleap parametrization** loads `source leaprc.gaff2`, then `loadamberparams` and `loadoff` for each ligand before `loadPDB`
+
+### Example 23: Full Membrane System with Ligand Parametrization
+
+```python
+"""
+Builder Example 23: Full membrane system with ligand parametrization
+
+Demonstrates setting up a complete membrane system that includes
+non-standard ligands. The ligand .frcmod/.lib files are passed
+to both packmol-memgen and the final tleap parametrization.
+
+NOTE: This example requires AmberTools and packmol-memgen.
+"""
+
+from gatewizard.core.builder import Builder
+from gatewizard.tools.ligand_parametrization import (
+    detect_ligands,
+    parametrize_all_ligands,
+)
+
+# Create builder
+builder = Builder()
+
+pdb_file = "tests/2MVJ_2ligs.pdb"
+working_dir = "./systems"
+
+# Step 1: Detect and parametrize ligands
+print("Step 1: Detecting ligands...")
+ligands = detect_ligands(pdb_file)
+for lig in ligands:
+    print(f"  Found: {lig.name} ({lig.num_atoms} atoms, {lig.formula})")
+
+print("\nStep 2: Parametrizing ligands...")
+ligand_results = parametrize_all_ligands(
+    pdb_file=pdb_file,
+    output_dir=f"{working_dir}/ligand_params",
+    charges={'AAA': 0, 'BBB': 0},
+    charge_method='bcc',
+)
+
+print(f"  Parametrized: {list(ligand_results.keys())}")
+
+# Step 3: Configure builder with ligand parameters
+builder.set_configuration(
+    water_model='tip3p',
+    protein_ff='ff14SB',
+    lipid_ff='lipid21',
+    preoriented=True,
+    parametrize=True,
+    salt_concentration=0.15,
+    dist_wat=17.5,
+    notprotonate=True,
+    ligand_params=ligand_results,  # Pass parametrized ligand files
+)
+
+print("\nStep 3: Builder configured with ligand parameters")
+print(f"  Ligands in config: {list(builder.config['ligand_params'].keys())}")
+
+# Step 4: Prepare system
+success, message, job_dir = builder.prepare_system(
+    pdb_file=pdb_file,
+    working_dir=working_dir,
+    upper_lipids=['POPC'],
+    lower_lipids=['POPC'],
+    lipid_ratios='1.0//1.0',
+)
+print(f"\nResult: {message}")
+
+# The builder will:
+# 1. Add --ligand_param AAA/AAA.frcmod:AAA/AAA.lib to packmol-memgen
+# 2. Add --ligand_param BBB/BBB.frcmod:BBB/BBB.lib to packmol-memgen
+# 3. Add --gaff2 to packmol-memgen
+# 4. Load ligand .frcmod and .lib in the tleap parametrization step
+print("\nWorkflow complete. The builder will pass ligand params to:")
+print("  - packmol-memgen (--ligand_param flags)")
+print("  - tleap (loadamberparams/loadoff commands)")
+```
+
+### Ligand Parametrization Troubleshooting
+
+**"Antechamber failed":**
+
+- Check that AMBER/AmberTools is installed and in `$PATH`
+- Verify ligand PDB has proper HETATM records
+- Try a different charge method (e.g., `gas` is faster and may work when `bcc` fails)
+- Check `logs/antechamber.log` for detailed error messages
+
+**"No ligands detected":**
+
+- Ligands must use HETATM records, not ATOM
+- Residue names must NOT be in `STANDARD_RESIDUES` set
+- Water (HOH, WAT), ions (NA, CL), and lipids (POPC, etc.) are excluded by design
+
+**"tleap: unknown residue name":**
+
+- The tleap variable name must match the 3-letter residue name exactly
+- Ensure `.lib` file was generated with the correct residue name in `saveoff`
+- Check that `source leaprc.gaff2` is loaded before `loadamberparams`
+
+**"RDKit not available":**
+
+- Install with `conda install -c conda-forge rdkit`
+- RDKit is a required dependency for ligand 2D visualization
+
+---
+
 ## See Also
 
 - [Preparation Module](preparation.md) - Protonation state analysis
