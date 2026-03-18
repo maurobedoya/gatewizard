@@ -708,7 +708,11 @@ def get_ligand_2d_image(
                 import io
                 img = PILImage.open(io.BytesIO(png_data)).convert("RGBA")
                 # Replace background colour pixels with transparent
-                data = img.getdata()
+                # Use get_flattened_data (Pillow >=12) with fallback
+                if hasattr(img, 'get_flattened_data'):
+                    data = img.get_flattened_data()
+                else:
+                    data = img.getdata()
                 bg = tuple(int(c * 255) for c in background_color[:3]) + (255,)
                 new_data = []
                 for item in data:
