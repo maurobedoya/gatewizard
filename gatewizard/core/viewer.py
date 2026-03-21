@@ -396,6 +396,9 @@ def _get_psique_path() -> Optional[str]:
     # Bundled location
     bundled = Path(__file__).resolve().parent.parent / 'tools' / 'psique'
     if bundled.is_file():
+        # Ensure executable permission (pip strips it from package data)
+        if not os.access(str(bundled), os.X_OK):
+            bundled.chmod(bundled.stat().st_mode | 0o111)
         return str(bundled)
     # Fall back to PATH
     return shutil.which('psique')
