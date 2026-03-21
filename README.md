@@ -9,6 +9,8 @@
 
 A library and GUI application tool for membrane protein preparation and molecular dynamics analysis.
 
+[<img align="left" src="./docs/images/readme/main_viewer.png" width="250" />](./docs/images/readme/main_viewer.png)
+
 📖 **[Read the Documentation](https://maurobedoya.github.io/gatewizard/)**
 
 ## Features
