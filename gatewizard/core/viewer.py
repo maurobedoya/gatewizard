@@ -404,17 +404,32 @@ def _get_psique_path() -> Optional[str]:
     return shutil.which('psique')
 
 
+_PSIQUE_NOT_FOUND = 'not_found'
+
+
 def _assign_ss_psique(filepath: str) -> Optional[Dict]:
-    """Run psique on PDB, parse HELIX/SHEET from output."""
+    """Run psique on PDB, parse HELIX/SHEET from output.
+
+    Returns
+    -------
+    dict or None
+        SS mapping, or ``None`` if psique produced no SS records.
+
+    Raises
+    ------
+    _PSIQUE_NOT_FOUND sentinel is returned (as string) when psique is missing.
+    """
     psique_path = _get_psique_path()
     if not psique_path:
-        return None
+        return _PSIQUE_NOT_FOUND
     try:
         result = subprocess.run(
             [psique_path, '--format', 'pdb', filepath],
             capture_output=True, text=True, timeout=30,
         )
         if result.returncode != 0:
+            return None
+        if not result.stdout.strip():
             return None
         fd, tmp = tempfile.mkstemp(suffix='.pdb')
         try:
@@ -441,7 +456,7 @@ def _assign_secondary_structure(struct: ProteinStructure,
                 r.ss = ss_map.get((r.chain_id, r.seq_id), 'C')
             return
         ss_map = _assign_ss_psique(filepath)
-        if ss_map:
+        if ss_map and ss_map is not _PSIQUE_NOT_FOUND:
             for r in struct.residues:
                 r.ss = ss_map.get((r.chain_id, r.seq_id), 'C')
             return
@@ -810,10 +825,14 @@ class MolecularViewer:
             if not self._filepath:
                 raise ViewerError("No PDB file path – cannot run psique")
             ss_map = _assign_ss_psique(self._filepath)
+            if ss_map is _PSIQUE_NOT_FOUND:
+                raise ViewerError(
+                    "psique executable not found. "
+                    "Ensure the psique executable is installed.")
             if ss_map is None:
                 raise ViewerError(
-                    "psique is not available or failed. "
-                    "Ensure the psique executable is installed.")
+                    "psique produced no secondary structure assignments "
+                    "for this structure (too few residues?).")
             for r in self.structure.residues:
                 r.ss = ss_map.get((r.chain_id, r.seq_id), 'C')
         elif method == 'heuristic':

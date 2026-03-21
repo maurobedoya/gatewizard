@@ -7,10 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.23] - 2026-03-21
+## [1.0.24] - 2026-03-21
 
 ### Fixed
 - `psique` executable now auto-sets executable permission on first use (pip strips execute bits from package data files)
+- Improved psique error messages: distinguish "not found" from "no SS results for small structures"
+- Updated viewer example 11 with real protein coordinates (2MVJ residues 1-20) for proper psique testing
+- Added Viewer Module to mkdocs documentation navigation
+
+## [1.0.23] - 2026-03-21
+
+### Fixed
 - Version bump to fix tag/release mismatch from v1.0.21/v1.0.22
 
 ## [1.0.20] - 2026-03-21
@@ -210,7 +217,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive API documentation
 - User guide and troubleshooting documentation
 
-[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.23...HEAD
+[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.24...HEAD
+[1.0.24]: https://github.com/maurobedoya/gatewizard/compare/v1.0.23...v1.0.24
 [1.0.23]: https://github.com/maurobedoya/gatewizard/compare/v1.0.20...v1.0.23
 [1.0.20]: https://github.com/maurobedoya/gatewizard/compare/v1.0.19...v1.0.20
 [1.0.19]: https://github.com/maurobedoya/gatewizard/compare/v1.0.18...v1.0.19

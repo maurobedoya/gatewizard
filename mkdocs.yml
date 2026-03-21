@@ -63,6 +63,7 @@ nav:
       - Builder Module: api/builder.md
       - Equilibration: api/equilibration.md
       - Analysis: api/analysis.md
+      - Viewer Module: api/viewer.md
       - Quick Reference: QUICK_REFERENCE.md
 
 # Extensions
