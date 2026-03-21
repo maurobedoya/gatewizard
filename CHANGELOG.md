@@ -7,11 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.22] - 2026-03-21
+## [1.0.23] - 2026-03-21
 
 ### Fixed
 - `psique` executable now auto-sets executable permission on first use (pip strips execute bits from package data files)
-- Version bump to fix tag/release issue from v1.0.21
+- Version bump to fix tag/release mismatch from v1.0.21/v1.0.22
 
 ## [1.0.20] - 2026-03-21
 
@@ -210,8 +210,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive API documentation
 - User guide and troubleshooting documentation
 
-[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.22...HEAD
-[1.0.22]: https://github.com/maurobedoya/gatewizard/compare/v1.0.20...v1.0.22
+[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.23...HEAD
+[1.0.23]: https://github.com/maurobedoya/gatewizard/compare/v1.0.20...v1.0.23
 [1.0.20]: https://github.com/maurobedoya/gatewizard/compare/v1.0.19...v1.0.20
 [1.0.19]: https://github.com/maurobedoya/gatewizard/compare/v1.0.18...v1.0.19
 [1.0.18]: https://github.com/maurobedoya/gatewizard/compare/v1.0.17...v1.0.18
