@@ -9,11 +9,13 @@
 
 A library and GUI application tool for membrane protein preparation and molecular dynamics analysis.
 
-[<img align="left" src="./docs/images/readme/main_viewer.png" width="250" />](./docs/images/readme/main_viewer.png)
+
 
 📖 **[Read the Documentation](https://maurobedoya.github.io/gatewizard/)**
 
 ## Features
+
+[<img align="right" src="./docs/images/readme/main_viewer.png" width="600" />](./docs/images/readme/main_viewer.png)
 
 - **Protein Structure Preparation**: Clean PDB files, add missing atoms, and optimize structures
 - **Propka Integration**: pKa calculations with automatic protonation state assignment
