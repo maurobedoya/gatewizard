@@ -36,6 +36,7 @@ dependencies = [
     "propka>=3.2.0",
     "Pillow>=9.0.0",
     "rdkit>=2023.3.1",
+    "vtk>=9.0.0",
 ]
 
 [project.optional-dependencies]
@@ -53,7 +54,7 @@ gatewizard = "gatewizard.main:main"
 packages = {find = {}}
 
 [tool.setuptools.package-data]
-gatewizard = ["**/*.yml", "**/*.yaml", "**/*.json", "**/*.txt"]
+gatewizard = ["**/*.yml", "**/*.yaml", "**/*.json", "**/*.txt", "tools/psique"]
 
 [tool.pytest.ini_options]
 # Filter out expected warnings from dependencies

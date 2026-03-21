@@ -20,6 +20,7 @@ from gatewizard.core.preparation import (
 
 from gatewizard.core.builder import Builder
 from gatewizard.core.job_monitor import JobMonitor
+from gatewizard.core.viewer import MolecularViewer
 
 # GUI imports (optional, only if GUI dependencies are available)
 try:
@@ -40,6 +41,7 @@ __all__ = [
     "modify_pdb_based_on_summary",
     "Builder",
     "JobMonitor",
+    "MolecularViewer",
     "GUI_AVAILABLE",
 ]
 
