@@ -7,14 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.20] - 2026-03-21
+
 ### Added
-- 
+- VTK-based 3D molecular viewer replacing the old matplotlib Visualize frame
+- New `gatewizard.core.viewer` module with `MolecularViewer` API for programmatic structure loading, inspection, selection, editing, and saving
+- MDAnalysis-based PDB parsing (replaces BioPython dependency)
+- Seven molecular representations: VDW, Ball & Stick, Sticks, Cartoon, Tube SS, Backbone, Surface
+- Multiple named selections with independent representation, color scheme, quality, material, and SS color settings
+- Selection criteria: All, Protein, Backbone, Sidechain, Water, Ligand, Chain, Residue range, Around selection
+- Auto-detect molecules (protein, water, individual ligands) with sensible defaults
+- Structure editing: rename chains, rename residues, renumber residues, delete atoms
+- VTK offscreen rendering widget (`VTKFrame`) with mouse rotation/pan/zoom and fog/depth cueing
+- SSAO ambient occlusion and shadow map rendering passes
+- High-resolution image export (PNG, JPEG, TIFF, BMP) with configurable scale and transparent background
+- Viewpoint save/load as JSON (camera, selections, rendering settings)
+- Drag-reorder selections in the GUI panel
+- Per-selection settings dialog with live preview (quality, sizes, material presets, SS colors)
+- `vtk>=9.0.0` added to project dependencies
+- `MolecularViewer` exported at package level (`from gatewizard import MolecularViewer`)
+- `VTKFrame` widget exported from `gatewizard.gui.widgets`
+- Viewer test suite (`test_viewer.py`) with 10 example scripts covering the full API
+- API documentation in `docs/api/viewer.md`
 
 ### Changed
--
+- Moved `psique` executable from `utils/` to `tools/` (with TODO for future pip import)
+- Blocking `wait=True` option in `Builder.prepare_system()` so scripts can run multiple systems sequentially
+- New `Builder.wait_for_completion(job_dir)` method for waiting on an already-launched job
+- Ligand parametrization module (`gatewizard.tools.ligand_parametrization`) with full AMBER/GAFF2 workflow
+- Automatic detection of non-standard (ligand) residues in PDB files via HETATM scanning
+- Ligand extraction, antechamber atom typing, parmchk2 missing parameter generation, and tleap .lib creation
+- 2D molecular structure visualization using RDKit
+- GUI widget (`LigandParamWidget`) in the Builder frame for interactive ligand detection, viewing, and parametrization
+- Builder integration: `--ligand_param` and `--gaff2` flags for packmol-memgen, GAFF2/ligand loading in tleap parametrization
+- New `ligand_params` configuration key in Builder for passing parametrized ligand files
+- Builder example tests 19–24 covering ligand detection, extraction, parametrization, command building, and 2D imaging
+- API documentation for all ligand parametrization functions and classes in `docs/api/builder.md`
+
+### Changed
+- Builder `_build_command()` now appends ligand parameter flags when ligands are present
+- Builder `_create_tleap_input()` loads GAFF2 and ligand .frcmod/.lib files before `loadPDB`
+- Builder bash execution script includes ligand parameter loading in tleap section
+- Updated `gatewizard.tools.__init__` exports with all ligand parametrization public API
 
 ### Fixed
--
+- Fixed Pillow deprecation warning: replaced `Image.getdata()` with `get_flattened_data()` (Pillow >=12 compat)
+- Test suite now auto-cleans `./systems/` output directories after example execution
+
+### Fixed (repo)
+- Resolved Git lock file issue blocking commits in GitHub Desktop
+- Added `psique` executable to version control (previously untracked)
 
 ### Removed
 
@@ -162,7 +204,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive API documentation
 - User guide and troubleshooting documentation
 
-[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.19...HEAD
+[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.20...HEAD
+[1.0.20]: https://github.com/maurobedoya/gatewizard/compare/v1.0.19...v1.0.20
 [1.0.19]: https://github.com/maurobedoya/gatewizard/compare/v1.0.18...v1.0.19
 [1.0.18]: https://github.com/maurobedoya/gatewizard/compare/v1.0.17...v1.0.18
 [1.0.17]: https://github.com/maurobedoya/gatewizard/compare/v1.0.16...v1.0.17
