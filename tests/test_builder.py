@@ -240,7 +240,7 @@ class TestBuilderExamples:
                 try:
                     shutil.rmtree(systems_dir)
                     break
-                except PermissionError:
+                except (PermissionError, OSError):
                     import time as _time
                     _time.sleep(1)
     
