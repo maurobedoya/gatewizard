@@ -59,11 +59,11 @@ nav:
   - Troubleshooting: troubleshooting.md
   - API Reference:
       - Overview: api/index.md
+      - Viewer Module: api/viewer.md
       - Preparation Module: api/preparation.md
       - Builder Module: api/builder.md
       - Equilibration: api/equilibration.md
       - Analysis: api/analysis.md
-      - Viewer Module: api/viewer.md
       - Quick Reference: QUICK_REFERENCE.md
 
 # Extensions

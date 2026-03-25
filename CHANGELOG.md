@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.25] - 2026-03-25
+
+### Added
+- **Transform Structure** dialog in the Visualize frame with three tabs: Rotate, Translate, and Align
+  - Rotate: rotate selected or all atoms around X/Y/Z axis by arbitrary angle, with selectable pivot (selection centroid or origin)
+  - Translate: translate atoms by displacement vector (X, Y, Z in Å), plus Center at Origin button
+  - Align: align a selection's principal direction (SVD) to a target axis, with optional secondary axis alignment
+  - MDAnalysis selection expressions supported for all operations
+  - Preview shows transformed atom positions (yellow glow at destination) before applying
+  - Non-modal dialog allows rotating the 3D view while the dialog is open
+- `rotate_atoms()`, `translate_atoms()`, `center_atoms()`, `align_to_axis()` methods in `MolecularViewer` API
+- `_axis_rotation_matrix()` and `_rotation_matrix_from_vectors()` helper functions in `gatewizard.core.viewer`
+- `ProteinStructure.refresh_residue_coords()` method to sync residue CA/O coords after transforms
+- `_reassign_ss()` / `_reassign_ss_gui()` helpers to recalculate secondary structure after coordinate changes
+- Four new viewer examples: 12 (rotate), 13 (translate/center), 14 (align to axis), 15 (primary+secondary alignment)
+- Coordinate Transformations section in API docs (`docs/api/viewer.md`) with Examples 12–15
+
+### Fixed
+- Secondary structure now updates correctly after all coordinate transformations (was stale because `Residue.ca_coord` / `o_coord` became detached after atom coord reassignment)
+- `build_bonds()` now calls `refresh_residue_coords()` automatically so tube_ss, cartoon, and backbone representations reflect coordinate changes
+- Auto-detect first selection (e.g. Protein) now shows delete (X) button — changed guard from `idx > 0` to `sel.name != "All"`
+- Unicode arrow `→` replaced with `->` in align messagebox to avoid rendering issues in tkinter
+
 ## [1.0.24] - 2026-03-21
 
 ### Fixed
@@ -217,7 +240,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive API documentation
 - User guide and troubleshooting documentation
 
-[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.24...HEAD
+[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.25...HEAD
+[1.0.25]: https://github.com/maurobedoya/gatewizard/compare/v1.0.24...v1.0.25
 [1.0.24]: https://github.com/maurobedoya/gatewizard/compare/v1.0.23...v1.0.24
 [1.0.23]: https://github.com/maurobedoya/gatewizard/compare/v1.0.20...v1.0.23
 [1.0.20]: https://github.com/maurobedoya/gatewizard/compare/v1.0.19...v1.0.20

@@ -24,3 +24,7 @@ python tests/viewer_examples/viewer_example_01.py
 | 09 | Delete atoms and save modified PDB |
 | 10 | Full workflow: load → select → edit → save |
 | 11 | Reassign secondary structure (psique, heuristic, pdb_records) |
+| 12 | Rotate atoms around an axis |
+| 13 | Translate and center structure |
+| 14 | Align structure to an axis |
+| 15 | Align with primary and secondary axes |

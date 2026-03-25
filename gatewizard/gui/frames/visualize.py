@@ -187,6 +187,9 @@ class VisualizeFrame(ctk.CTkFrame):
         ctk.CTkButton(sec_edit.content, text="Renumber Residues",
                       command=self._edit_residue_numbering,
                       height=30, fg_color="gray35").pack(pady=2, padx=8, fill="x")
+        ctk.CTkButton(sec_edit.content, text="Transform Structure",
+                      command=self._transform_structure,
+                      height=30, fg_color="gray35").pack(pady=2, padx=8, fill="x")
         ctk.CTkButton(sec_edit.content, text="Delete Selection Atoms",
                       command=self._delete_selection_atoms,
                       height=30, fg_color="#8a3a3a",
@@ -578,6 +581,20 @@ class VisualizeFrame(ctk.CTkFrame):
         self._update_axes_position()
         self.vtk_frame.render()
         self.after(200, self.vtk_frame.unlock_camera)
+
+    def _reassign_ss_gui(self):
+        """Re-assign secondary structure after coordinate changes."""
+        import tempfile, os
+        fd, tmp = tempfile.mkstemp(suffix='.pdb')
+        os.close(fd)
+        try:
+            self.structure.write_pdb(tmp)
+            _assign_secondary_structure(self.structure, filepath=tmp)
+        finally:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
 
     def _update_axes_position(self):
         """Recalculate and reapply axes position when mode is 'center'."""
@@ -1235,7 +1252,7 @@ class VisualizeFrame(ctk.CTkFrame):
             name_lbl.bind("<ButtonRelease-1>", self._drag_end)
             name_lbl.bind("<Double-Button-1>",
                           lambda e, s=sel: self._dbl_click_center(s))
-            if idx > 0:
+            if sel.name != "All":
                 ctk.CTkButton(row1, text="x", width=24, height=22,
                               fg_color="#8a3a3a", hover_color="#cc3333",
                               font=("", 11),
@@ -1395,6 +1412,7 @@ class VisualizeFrame(ctk.CTkFrame):
         d.geometry("360x420")
         d.transient(self)
         d.attributes('-topmost', True)
+        d.after(100, d.grab_set)
 
         ctk.CTkLabel(d, text="Name:", font=("", 12)).pack(
             pady=(10, 1), padx=12, anchor="w")
@@ -2000,6 +2018,509 @@ class VisualizeFrame(ctk.CTkFrame):
         ctk.CTkButton(d, text="Apply", height=30, fg_color="#2a6e2a",
                       command=_apply).pack(pady=(10, 4), padx=12, fill="x")
 
+    # ------------------------------------------------------------------
+    # Transform Structure (rotate / translate / align)
+    # ------------------------------------------------------------------
+
+    def _transform_structure(self):
+        if not self.structure:
+            messagebox.showwarning("Warning", "Load a structure first")
+            return
+
+        d = ctk.CTkToplevel(self)
+        d.title("Transform Structure")
+        d.geometry("460x520")
+        d.transient(self)
+        d.attributes('-topmost', True)
+
+        _highlight_actors = []
+
+        def _clear_highlight():
+            for a in _highlight_actors:
+                self.vtk_frame.remove_actor(a)
+            _highlight_actors.clear()
+            self.vtk_frame.render()
+
+        # ---- Tabview -------------------------------------------------
+        tabview = ctk.CTkTabview(d, height=380,
+                                  segmented_button_fg_color="gray14")
+        tabview.pack(fill="both", expand=True, padx=10, pady=(6, 0))
+        tab_rot = tabview.add("Rotate")
+        tab_tra = tabview.add("Translate")
+        tab_ali = tabview.add("Align")
+
+        # ---- helper: atom-scope selector widget ----------------------
+        def _make_scope_selector(parent, label="Apply to"):
+            """Return (frame, getter) where getter() → list of indices."""
+            fr = ctk.CTkFrame(parent, fg_color="transparent")
+            ctk.CTkLabel(fr, text=label, font=("", 12, "bold")).pack(
+                anchor="w", pady=(2, 0))
+            mode = ctk.StringVar(value="all")
+            ctk.CTkRadioButton(fr, text="All atoms", variable=mode,
+                               value="all").pack(anchor="w")
+            rb_sel = ctk.CTkRadioButton(fr, text="MDAnalysis selection",
+                                        variable=mode, value="mda")
+            rb_sel.pack(anchor="w")
+            hdr = ctk.CTkFrame(fr, fg_color="transparent")
+            hdr.pack(fill="x")
+            entry = ctk.CTkEntry(hdr, placeholder_text="e.g. name K or resname SEL")
+            entry.pack(side="left", fill="x", expand=True)
+            ctk.CTkButton(
+                hdr, text="?", width=28, height=24,
+                fg_color="#5a5a8a", hover_color="#7a7aaa",
+                command=lambda: _show_selection_help(d)
+            ).pack(side="right", padx=(4, 0))
+
+            def _get():
+                if mode.get() == "all":
+                    return list(range(len(self.structure.atoms)))
+                expr = entry.get().strip()
+                if not expr:
+                    messagebox.showwarning("Warning",
+                                           "Enter an MDAnalysis selection",
+                                           parent=d)
+                    return None
+                idx = _resolve_mda_expression(self.structure, expr, parent=d)
+                if not idx:
+                    return None
+                return idx
+            return fr, _get
+
+        # ==============================================================
+        # ROTATE TAB
+        # ==============================================================
+        scope_rot_fr, scope_rot_get = _make_scope_selector(tab_rot)
+        scope_rot_fr.pack(fill="x", padx=8, pady=(2, 4))
+
+        ax_rot_fr = ctk.CTkFrame(tab_rot, fg_color="transparent")
+        ax_rot_fr.pack(fill="x", padx=8)
+        ctk.CTkLabel(ax_rot_fr, text="Axis:").pack(side="left")
+        axis_rot_var = ctk.StringVar(value="z")
+        for ax in ("x", "y", "z"):
+            ctk.CTkRadioButton(ax_rot_fr, text=ax.upper(), variable=axis_rot_var,
+                               value=ax, width=50).pack(side="left", padx=4)
+
+        ang_fr = ctk.CTkFrame(tab_rot, fg_color="transparent")
+        ang_fr.pack(fill="x", padx=8, pady=4)
+        ctk.CTkLabel(ang_fr, text="Angle (°):").pack(side="left")
+        angle_entry = ctk.CTkEntry(ang_fr, placeholder_text="e.g. 90", width=80)
+        angle_entry.pack(side="left", padx=4)
+
+        ctr_fr = ctk.CTkFrame(tab_rot, fg_color="transparent")
+        ctr_fr.pack(fill="x", padx=8)
+        ctk.CTkLabel(ctr_fr, text="Center:").pack(side="left")
+        center_var = ctk.StringVar(value="selection")
+        ctk.CTkRadioButton(ctr_fr, text="Selection", variable=center_var,
+                           value="selection", width=90).pack(side="left", padx=4)
+        ctk.CTkRadioButton(ctr_fr, text="Origin", variable=center_var,
+                           value="origin", width=70).pack(side="left", padx=4)
+
+        def _apply_rot():
+            idx = scope_rot_get()
+            if idx is None:
+                return
+            try:
+                ang = float(angle_entry.get().strip())
+            except ValueError:
+                messagebox.showwarning("Warning", "Enter a valid angle",
+                                       parent=d)
+                return
+            atoms = self.structure.atoms
+            coords = np.array([atoms[i].coord for i in idx])
+            pivot = (coords.mean(axis=0) if center_var.get() == 'selection'
+                     else np.zeros(3))
+            from gatewizard.core.viewer import _axis_rotation_matrix
+            R = _axis_rotation_matrix(axis_rot_var.get(),
+                                      np.radians(ang))
+            for i in idx:
+                atoms[i].coord = R @ (atoms[i].coord - pivot) + pivot
+            self.structure.build_bonds()
+            self._reassign_ss_gui()
+            _clear_highlight()
+            self._safe_refresh_rebuild()
+            messagebox.showinfo("Done",
+                                f"Rotated {len(idx)} atoms by {ang}° "
+                                f"around {axis_rot_var.get().upper()}",
+                                parent=d)
+
+        def _preview_rot():
+            idx = scope_rot_get()
+            if idx is None:
+                return
+            try:
+                ang = float(angle_entry.get().strip())
+            except ValueError:
+                messagebox.showwarning("Warning", "Enter a valid angle",
+                                       parent=d)
+                return
+            atoms = self.structure.atoms
+            coords = np.array([atoms[i].coord for i in idx])
+            pivot = (coords.mean(axis=0) if center_var.get() == 'selection'
+                     else np.zeros(3))
+            from gatewizard.core.viewer import _axis_rotation_matrix
+            R = _axis_rotation_matrix(axis_rot_var.get(),
+                                      np.radians(ang))
+            transformed = {i: R @ (atoms[i].coord - pivot) + pivot
+                           for i in idx}
+            _clear_highlight()
+            actors = self._make_highlight_actors(idx,
+                                                coord_override=transformed)
+            for a in actors:
+                self.vtk_frame.add_actor(a)
+                _highlight_actors.append(a)
+            self.vtk_frame.render()
+
+        btn_rot = ctk.CTkFrame(tab_rot, fg_color="transparent")
+        btn_rot.pack(fill="x", padx=8, pady=(8, 2))
+        ctk.CTkButton(btn_rot, text="Preview", height=28,
+                      fg_color="#5a5a6e", hover_color="#7a7a9e",
+                      command=_preview_rot).pack(fill="x", pady=(0, 4))
+        ctk.CTkButton(btn_rot, text="Apply", height=30, fg_color="#2a6e2a",
+                      command=_apply_rot).pack(fill="x")
+
+        # ==============================================================
+        # TRANSLATE TAB
+        # ==============================================================
+        scope_tra_fr, scope_tra_get = _make_scope_selector(tab_tra)
+        scope_tra_fr.pack(fill="x", padx=8, pady=(2, 4))
+
+        disp_fr = ctk.CTkFrame(tab_tra, fg_color="transparent")
+        disp_fr.pack(fill="x", padx=8, pady=4)
+        disp_fr.columnconfigure(1, weight=1)
+        dx_e = ctk.CTkEntry(disp_fr, placeholder_text="0.0", width=100)
+        dy_e = ctk.CTkEntry(disp_fr, placeholder_text="0.0", width=100)
+        dz_e = ctk.CTkEntry(disp_fr, placeholder_text="0.0", width=100)
+        for row, (w, lab) in enumerate([(dx_e, "X"), (dy_e, "Y"), (dz_e, "Z")]):
+            ctk.CTkLabel(disp_fr, text=f"{lab} (Å):").grid(
+                row=row, column=0, sticky="e", padx=(0, 6), pady=2)
+            w.grid(row=row, column=1, sticky="w", pady=2)
+
+        def _center_at_origin():
+            idx = scope_tra_get()
+            if idx is None:
+                return
+            coords = np.array([self.structure.atoms[i].coord for i in idx])
+            centroid = coords.mean(axis=0)
+            for a in self.structure.atoms:
+                a.coord = a.coord - centroid
+            self.structure.build_bonds()
+            self._reassign_ss_gui()
+            _clear_highlight()
+            self._safe_refresh_rebuild()
+            messagebox.showinfo(
+                "Done",
+                f"Centered structure (shifted by "
+                f"{centroid[0]:.2f}, {centroid[1]:.2f}, {centroid[2]:.2f})",
+                parent=d)
+
+        def _apply_tra():
+            idx = scope_tra_get()
+            if idx is None:
+                return
+            try:
+                dx = float(dx_e.get().strip() or 0)
+                dy = float(dy_e.get().strip() or 0)
+                dz = float(dz_e.get().strip() or 0)
+            except ValueError:
+                messagebox.showwarning("Warning",
+                                       "Enter valid displacement values",
+                                       parent=d)
+                return
+            disp = np.array([dx, dy, dz])
+            for i in idx:
+                self.structure.atoms[i].coord = (
+                    self.structure.atoms[i].coord + disp)
+            self.structure.build_bonds()
+            self._reassign_ss_gui()
+            _clear_highlight()
+            self._safe_refresh_rebuild()
+            messagebox.showinfo("Done",
+                                f"Translated {len(idx)} atoms by "
+                                f"({dx:.2f}, {dy:.2f}, {dz:.2f}) Å",
+                                parent=d)
+
+        def _preview_tra():
+            idx = scope_tra_get()
+            if idx is None:
+                return
+            try:
+                dx = float(dx_e.get().strip() or 0)
+                dy = float(dy_e.get().strip() or 0)
+                dz = float(dz_e.get().strip() or 0)
+            except ValueError:
+                messagebox.showwarning("Warning",
+                                       "Enter valid displacement values",
+                                       parent=d)
+                return
+            disp = np.array([dx, dy, dz])
+            _clear_highlight()
+            actors = self._make_highlight_actors(idx, offset=disp)
+            for a in actors:
+                self.vtk_frame.add_actor(a)
+                _highlight_actors.append(a)
+            self.vtk_frame.render()
+
+        btn_tra = ctk.CTkFrame(tab_tra, fg_color="transparent")
+        btn_tra.pack(fill="x", padx=8, pady=(8, 2))
+        ctk.CTkButton(btn_tra, text="Preview", height=28,
+                      fg_color="#5a5a6e", hover_color="#7a7a9e",
+                      command=_preview_tra).pack(fill="x", pady=(0, 4))
+        ctk.CTkButton(btn_tra, text="Center at Origin", height=28,
+                      fg_color="#5a5a6e", hover_color="#7a7a9e",
+                      command=_center_at_origin).pack(fill="x", pady=(0, 4))
+        ctk.CTkButton(btn_tra, text="Apply", height=30, fg_color="#2a6e2a",
+                      command=_apply_tra).pack(fill="x")
+
+        # ==============================================================
+        # ALIGN TAB
+        # ==============================================================
+        scope_ali_fr, scope_ali_get = _make_scope_selector(
+            tab_ali, label="Transform")
+        scope_ali_fr.pack(fill="x", padx=8, pady=(2, 4))
+
+        # --- primary alignment ----------------------------------------
+        pri_fr = ctk.CTkFrame(tab_ali, fg_color="transparent")
+        pri_fr.pack(fill="x", padx=8, pady=(2, 0))
+        ctk.CTkLabel(pri_fr, text="Primary direction",
+                     font=("", 12, "bold")).pack(anchor="w")
+        pri_hdr = ctk.CTkFrame(pri_fr, fg_color="transparent")
+        pri_hdr.pack(fill="x")
+        ctk.CTkLabel(pri_hdr, text="Selection:").pack(side="left")
+        ctk.CTkButton(
+            pri_hdr, text="?", width=28, height=24,
+            fg_color="#5a5a8a", hover_color="#7a7aaa",
+            command=lambda: _show_selection_help(d)
+        ).pack(side="right")
+        pri_entry = ctk.CTkEntry(pri_fr,
+                                 placeholder_text="e.g. name K or resid 60:80 and name CA")
+        pri_entry.pack(fill="x", pady=(2, 4))
+
+        pri_axis_fr = ctk.CTkFrame(pri_fr, fg_color="transparent")
+        pri_axis_fr.pack(fill="x")
+        ctk.CTkLabel(pri_axis_fr, text="Align to:").pack(side="left")
+        pri_axis_var = ctk.StringVar(value="z")
+        for ax in ("x", "y", "z"):
+            ctk.CTkRadioButton(pri_axis_fr, text=ax.upper(),
+                               variable=pri_axis_var, value=ax,
+                               width=50).pack(side="left", padx=4)
+
+        # --- secondary alignment (optional) ---------------------------
+        sec_enabled = ctk.BooleanVar(value=False)
+        sec_chk = ctk.CTkCheckBox(tab_ali, text="Secondary alignment",
+                                  variable=sec_enabled,
+                                  font=("", 12, "bold"))
+        sec_chk.pack(anchor="w", padx=8, pady=(6, 0))
+
+        sec_fr = ctk.CTkFrame(tab_ali, fg_color="transparent")
+        sec_fr.pack(fill="x", padx=8, pady=(2, 0))
+        sec_hdr = ctk.CTkFrame(sec_fr, fg_color="transparent")
+        sec_hdr.pack(fill="x")
+        ctk.CTkLabel(sec_hdr, text="Selection:").pack(side="left")
+        ctk.CTkButton(
+            sec_hdr, text="?", width=28, height=24,
+            fg_color="#5a5a8a", hover_color="#7a7aaa",
+            command=lambda: _show_selection_help(d)
+        ).pack(side="right")
+        sec_entry = ctk.CTkEntry(sec_fr,
+                                 placeholder_text="e.g. resid 45 and name CA")
+        sec_entry.pack(fill="x", pady=(2, 4))
+
+        sec_axis_fr = ctk.CTkFrame(sec_fr, fg_color="transparent")
+        sec_axis_fr.pack(fill="x")
+        ctk.CTkLabel(sec_axis_fr, text="Align to:").pack(side="left")
+        sec_axis_var = ctk.StringVar(value="x")
+        for ax in ("x", "y", "z"):
+            ctk.CTkRadioButton(sec_axis_fr, text=ax.upper(),
+                               variable=sec_axis_var, value=ax,
+                               width=50).pack(side="left", padx=4)
+
+        def _apply_align():
+            # primary selection
+            pri_expr = pri_entry.get().strip()
+            if not pri_expr:
+                messagebox.showwarning("Warning",
+                                       "Enter a primary direction selection",
+                                       parent=d)
+                return
+            pri_idx = _resolve_mda_expression(self.structure, pri_expr,
+                                              parent=d)
+            if not pri_idx:
+                return
+
+            apply_idx = scope_ali_get()
+            if apply_idx is None:
+                return
+
+            target = pri_axis_var.get()
+
+            # secondary?
+            sec_idx = None
+            sec_ax = None
+            if sec_enabled.get():
+                sec_expr = sec_entry.get().strip()
+                if not sec_expr:
+                    messagebox.showwarning(
+                        "Warning",
+                        "Enter a secondary direction selection",
+                        parent=d)
+                    return
+                sec_idx = _resolve_mda_expression(self.structure, sec_expr,
+                                                  parent=d)
+                if not sec_idx:
+                    return
+                sec_ax = sec_axis_var.get()
+                if sec_ax == target:
+                    messagebox.showwarning(
+                        "Warning",
+                        "Secondary axis must differ from primary axis",
+                        parent=d)
+                    return
+
+            # compute pivot & apply
+            from gatewizard.core.viewer import (
+                _axis_rotation_matrix, _rotation_matrix_from_vectors)
+            atoms = self.structure.atoms
+            axis_idx = {'x': 0, 'y': 1, 'z': 2}
+            pivot = np.array([atoms[i].coord
+                              for i in apply_idx]).mean(axis=0)
+
+            # primary SVD
+            pri_coords = np.array([atoms[i].coord for i in pri_idx])
+            centered = pri_coords - pri_coords.mean(axis=0)
+            _, _, Vt = np.linalg.svd(centered, full_matrices=False)
+            principal = Vt[0]
+            tidx = axis_idx[target]
+            if principal[tidx] < 0:
+                principal = -principal
+            target_vec = np.zeros(3)
+            target_vec[tidx] = 1.0
+            R1 = _rotation_matrix_from_vectors(principal, target_vec)
+            for i in apply_idx:
+                atoms[i].coord = R1 @ (atoms[i].coord - pivot) + pivot
+
+            # secondary
+            if sec_idx is not None and sec_ax is not None:
+                sidx = axis_idx[sec_ax]
+                sec_coords = np.array([atoms[i].coord for i in sec_idx])
+                sec_center = sec_coords.mean(axis=0)
+                direction = sec_center - pivot
+                direction[tidx] = 0.0
+                norm = np.linalg.norm(direction)
+                if norm > 1e-8:
+                    direction /= norm
+                    sec_target = np.zeros(3)
+                    sec_target[sidx] = 1.0
+                    cos_a = np.clip(np.dot(direction, sec_target), -1, 1)
+                    cross = np.cross(direction, sec_target)
+                    sign = 1.0 if np.dot(cross, target_vec) >= 0 else -1.0
+                    angle = sign * np.arccos(cos_a)
+                    R2 = _axis_rotation_matrix(target, angle)
+                    for i in apply_idx:
+                        atoms[i].coord = (
+                            R2 @ (atoms[i].coord - pivot) + pivot)
+
+            self.structure.build_bonds()
+            self._reassign_ss_gui()
+            _clear_highlight()
+            self._safe_refresh_rebuild()
+            msg = (f"Aligned {len(pri_idx)} atoms to "
+                   f"{target.upper()}-axis "
+                   f"({len(apply_idx)} atoms transformed)")
+            if sec_idx:
+                msg += (f"\nSecondary: {len(sec_idx)} atoms -> "
+                        f"{sec_ax.upper()}-axis")
+            messagebox.showinfo("Done", msg, parent=d)
+
+        def _preview_align():
+            pri_expr = pri_entry.get().strip()
+            if not pri_expr:
+                messagebox.showwarning("Warning",
+                                       "Enter a primary direction selection",
+                                       parent=d)
+                return
+            pri_idx = _resolve_mda_expression(self.structure, pri_expr,
+                                              parent=d)
+            if not pri_idx:
+                return
+            apply_idx = scope_ali_get()
+            if apply_idx is None:
+                return
+            target = pri_axis_var.get()
+            from gatewizard.core.viewer import (
+                _axis_rotation_matrix, _rotation_matrix_from_vectors)
+            atoms = self.structure.atoms
+            axis_idx = {'x': 0, 'y': 1, 'z': 2}
+            pivot = np.array([atoms[i].coord
+                              for i in apply_idx]).mean(axis=0)
+            coords_copy = {i: atoms[i].coord.copy() for i in apply_idx}
+            # primary SVD
+            pri_coords = np.array([atoms[i].coord for i in pri_idx])
+            centered = pri_coords - pri_coords.mean(axis=0)
+            _, _, Vt = np.linalg.svd(centered, full_matrices=False)
+            principal = Vt[0]
+            tidx = axis_idx[target]
+            if principal[tidx] < 0:
+                principal = -principal
+            target_vec = np.zeros(3)
+            target_vec[tidx] = 1.0
+            R1 = _rotation_matrix_from_vectors(principal, target_vec)
+            for i in apply_idx:
+                coords_copy[i] = R1 @ (coords_copy[i] - pivot) + pivot
+            # secondary
+            if sec_enabled.get():
+                sec_expr = sec_entry.get().strip()
+                if sec_expr:
+                    sec_idx = _resolve_mda_expression(
+                        self.structure, sec_expr, parent=d)
+                    sec_ax = sec_axis_var.get()
+                    if sec_idx and sec_ax != target:
+                        sidx = axis_idx[sec_ax]
+                        sec_coords = np.array(
+                            [coords_copy.get(i, atoms[i].coord)
+                             for i in sec_idx])
+                        sc = sec_coords.mean(axis=0)
+                        direction = sc - pivot
+                        direction[tidx] = 0.0
+                        norm = np.linalg.norm(direction)
+                        if norm > 1e-8:
+                            direction /= norm
+                            sec_target = np.zeros(3)
+                            sec_target[sidx] = 1.0
+                            cos_a = np.clip(
+                                np.dot(direction, sec_target), -1, 1)
+                            cross = np.cross(direction, sec_target)
+                            sign = (1.0 if np.dot(cross, target_vec) >= 0
+                                    else -1.0)
+                            angle = sign * np.arccos(cos_a)
+                            R2 = _axis_rotation_matrix(target, angle)
+                            for i in apply_idx:
+                                coords_copy[i] = (
+                                    R2 @ (coords_copy[i] - pivot) + pivot)
+            _clear_highlight()
+            actors = self._make_highlight_actors(
+                apply_idx, coord_override=coords_copy)
+            for a in actors:
+                self.vtk_frame.add_actor(a)
+                _highlight_actors.append(a)
+            self.vtk_frame.render()
+
+        btn_ali = ctk.CTkFrame(tab_ali, fg_color="transparent")
+        btn_ali.pack(fill="x", padx=8, pady=(8, 2))
+        ctk.CTkButton(btn_ali, text="Preview", height=28,
+                      fg_color="#5a5a6e", hover_color="#7a7a9e",
+                      command=_preview_align).pack(fill="x", pady=(0, 4))
+        ctk.CTkButton(btn_ali, text="Apply", height=30, fg_color="#2a6e2a",
+                      command=_apply_align).pack(fill="x")
+
+        # ---- close button at bottom of dialog ------------------------
+        def _on_close():
+            _clear_highlight()
+            d.destroy()
+
+        ctk.CTkButton(d, text="Close", height=30, fg_color="gray40",
+                      command=_on_close).pack(fill="x", padx=10, pady=(4, 8))
+        d.protocol("WM_DELETE_WINDOW", _on_close)
+
     def _delete_selection_atoms(self):
         if not self.structure:
             messagebox.showwarning("Warning", "No structure loaded")
@@ -2009,6 +2530,7 @@ class VisualizeFrame(ctk.CTkFrame):
         d.geometry("400x380")
         d.transient(self)
         d.attributes('-topmost', True)
+        d.after(100, d.grab_set)
 
         # Track preview highlight actors so we can remove them
         _highlight_actors = []
@@ -2241,13 +2763,19 @@ class VisualizeFrame(ctk.CTkFrame):
     # Highlight helpers for preview
     # ------------------------------------------------------------------
 
-    def _make_highlight_actors(self, indices):
-        """Create semi-transparent glow spheres around the given atom indices.
+    def _make_highlight_actors(self, indices, coord_override=None,
+                               offset=None):
+        """Create semi-transparent glow spheres for atoms.
 
-        Each atom gets a translucent sphere slightly larger than its VDW
-        radius, rendered in yellow/orange with smooth shading.  This gives
-        a soft "aura" that clearly marks the selection without obscuring
-        the underlying representation.
+        Parameters
+        ----------
+        indices : list of int
+            Atom indices to highlight.
+        coord_override : dict, optional
+            ``{atom_index: np.array([x, y, z])}`` to place spheres at
+            transformed positions instead of current atom coordinates.
+        offset : np.ndarray, optional
+            Displacement vector added to each atom coordinate.
         """
         from vtkmodules.vtkFiltersSources import vtkSphereSource
         from vtkmodules.vtkRenderingCore import vtkActor, vtkPolyDataMapper
@@ -2257,9 +2785,15 @@ class VisualizeFrame(ctk.CTkFrame):
         appender = vtkAppendPolyData()
         for i in indices:
             a = atoms[i]
+            if coord_override is not None and i in coord_override:
+                pos = coord_override[i]
+            elif offset is not None:
+                pos = a.coord + offset
+            else:
+                pos = a.coord
             vdw_r = VDW_RADII.get(a.element, VDW_RADII['DEFAULT'])
             src = vtkSphereSource()
-            src.SetCenter(*a.coord)
+            src.SetCenter(*pos)
             src.SetRadius(vdw_r * 1.25)  # ~25% larger than atom
             src.SetPhiResolution(16)
             src.SetThetaResolution(16)

@@ -540,6 +540,448 @@ finally:
 
 ---
 
+## Coordinate Transformations
+
+### Method: rotate_atoms()
+
+```python
+viewer.rotate_atoms(angle_degrees: float, axis: str,
+                    indices: list = None, center: str = 'selection') -> int
+```
+
+Rotate atoms around a Cartesian axis.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `angle_degrees` | float | — | Rotation angle in degrees |
+| `axis` | str | — | `'x'`, `'y'`, or `'z'` |
+| `indices` | list[int] | `None` | Atom indices to rotate. `None` = all atoms |
+| `center` | str | `'selection'` | `'selection'` rotates around the centroid of the affected atoms; `'origin'` rotates around (0, 0, 0) |
+
+**Returns:** Number of atoms rotated.
+
+---
+
+### Method: translate_atoms()
+
+```python
+viewer.translate_atoms(displacement: list, indices: list = None) -> int
+```
+
+Translate atoms by a displacement vector.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `displacement` | list[float] | — | `[dx, dy, dz]` in angstroms |
+| `indices` | list[int] | `None` | Atom indices to move. `None` = all atoms |
+
+**Returns:** Number of atoms translated.
+
+---
+
+### Method: center_atoms()
+
+```python
+viewer.center_atoms(indices: list = None) -> numpy.ndarray
+```
+
+Move the entire structure so that the centroid of the selected atoms is at the
+origin.  The shift is always applied to **all** atoms.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `indices` | list[int] | `None` | Atoms whose centroid defines the shift. `None` = all atoms |
+
+**Returns:** The displacement applied (old centroid position) as a NumPy array.
+
+---
+
+### Method: align_to_axis()
+
+```python
+viewer.align_to_axis(primary_indices: list, target_axis: str = 'z',
+                     secondary_indices: list = None,
+                     secondary_axis: str = None,
+                     apply_to: list = None) -> int
+```
+
+Align a selection's principal direction to a reference axis using SVD.  The
+first singular vector fitted through the primary atom positions is rotated onto
+the target axis.  An optional secondary alignment adds a rotation around the
+primary axis so that the centroid of the secondary selection projects onto the
+secondary axis.
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `primary_indices` | list[int] | — | Atoms whose principal direction defines the alignment vector |
+| `target_axis` | str | `'z'` | `'x'`, `'y'`, or `'z'` |
+| `secondary_indices` | list[int] | `None` | Atoms for the secondary axis alignment |
+| `secondary_axis` | str | `None` | `'x'`, `'y'`, or `'z'`; must differ from `target_axis` |
+| `apply_to` | list[int] | `None` | Atom indices to actually transform. `None` = all atoms |
+
+**Returns:** Number of atoms transformed.
+
+!!! tip "Use case: ion channel alignment"
+    For channels it is common to select the filter ions (`name K`) and align
+    them to the Z-axis, then add the selectivity filter residues as secondary
+    alignment to the X-axis.  This orients the pore along Z with a known
+    reference direction.
+
+### Example 12: Rotate atoms around an axis
+
+```python
+import os
+import tempfile
+import numpy as np
+from gatewizard.core.viewer import MolecularViewer
+
+viewer = MolecularViewer()
+
+# A small chain along the X-axis so rotations are easy to verify
+pdb_content = """\
+ATOM      1  N   ALA A   1       0.000   0.000   0.000  1.00  0.00           N
+ATOM      2  CA  ALA A   1       1.500   0.000   0.000  1.00  0.00           C
+ATOM      3  C   ALA A   1       3.000   0.000   0.000  1.00  0.00           C
+ATOM      4  O   ALA A   1       3.500   1.000   0.000  1.00  0.00           O
+ATOM      5  N   ALA A   2       4.500   0.000   0.000  1.00  0.00           N
+ATOM      6  CA  ALA A   2       6.000   0.000   0.000  1.00  0.00           C
+ATOM      7  C   ALA A   2       7.500   0.000   0.000  1.00  0.00           C
+ATOM      8  O   ALA A   2       8.000   1.000   0.000  1.00  0.00           O
+END
+"""
+
+with tempfile.NamedTemporaryFile(suffix='.pdb', mode='w', delete=False) as f:
+    f.write(pdb_content)
+    tmp_path = f.name
+
+try:
+    viewer.load_structure(tmp_path)
+    atoms = viewer.structure.atoms
+    print(f"Loaded {len(atoms)} atoms")
+
+    # --- Rotate all atoms 90° around Z (X → Y) ---
+    before = np.array([a.coord.copy() for a in atoms])
+    n = viewer.rotate_atoms(90, 'z')
+    after = np.array([a.coord for a in atoms])
+    print(f"\nRotated {n} atoms 90° around Z:")
+    print(f"  Atom 1 before: ({before[0][0]:.1f}, {before[0][1]:.1f}, {before[0][2]:.1f})")
+    print(f"  Atom 1 after:  ({after[0][0]:.1f}, {after[0][1]:.1f}, {after[0][2]:.1f})")
+
+    # --- Rotate only first residue 45° around X ---
+    viewer.load_structure(tmp_path)  # reload
+    res1 = [i for i, a in enumerate(viewer.structure.atoms) if a.res_id == 1]
+    n = viewer.rotate_atoms(45, 'x', indices=res1)
+    print(f"\nRotated {n} atoms (residue 1) 45° around X")
+
+    # --- Rotate around origin instead of selection centroid ---
+    viewer.load_structure(tmp_path)
+    n = viewer.rotate_atoms(180, 'y', center='origin')
+    after180 = np.array([a.coord for a in viewer.structure.atoms])
+    print(f"\nRotated {n} atoms 180° around Y (origin):")
+    print(f"  Atom 1: ({after180[0][0]:.1f}, {after180[0][1]:.1f}, {after180[0][2]:.1f})")
+finally:
+    os.unlink(tmp_path)
+```
+
+**Expected output:**
+```
+Loaded 8 atoms
+
+Rotated 8 atoms 90° around Z:
+  Atom 1 before: (0.0, 0.0, 0.0)
+  Atom 1 after:  (4.5, -4.0, 0.0)
+
+Rotated 4 atoms (residue 1) 45° around X
+
+Rotated 8 atoms 180° around Y (origin):
+  Atom 1: (0.0, 0.0, 0.0)
+```
+
+### Example 13: Translate and center structure
+
+```python
+import os
+import tempfile
+import numpy as np
+from gatewizard.core.viewer import MolecularViewer
+
+viewer = MolecularViewer()
+
+# Structure offset from origin so centering is visible
+pdb_content = """\
+ATOM      1  N   ALA A   1      10.000  20.000  30.000  1.00  0.00           N
+ATOM      2  CA  ALA A   1      11.500  20.000  30.000  1.00  0.00           C
+ATOM      3  C   ALA A   1      13.000  20.000  30.000  1.00  0.00           C
+ATOM      4  O   ALA A   1      13.500  21.000  30.000  1.00  0.00           O
+ATOM      5  N   ALA A   2      14.500  20.000  30.000  1.00  0.00           N
+ATOM      6  CA  ALA A   2      16.000  20.000  30.000  1.00  0.00           C
+ATOM      7  C   ALA A   2      17.500  20.000  30.000  1.00  0.00           C
+ATOM      8  O   ALA A   2      18.000  21.000  30.000  1.00  0.00           O
+END
+"""
+
+with tempfile.NamedTemporaryFile(suffix='.pdb', mode='w', delete=False) as f:
+    f.write(pdb_content)
+    tmp_path = f.name
+
+try:
+    viewer.load_structure(tmp_path)
+    atoms = viewer.structure.atoms
+
+    # --- Translate all atoms by (5, -10, 0) Å ---
+    before = np.array([a.coord.copy() for a in atoms])
+    n = viewer.translate_atoms([5.0, -10.0, 0.0])
+    after = np.array([a.coord for a in atoms])
+    print(f"Translated {n} atoms by (5, -10, 0) Å:")
+    print(f"  Atom 1 before: ({before[0][0]:.1f}, {before[0][1]:.1f}, {before[0][2]:.1f})")
+    print(f"  Atom 1 after:  ({after[0][0]:.1f}, {after[0][1]:.1f}, {after[0][2]:.1f})")
+
+    # --- Translate only residue 2 ---
+    viewer.load_structure(tmp_path)
+    res2 = [i for i, a in enumerate(viewer.structure.atoms) if a.res_id == 2]
+    n = viewer.translate_atoms([0.0, 0.0, 5.0], indices=res2)
+    print(f"\nTranslated {n} atoms (residue 2) by (0, 0, 5) Å")
+
+    # --- Center structure at origin ---
+    viewer.load_structure(tmp_path)
+    before_center = np.array([a.coord for a in viewer.structure.atoms]).mean(axis=0)
+    shift = viewer.center_atoms()
+    after_center = np.array([a.coord for a in viewer.structure.atoms]).mean(axis=0)
+    print(f"\nCentered structure:")
+    print(f"  Centroid before: ({before_center[0]:.1f}, {before_center[1]:.1f}, {before_center[2]:.1f})")
+    print(f"  Shift applied:   ({shift[0]:.1f}, {shift[1]:.1f}, {shift[2]:.1f})")
+    print(f"  Centroid after:  ({after_center[0]:.4f}, {after_center[1]:.4f}, {after_center[2]:.4f})")
+
+    # --- Center using a subset as reference, shift applied to all ---
+    viewer.load_structure(tmp_path)
+    res1 = [i for i, a in enumerate(viewer.structure.atoms) if a.res_id == 1]
+    shift = viewer.center_atoms(indices=res1)
+    res1_center = np.array([viewer.structure.atoms[i].coord for i in res1]).mean(axis=0)
+    print(f"\nCentered on residue 1:")
+    print(f"  Residue 1 centroid: ({res1_center[0]:.4f}, {res1_center[1]:.4f}, {res1_center[2]:.4f})")
+finally:
+    os.unlink(tmp_path)
+```
+
+**Expected output:**
+```
+Translated 8 atoms by (5, -10, 0) Å:
+  Atom 1 before: (10.0, 20.0, 30.0)
+  Atom 1 after:  (15.0, 10.0, 30.0)
+
+Translated 4 atoms (residue 2) by (0, 0, 5) Å
+
+Centered structure:
+  Centroid before: (14.2, 20.2, 30.0)
+  Shift applied:   (14.2, 20.2, 30.0)
+  Centroid after:  (0.0000, 0.0000, 0.0000)
+
+Centered on residue 1:
+  Residue 1 centroid: (0.0000, 0.0000, 0.0000)
+```
+
+### Example 14: Align structure to an axis
+
+```python
+import os
+import tempfile
+import numpy as np
+from gatewizard.core.viewer import MolecularViewer
+
+viewer = MolecularViewer()
+
+# Structure extended along the X-axis (principal axis ≈ X)
+# We will align it so the principal axis points along Z
+pdb_content = """\
+ATOM      1  N   ALA A   1       0.000   0.200   0.100  1.00  0.00           N
+ATOM      2  CA  ALA A   1       1.500   0.100  -0.050  1.00  0.00           C
+ATOM      3  C   ALA A   1       3.000  -0.100   0.200  1.00  0.00           C
+ATOM      4  O   ALA A   1       3.500   0.900   0.100  1.00  0.00           O
+ATOM      5  N   ALA A   2       4.500   0.050  -0.100  1.00  0.00           N
+ATOM      6  CA  ALA A   2       6.000  -0.200   0.050  1.00  0.00           C
+ATOM      7  C   ALA A   2       7.500   0.100   0.150  1.00  0.00           C
+ATOM      8  O   ALA A   2       8.000   1.100  -0.050  1.00  0.00           O
+ATOM      9  N   ALA A   3       9.000  -0.050   0.000  1.00  0.00           N
+ATOM     10  CA  ALA A   3      10.500   0.150   0.100  1.00  0.00           C
+ATOM     11  C   ALA A   3      12.000  -0.100  -0.050  1.00  0.00           C
+ATOM     12  O   ALA A   3      12.500   0.800   0.200  1.00  0.00           O
+END
+"""
+
+with tempfile.NamedTemporaryFile(suffix='.pdb', mode='w', delete=False) as f:
+    f.write(pdb_content)
+    tmp_path = f.name
+
+try:
+    viewer.load_structure(tmp_path)
+    atoms = viewer.structure.atoms
+
+    # Before alignment: measure span along each axis
+    coords_before = np.array([a.coord for a in atoms])
+    spans_before = coords_before.max(axis=0) - coords_before.min(axis=0)
+    print("Before alignment (axis spans):")
+    print(f"  X: {spans_before[0]:.2f} Å")
+    print(f"  Y: {spans_before[1]:.2f} Å")
+    print(f"  Z: {spans_before[2]:.2f} Å")
+    print(f"  Principal axis: X (largest span)")
+
+    # --- Align all atoms to Z-axis ---
+    all_idx = list(range(len(atoms)))
+    n = viewer.align_to_axis(all_idx, target_axis='z')
+    coords_after = np.array([a.coord for a in atoms])
+    spans_after = coords_after.max(axis=0) - coords_after.min(axis=0)
+    print(f"\nAligned {n} atoms to Z-axis (axis spans):")
+    print(f"  X: {spans_after[0]:.2f} Å")
+    print(f"  Y: {spans_after[1]:.2f} Å")
+    print(f"  Z: {spans_after[2]:.2f} Å")
+    print(f"  Principal axis: Z (largest span)")
+
+    # --- Align using only backbone CA atoms, transform all ---
+    viewer.load_structure(tmp_path)
+    ca_idx = [i for i, a in enumerate(viewer.structure.atoms) if a.name == 'CA']
+    n = viewer.align_to_axis(ca_idx, target_axis='y')
+    coords_ca = np.array([a.coord for a in viewer.structure.atoms])
+    spans_ca = coords_ca.max(axis=0) - coords_ca.min(axis=0)
+    print(f"\nAligned CA atoms to Y-axis, transformed all {n} atoms:")
+    print(f"  X: {spans_ca[0]:.2f} Å")
+    print(f"  Y: {spans_ca[1]:.2f} Å")
+    print(f"  Z: {spans_ca[2]:.2f} Å")
+finally:
+    os.unlink(tmp_path)
+```
+
+**Expected output:**
+```
+Before alignment (axis spans):
+  X: 12.50 Å
+  Y: 1.30 Å
+  Z: 0.30 Å
+  Principal axis: X (largest span)
+
+Aligned 12 atoms to Z-axis (axis spans):
+  X: 0.30 Å
+  Y: 1.28 Å
+  Z: 12.51 Å
+  Principal axis: Z (largest span)
+
+Aligned CA atoms to Y-axis, transformed all 12 atoms:
+  X: 1.29 Å
+  Y: 12.50 Å
+  Z: 0.40 Å
+```
+
+### Example 15: Align with primary and secondary axes
+
+```python
+import os
+import tempfile
+import numpy as np
+from gatewizard.core.viewer import MolecularViewer
+
+viewer = MolecularViewer()
+
+# A structure with two chains:
+#   Chain A runs along the X-axis (the "channel pore")
+#   Chain B has an atom offset in the Y direction (reference for secondary axis)
+# This mimics aligning a channel pore to Z with a pore-lining residue on X.
+pdb_content = """\
+ATOM      1  N   ALA A   1       0.000   0.000   0.000  1.00  0.00           N
+ATOM      2  CA  ALA A   1       2.000   0.200   0.100  1.00  0.00           C
+ATOM      3  C   ALA A   1       4.000  -0.100   0.050  1.00  0.00           C
+ATOM      4  O   ALA A   1       6.000   0.100  -0.100  1.00  0.00           O
+ATOM      5  N   ALA A   2       8.000  -0.050   0.200  1.00  0.00           N
+ATOM      6  CA  ALA A   2      10.000   0.150  -0.050  1.00  0.00           C
+ATOM      7  C   ALA A   2      12.000   0.000   0.100  1.00  0.00           C
+ATOM      8  O   ALA A   2      14.000  -0.200   0.000  1.00  0.00           O
+ATOM      9  N   GLY B   1       5.000   4.000   0.500  1.00  0.00           N
+ATOM     10  CA  GLY B   1       7.000   4.200   0.300  1.00  0.00           C
+END
+"""
+
+with tempfile.NamedTemporaryFile(suffix='.pdb', mode='w', delete=False) as f:
+    f.write(pdb_content)
+    tmp_path = f.name
+
+try:
+    viewer.load_structure(tmp_path)
+    atoms = viewer.structure.atoms
+
+    # Primary: chain A backbone → align to Z-axis
+    # Secondary: chain B atoms → align to X-axis
+    chainA = [i for i, a in enumerate(atoms) if a.chain_id == 'A']
+    chainB = [i for i, a in enumerate(atoms) if a.chain_id == 'B']
+
+    print("Before alignment:")
+    coordsA = np.array([atoms[i].coord for i in chainA])
+    coordsB = np.array([atoms[i].coord for i in chainB])
+    spansA = coordsA.max(axis=0) - coordsA.min(axis=0)
+    print(f"  Chain A spans: X={spansA[0]:.1f}, Y={spansA[1]:.1f}, Z={spansA[2]:.1f}")
+    print(f"  Chain B centroid: ({coordsB.mean(0)[0]:.1f}, "
+          f"{coordsB.mean(0)[1]:.1f}, {coordsB.mean(0)[2]:.1f})")
+
+    # Align with primary + secondary axes
+    n = viewer.align_to_axis(
+        primary_indices=chainA,
+        target_axis='z',
+        secondary_indices=chainB,
+        secondary_axis='x',
+    )
+
+    print(f"\nAligned {n} atoms (primary → Z, secondary → X):")
+    coordsA2 = np.array([atoms[i].coord for i in chainA])
+    coordsB2 = np.array([atoms[i].coord for i in chainB])
+    spansA2 = coordsA2.max(axis=0) - coordsA2.min(axis=0)
+    print(f"  Chain A spans: X={spansA2[0]:.2f}, Y={spansA2[1]:.2f}, Z={spansA2[2]:.2f}")
+    print(f"  Chain B centroid: ({coordsB2.mean(0)[0]:.2f}, "
+          f"{coordsB2.mean(0)[1]:.2f}, {coordsB2.mean(0)[2]:.2f})")
+    print(f"  Chain A now mostly along Z (Z span >> X, Y).")
+    print(f"  Chain B centroid now has largest offset along X.")
+
+    # --- Align only chain A, keep chain B fixed ---
+    viewer.load_structure(tmp_path)
+    atoms = viewer.structure.atoms
+    chainA = [i for i, a in enumerate(atoms) if a.chain_id == 'A']
+    chainB_fixed = [i for i, a in enumerate(atoms) if a.chain_id == 'B']
+    coordsB_before = np.array([atoms[i].coord.copy() for i in chainB_fixed])
+
+    n = viewer.align_to_axis(
+        primary_indices=chainA,
+        target_axis='z',
+        apply_to=chainA,  # only move chain A
+    )
+    coordsB_after = np.array([atoms[i].coord for i in chainB_fixed])
+    print(f"\nAligned only chain A ({n} atoms), chain B unchanged:")
+    print(f"  Chain B moved: {not np.allclose(coordsB_before, coordsB_after)}")
+finally:
+    os.unlink(tmp_path)
+```
+
+**Expected output:**
+```
+Before alignment:
+  Chain A spans: X=14.0, Y=0.4, Z=0.3
+  Chain B centroid: (6.0, 4.1, 0.4)
+
+Aligned 10 atoms (primary → Z, secondary → X):
+  Chain A spans: X=0.30, Y=0.31, Z=14.00
+  Chain B centroid: (10.07, 0.83, -0.73)
+  Chain A now mostly along Z (Z span >> X, Y).
+  Chain B centroid now has largest offset along X.
+
+Aligned only chain A (8 atoms), chain B unchanged:
+  Chain B moved: False
+```
+
+---
+
 ## Secondary Structure Assignment
 
 ### Method: assign_secondary_structure()

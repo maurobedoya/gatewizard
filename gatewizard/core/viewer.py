@@ -239,8 +239,20 @@ class ProteinStructure:
 
     # -- bond detection ------------------------------------------------
 
+    def refresh_residue_coords(self):
+        """Sync residue ca_coord / o_coord with current atom coordinates."""
+        for res in self.residues:
+            res.ca_coord = None
+            res.o_coord = None
+            for a in res.atoms:
+                if a.name == 'CA':
+                    res.ca_coord = a.coord
+                elif a.name == 'O':
+                    res.o_coord = a.coord
+
     def build_bonds(self, cutoff_factor: float = 1.3):
         """Detect covalent bonds from distances and covalent radii."""
+        self.refresh_residue_coords()
         coords = np.array([a.coord for a in self.atoms])
         n = len(coords)
         if n == 0:
@@ -347,6 +359,39 @@ class ProteinStructure:
 def _vec_angle(v1, v2):
     c = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-12)
     return np.degrees(np.arccos(np.clip(c, -1, 1)))
+
+
+# ---------------------------------------------------------------------------
+# Coordinate transformation helpers
+# ---------------------------------------------------------------------------
+
+def _axis_rotation_matrix(axis: str, angle_rad: float) -> np.ndarray:
+    """Return a 3×3 rotation matrix for rotation around *axis* by *angle_rad*."""
+    c, s = np.cos(angle_rad), np.sin(angle_rad)
+    if axis == 'x':
+        return np.array([[1, 0, 0], [0, c, -s], [0, s, c]])
+    if axis == 'y':
+        return np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]])
+    # z
+    return np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
+
+
+def _rotation_matrix_from_vectors(v1: np.ndarray, v2: np.ndarray) -> np.ndarray:
+    """Return 3×3 rotation matrix that aligns unit vector *v1* to *v2*."""
+    a = v1 / (np.linalg.norm(v1) + 1e-12)
+    b = v2 / (np.linalg.norm(v2) + 1e-12)
+    v = np.cross(a, b)
+    c = float(np.dot(a, b))
+    if c > 1.0 - 1e-8:       # already aligned
+        return np.eye(3)
+    if c < -1.0 + 1e-8:      # opposite direction — 180° rotation
+        perp = np.array([1, 0, 0]) if abs(a[0]) < 0.9 else np.array([0, 1, 0])
+        perp = perp - np.dot(perp, a) * a
+        perp /= np.linalg.norm(perp)
+        return 2.0 * np.outer(perp, perp) - np.eye(3)
+    s = np.linalg.norm(v)
+    K = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+    return np.eye(3) + K + K @ K * ((1 - c) / (s * s))
 
 
 # ---------------------------------------------------------------------------
@@ -1090,6 +1135,205 @@ class MolecularViewer:
         deleted = n_before - len(self.structure.atoms)
         logger.info(f"Deleted {deleted} atoms")
         return deleted
+
+    # -- coordinate transformations ------------------------------------
+
+    def _reassign_ss(self):
+        """Re-assign secondary structure after coordinate changes."""
+        import tempfile, os
+        fd, tmp = tempfile.mkstemp(suffix='.pdb')
+        os.close(fd)
+        try:
+            self.structure.write_pdb(tmp)
+            _assign_secondary_structure(self.structure, filepath=tmp)
+        finally:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+
+    def rotate_atoms(self, angle_degrees: float, axis: str,
+                     indices: Optional[List[int]] = None,
+                     center: str = 'selection') -> int:
+        """Rotate atoms around an axis.
+
+        Parameters
+        ----------
+        angle_degrees : float
+            Rotation angle in degrees.
+        axis : str
+            ``'x'``, ``'y'``, or ``'z'``.
+        indices : list of int, optional
+            Atom indices to rotate.  ``None`` means all atoms.
+        center : str
+            ``'selection'`` rotates around the centroid of the affected
+            atoms; ``'origin'`` rotates around (0, 0, 0).
+
+        Returns
+        -------
+        int
+            Number of atoms rotated.
+        """
+        self._require_structure()
+        atoms = self.structure.atoms
+        if indices is None:
+            indices = list(range(len(atoms)))
+        if not indices:
+            return 0
+        coords = np.array([atoms[i].coord for i in indices])
+        pivot = coords.mean(axis=0) if center == 'selection' else np.zeros(3)
+        R = _axis_rotation_matrix(axis, np.radians(angle_degrees))
+        for i in indices:
+            atoms[i].coord = R @ (atoms[i].coord - pivot) + pivot
+        self.structure.build_bonds()
+        self._reassign_ss()
+        logger.info(f"Rotated {len(indices)} atoms by {angle_degrees}° around {axis}")
+        return len(indices)
+
+    def translate_atoms(self, displacement: List[float],
+                        indices: Optional[List[int]] = None) -> int:
+        """Translate atoms by a displacement vector.
+
+        Parameters
+        ----------
+        displacement : list of float
+            ``[dx, dy, dz]`` in angstroms.
+        indices : list of int, optional
+            Atom indices to translate.  ``None`` means all atoms.
+
+        Returns
+        -------
+        int
+            Number of atoms translated.
+        """
+        self._require_structure()
+        atoms = self.structure.atoms
+        if indices is None:
+            indices = list(range(len(atoms)))
+        if not indices:
+            return 0
+        d = np.asarray(displacement, dtype=float)
+        for i in indices:
+            atoms[i].coord = atoms[i].coord + d
+        self.structure.build_bonds()
+        self._reassign_ss()
+        logger.info(f"Translated {len(indices)} atoms by {displacement}")
+        return len(indices)
+
+    def center_atoms(self, indices: Optional[List[int]] = None) -> np.ndarray:
+        """Move atoms so that their centroid is at the origin.
+
+        Parameters
+        ----------
+        indices : list of int, optional
+            Atom indices whose centroid defines the shift.  ``None`` means
+            all atoms.  The shift is always applied to **all** atoms so
+            that the structure stays intact.
+
+        Returns
+        -------
+        numpy.ndarray
+            The displacement applied (old centroid position).
+        """
+        self._require_structure()
+        atoms = self.structure.atoms
+        ref = indices if indices else list(range(len(atoms)))
+        centroid = np.array([atoms[i].coord for i in ref]).mean(axis=0)
+        for a in atoms:
+            a.coord = a.coord - centroid
+        self.structure.build_bonds()
+        self._reassign_ss()
+        logger.info(f"Centered structure (shift {centroid})")
+        return centroid
+
+    def align_to_axis(self, primary_indices: List[int],
+                      target_axis: str = 'z',
+                      secondary_indices: Optional[List[int]] = None,
+                      secondary_axis: Optional[str] = None,
+                      apply_to: Optional[List[int]] = None) -> int:
+        """Align a selection's principal direction to a reference axis.
+
+        The principal direction is the first singular vector (SVD) fitted
+        through the selected atom positions.  If *secondary_indices* and
+        *secondary_axis* are given, a secondary rotation around the primary
+        axis is applied so that the centroid of the secondary selection
+        projects onto the secondary axis in the plane perpendicular to the
+        primary.
+
+        Parameters
+        ----------
+        primary_indices : list of int
+            Atoms whose principal direction defines the alignment vector.
+        target_axis : str
+            ``'x'``, ``'y'``, or ``'z'``.
+        secondary_indices : list of int, optional
+            Atoms for secondary axis alignment.
+        secondary_axis : str, optional
+            ``'x'``, ``'y'``, or ``'z'``; must differ from *target_axis*.
+        apply_to : list of int, optional
+            Atom indices to actually transform.  ``None`` means all atoms.
+
+        Returns
+        -------
+        int
+            Number of atoms transformed.
+        """
+        self._require_structure()
+        atoms = self.structure.atoms
+        if apply_to is None:
+            apply_to = list(range(len(atoms)))
+        if not primary_indices or not apply_to:
+            return 0
+
+        axis_idx = {'x': 0, 'y': 1, 'z': 2}
+
+        # --- compute centroid of atoms being transformed as pivot ---
+        pivot = np.array([atoms[i].coord for i in apply_to]).mean(axis=0)
+
+        # --- primary alignment: SVD principal direction → target axis ---
+        pri_coords = np.array([atoms[i].coord for i in primary_indices])
+        pri_centered = pri_coords - pri_coords.mean(axis=0)
+        _, _, Vt = np.linalg.svd(pri_centered, full_matrices=False)
+        principal = Vt[0]
+        # ensure positive projection on target so direction is consistent
+        tidx = axis_idx[target_axis]
+        if principal[tidx] < 0:
+            principal = -principal
+        target_vec = np.zeros(3)
+        target_vec[tidx] = 1.0
+        R1 = _rotation_matrix_from_vectors(principal, target_vec)
+
+        for i in apply_to:
+            atoms[i].coord = R1 @ (atoms[i].coord - pivot) + pivot
+
+        # --- secondary alignment (rotation around the primary axis) ---
+        if secondary_indices and secondary_axis:
+            sidx = axis_idx[secondary_axis]
+            sec_coords = np.array([atoms[i].coord for i in secondary_indices])
+            sec_center = sec_coords.mean(axis=0)
+            direction = sec_center - pivot
+            # project onto plane perpendicular to target axis
+            direction[tidx] = 0.0
+            norm = np.linalg.norm(direction)
+            if norm > 1e-8:
+                direction /= norm
+                sec_target = np.zeros(3)
+                sec_target[sidx] = 1.0
+                # angle between projection and secondary target
+                cos_a = np.clip(np.dot(direction, sec_target), -1, 1)
+                cross = np.cross(direction, sec_target)
+                sign = 1.0 if np.dot(cross, target_vec) >= 0 else -1.0
+                angle = sign * np.arccos(cos_a)
+                R2 = _axis_rotation_matrix(target_axis, angle)
+                for i in apply_to:
+                    atoms[i].coord = R2 @ (atoms[i].coord - pivot) + pivot
+
+        self.structure.build_bonds()
+        self._reassign_ss()
+        logger.info(
+            f"Aligned {len(primary_indices)} atoms to {target_axis}-axis "
+            f"({len(apply_to)} atoms transformed)")
+        return len(apply_to)
 
     # -- saving --------------------------------------------------------
 
