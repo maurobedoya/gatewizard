@@ -490,18 +490,18 @@ def _assign_ss_psique(filepath: str) -> Optional[Dict]:
 def _assign_secondary_structure(struct: ProteinStructure,
                                 filepath: Optional[str] = None):
     """Assign SS using best available method:
-    1) PDB HELIX/SHEET records
-    2) psique external tool
+    1) psique external tool
+    2) PDB HELIX/SHEET records
     3) CA-angle heuristic (fallback)
     """
     if filepath:
-        ss_map = _read_ss_from_pdb_records(filepath)
-        if ss_map:
+        ss_map = _assign_ss_psique(filepath)
+        if ss_map and ss_map is not _PSIQUE_NOT_FOUND:
             for r in struct.residues:
                 r.ss = ss_map.get((r.chain_id, r.seq_id), 'C')
             return
-        ss_map = _assign_ss_psique(filepath)
-        if ss_map and ss_map is not _PSIQUE_NOT_FOUND:
+        ss_map = _read_ss_from_pdb_records(filepath)
+        if ss_map:
             for r in struct.residues:
                 r.ss = ss_map.get((r.chain_id, r.seq_id), 'C')
             return
@@ -843,7 +843,7 @@ class MolecularViewer:
         method : str
             Assignment method. One of:
 
-            - ``'auto'`` – PDB HELIX/SHEET records → psique → heuristic
+            - ``'auto'`` – psique → PDB HELIX/SHEET records → heuristic
               (default, same as initial load).
             - ``'psique'`` – Use the psique tool (raises ``ViewerError``
               if psique is not available).

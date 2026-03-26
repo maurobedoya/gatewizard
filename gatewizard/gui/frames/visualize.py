@@ -195,6 +195,26 @@ class VisualizeFrame(ctk.CTkFrame):
                       height=30, fg_color="#8a3a3a",
                       hover_color="#cc3333").pack(pady=2, padx=8, fill="x")
 
+        # SS Assignment Method (collapsed by default)
+        sec_ss = CollapsibleSection(self.ctrl, "SS Assignment", expanded=False)
+        sec_ss.pack(fill="x")
+        self._ss_method_var = tk.StringVar(value="PSIQUE")
+        self._ss_method_seg = ctk.CTkSegmentedButton(
+            sec_ss.content,
+            values=["PSIQUE", "PDB", "Heuristic"],
+            variable=self._ss_method_var,
+            command=self._on_ss_method_changed,
+            height=28,
+            fg_color="gray14",
+        )
+        self._ss_method_seg.pack(pady=4, padx=8, fill="x")
+        self._ss_method_label = ctk.CTkLabel(
+            sec_ss.content, text="Method: PSIQUE (default)",
+            font=FONTS.get('small', ("", 10)),
+            text_color="gray60",
+        )
+        self._ss_method_label.pack(pady=(0, 4), padx=8)
+
         # Save (collapsed by default)
         sec_save = CollapsibleSection(self.ctrl, "Save", expanded=False)
         sec_save.pack(fill="x")
@@ -595,6 +615,76 @@ class VisualizeFrame(ctk.CTkFrame):
                 os.unlink(tmp)
             except OSError:
                 pass
+
+    def _on_ss_method_changed(self, choice: str):
+        """Handle SS method segmented-button change and reassign SS."""
+        from gatewizard.core.viewer import (
+            _assign_ss_psique, _read_ss_from_pdb_records, _PSIQUE_NOT_FOUND,
+        )
+        if self.structure is None:
+            self._ss_method_label.configure(text="Load a structure first")
+            return
+
+        method_map = {"PSIQUE": "psique", "PDB": "pdb_records",
+                      "Heuristic": "heuristic"}
+        method = method_map.get(choice, "psique")
+
+        try:
+            if method == "psique":
+                filepath = self._pdb_filepath
+                if not filepath:
+                    filepath = self._write_temp_pdb()
+                ss_map = _assign_ss_psique(filepath)
+                if ss_map is _PSIQUE_NOT_FOUND:
+                    self._ss_method_label.configure(
+                        text="PSIQUE not found – falling back to PDB records")
+                    self._ss_method_var.set("PDB")
+                    self._on_ss_method_changed("PDB")
+                    return
+                if ss_map is None:
+                    self._ss_method_label.configure(
+                        text="PSIQUE produced no SS – falling back to PDB records")
+                    self._ss_method_var.set("PDB")
+                    self._on_ss_method_changed("PDB")
+                    return
+                for r in self.structure.residues:
+                    r.ss = ss_map.get((r.chain_id, r.seq_id), 'C')
+                self._ss_method_label.configure(text="Method: PSIQUE")
+
+            elif method == "pdb_records":
+                filepath = self._pdb_filepath
+                if filepath:
+                    ss_map = _read_ss_from_pdb_records(filepath)
+                else:
+                    ss_map = None
+                if not ss_map:
+                    self._ss_method_label.configure(
+                        text="No HELIX/SHEET in PDB – falling back to heuristic")
+                    self._ss_method_var.set("Heuristic")
+                    self._on_ss_method_changed("Heuristic")
+                    return
+                for r in self.structure.residues:
+                    r.ss = ss_map.get((r.chain_id, r.seq_id), 'C')
+                self._ss_method_label.configure(text="Method: PDB records")
+
+            elif method == "heuristic":
+                self.structure.assign_secondary_structure_heuristic()
+                self._ss_method_label.configure(text="Method: Heuristic")
+
+            # Refresh the 3D view
+            self._rebuild()
+
+        except Exception as e:
+            logger.error(f"SS reassignment error: {e}")
+            self._ss_method_label.configure(text=f"Error: {e}")
+
+    def _write_temp_pdb(self) -> str:
+        """Write current structure to a temp PDB and return its path."""
+        import tempfile
+        fd, tmp = tempfile.mkstemp(suffix='.pdb')
+        os.close(fd)
+        self.structure.write_pdb(tmp)
+        return tmp
 
     def _update_axes_position(self):
         """Recalculate and reapply axes position when mode is 'center'."""
