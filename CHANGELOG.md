@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- SS Assignment segmented button (PSIQUE / PDB / Heuristic) in Visualize controls to manually select the secondary structure method
+
+### Changed
+- Default SS assignment order is now PSIQUE → PDB records → heuristic (was PDB → PSIQUE → heuristic)
+- SearchableComboBox dropdown is now a floating overlay instead of an inline child (no longer expands the parent section)
+- SearchableComboBox arrows changed from filled triangles to V-shape chevrons matching native CTk style
+
+### Fixed
+- Removed DrawEngine monkey-patch; `circle_shapes` drawing method already renders V-shape arrows natively
+- Replaced Unicode sort arrows (▲/▼) in Preparation frame with PIL-drawn images
+
 ## [1.0.25] - 2026-03-25
 
 ### Added
