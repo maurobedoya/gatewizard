@@ -12,6 +12,8 @@ to search and filter through large lists of options.
 import tkinter as tk
 from typing import List, Optional, Callable, Any
 
+from PIL import Image, ImageDraw
+
 try:
     import customtkinter as ctk
 except ImportError:
@@ -21,6 +23,21 @@ from gatewizard.gui.constants import COLOR_SCHEME, FONTS
 from gatewizard.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _make_dropdown_arrow(direction="down", size=12, color="white"):
+    """Draw a V-shape chevron arrow as a PIL image (renders on all systems)."""
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    lw = max(1, round(size / 5))  # stroke width matching CTk native style
+    m = 2
+    if direction == "up":
+        draw.line([(m, size - m - 1), (size // 2, m + 1), (size - m, size - m - 1)],
+                  fill=color, width=lw, joint="curve")
+    else:  # down
+        draw.line([(m, m + 1), (size // 2, size - m - 1), (size - m, m + 1)],
+                  fill=color, width=lw, joint="curve")
+    return ctk.CTkImage(light_image=img, dark_image=img, size=(size, size))
 
 class SearchableComboBox(ctk.CTkFrame):
     """
@@ -73,13 +90,18 @@ class SearchableComboBox(ctk.CTkFrame):
     def cleanup_callbacks(self):
         """Cancel all scheduled callbacks to prevent errors during shutdown."""
         try:
-            # This widget uses self.after() calls for dropdown management
+            if self._dropdown_win is not None:
+                self._dropdown_win.destroy()
+                self._dropdown_win = None
             logger.debug(f"Cleaned up callbacks for {type(self).__name__}")
         except Exception as e:
             logger.debug(f"Error cleaning up callbacks in {type(self).__name__}: {e}")
     
     def _create_widgets(self, width: int, height: int):
         """Create the combobox widgets."""
+        self._combo_width = width
+        self._combo_height = height
+
         # Main entry field
         self.entry = ctk.CTkEntry(
             self,
@@ -89,49 +111,32 @@ class SearchableComboBox(ctk.CTkFrame):
             font=FONTS['body']
         )
         
-        # Dropdown button – use ASCII arrow that renders on all systems
+        # Dropdown button – PIL-drawn arrow (renders on all systems)
+        self._img_arrow_down = _make_dropdown_arrow("down")
+        self._img_arrow_up = _make_dropdown_arrow("up")
         self.dropdown_button = ctk.CTkButton(
             self,
-            text="v",
+            text="",
+            image=self._img_arrow_down,
             width=25,
             height=height,
-            font=("Arial", 12, "bold"),
             command=self._toggle_dropdown
         )
         
-        # Dropdown frame (initially hidden)
-        self.dropdown_frame = ctk.CTkFrame(
-            self,
-            fg_color=COLOR_SCHEME['background'],
-            border_width=1,
-            border_color=COLOR_SCHEME['inactive']
-        )
-        
-        # Scrollable listbox for options
-        self.listbox_frame = ctk.CTkScrollableFrame(
-            self.dropdown_frame,
-            height=150,
-            fg_color="transparent"
-        )
+        # Floating dropdown window (Toplevel) — does not affect parent layout
+        self._dropdown_win = None
+        self.dropdown_frame = None
+        self.listbox_frame = None
         
         self.option_buttons = []
-        self._update_dropdown_options()
     
     def _setup_layout(self):
         """Setup the layout of widgets."""
-        # Configure grid weights
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=0)
         
-        # Pack main widgets
         self.entry.grid(row=0, column=0, sticky="ew")
         self.dropdown_button.grid(row=0, column=1, padx=(2, 0))
-        
-        # Initially hide dropdown
-        self.dropdown_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(2, 0))
-        self.dropdown_frame.grid_remove()
-        
-        self.listbox_frame.pack(fill="both", expand=True, padx=5, pady=5)
     
     def _setup_bindings(self):
         """Setup event bindings."""
@@ -156,25 +161,23 @@ class SearchableComboBox(ctk.CTkFrame):
     def _check_and_hide_dropdown(self):
         """Check if dropdown should be hidden."""
         try:
-            # Get the widget that currently has focus
             focused_widget = self.focus_get()
-
-            # Check if focus is on dropdown or its children
             if focused_widget:
-                # Get the top-level parent of the focused widget
                 current = focused_widget
                 while current:
-                    if current == self or current == self.dropdown_frame:
-                        return  # Don't hide if focus is within our widget
+                    if current == self:
+                        return
+                    # Check against the floating window and its children
+                    if self._dropdown_win and current == self._dropdown_win:
+                        return
+                    if self.dropdown_frame and current == self.dropdown_frame:
+                        return
                     try:
                         current = current.master
-                    except:
+                    except Exception:
                         break
-                    
-            # Hide dropdown if focus is elsewhere
             self._hide_dropdown()
-        except:
-            # If there's any error, just hide the dropdown
+        except Exception:
             self._hide_dropdown()
     
     def _on_text_changed(self, event=None):
@@ -190,12 +193,14 @@ class SearchableComboBox(ctk.CTkFrame):
         else:
             self.filtered_values = self.values.copy()
         
-        # Update dropdown options
-        self._update_dropdown_options()
-        
-        # Show dropdown if there are filtered values
-        if self.filtered_values and not self.dropdown_visible:
-            self._show_dropdown()
+        # Show dropdown first (creates the listbox), then update options
+        if self.filtered_values:
+            if not self.dropdown_visible:
+                self._show_dropdown()
+            else:
+                self._update_dropdown_options()
+        else:
+            self._hide_dropdown()
     
     def _on_down_arrow(self, event=None):
         """Handle down arrow key press to show dropdown."""
@@ -242,21 +247,78 @@ class SearchableComboBox(ctk.CTkFrame):
             self._show_dropdown()
     
     def _show_dropdown(self):
-        """Show the dropdown list."""
-        if not self.dropdown_visible:
-            self.dropdown_frame.grid()
-            self.dropdown_visible = True
-            self.dropdown_button.configure(text="^")
+        """Show the dropdown as a floating Toplevel positioned below the entry."""
+        if self.dropdown_visible:
+            return
+
+        # Destroy any stale window
+        if self._dropdown_win is not None:
+            try:
+                self._dropdown_win.destroy()
+            except Exception:
+                pass
+            self._dropdown_win = None
+
+        # Calculate position: just below the entry row, same width
+        self.update_idletasks()
+        x = self.winfo_rootx()
+        y = self.winfo_rooty() + self.winfo_height() + 2
+        w = self.winfo_width()
+
+        # Create a borderless Toplevel that floats above everything
+        win = tk.Toplevel(self)
+        win.withdraw()  # hide until positioned
+        win.overrideredirect(True)
+        win.geometry(f"{w}x200+{x}+{y}")
+        win.configure(bg=COLOR_SCHEME.get('background', '#2b2b2b'))
+
+        self._dropdown_win = win
+
+        self.dropdown_frame = ctk.CTkFrame(
+            win,
+            fg_color=COLOR_SCHEME['background'],
+            border_width=1,
+            border_color=COLOR_SCHEME['inactive'],
+        )
+        self.dropdown_frame.pack(fill="both", expand=True)
+
+        self.listbox_frame = ctk.CTkScrollableFrame(
+            self.dropdown_frame,
+            height=150,
+            fg_color="transparent",
+        )
+        self.listbox_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
+        self._update_dropdown_options()
+
+        win.deiconify()
+        # Clicking anywhere outside should close the dropdown
+        win.bind("<FocusOut>", lambda e: self.after(120, self._check_and_hide_dropdown))
+
+        self.dropdown_visible = True
+        self.dropdown_button.configure(image=self._img_arrow_up)
     
     def _hide_dropdown(self, event=None):
-        """Hide the dropdown list."""
-        if self.dropdown_visible:
-            self.dropdown_frame.grid_remove()
-            self.dropdown_visible = False
-            self.dropdown_button.configure(text="v")
+        """Hide the floating dropdown."""
+        if not self.dropdown_visible:
+            return
+        if self._dropdown_win is not None:
+            try:
+                self._dropdown_win.destroy()
+            except Exception:
+                pass
+            self._dropdown_win = None
+            self.dropdown_frame = None
+            self.listbox_frame = None
+            self.option_buttons.clear()
+        self.dropdown_visible = False
+        self.dropdown_button.configure(image=self._img_arrow_down)
     
     def _update_dropdown_options(self):
         """Update the options in the dropdown list."""
+        if self.listbox_frame is None:
+            return  # dropdown not open yet
+
         # Clear existing options
         for button in self.option_buttons:
             button.destroy()

@@ -16,6 +16,8 @@ from typing import Optional, Dict, Any, List, Tuple
 from pathlib import Path
 import threading
 
+from PIL import Image, ImageDraw
+
 try:
     import customtkinter as ctk
 except ImportError:
@@ -987,8 +989,14 @@ class ManualModificationsDialog(ctk.CTkToplevel):
         current_display = ctk.CTkLabel(row_frame, text=current_name or "---", width=50)
         current_display.pack(side="left", padx=(0, 10))
         
-        # Arrow
-        arrow_label = ctk.CTkLabel(row_frame, text="→", width=20)
+        # Arrow (PIL-drawn for consistent rendering)
+        _arrow_img = Image.new("RGBA", (12, 12), (0, 0, 0, 0))
+        _arrow_draw = ImageDraw.Draw(_arrow_img)
+        _arrow_draw.polygon([(2, 2), (10, 6), (2, 10)], fill="white")
+        self._right_arrow = ctk.CTkImage(
+            light_image=_arrow_img, dark_image=_arrow_img, size=(12, 12))
+        arrow_label = ctk.CTkLabel(row_frame, text="", image=self._right_arrow,
+                                   width=20)
         arrow_label.pack(side="left")
         
         # New name combobox

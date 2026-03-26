@@ -30,7 +30,25 @@ from gatewizard.tools.validators import SystemValidator
 from gatewizard.utils.logger import get_logger
 from gatewizard.utils.protein_capping import ProteinCapper, ProteinCappingError
 
+try:
+    from PIL import Image, ImageDraw
+except ImportError:
+    Image = None  # type: ignore[assignment]
+
 logger = get_logger(__name__)
+
+
+def _make_sort_arrow(direction="up", size=10, color="white"):
+    """Draw a small sort-indicator triangle (up or down) as a CTkImage."""
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    m = 2
+    if direction == "up":
+        draw.polygon([(m, size - m), (size - m, size - m), (size // 2, m)], fill=color)
+    else:
+        draw.polygon([(m, m), (size - m, m), (size // 2, size - m)], fill=color)
+    return ctk.CTkImage(light_image=img, dark_image=img, size=(size, size))
+
 
 class PreparationFrame(ctk.CTkFrame):
     """
@@ -1512,10 +1530,12 @@ class PreparationFrame(ctk.CTkFrame):
         
         for col, header in headers.items():
             if col == self.sort_column:
-                arrow = " ▲" if self.sort_ascending else " ▼"
-                header.configure(text=f"{base_texts[col]}{arrow}")
+                direction = "up" if self.sort_ascending else "down"
+                arrow_img = _make_sort_arrow(direction, size=10)
+                header.configure(text=base_texts[col], image=arrow_img, compound="right")
+                header._sort_arrow = arrow_img  # prevent GC
             else:
-                header.configure(text=base_texts[col])
+                header.configure(text=base_texts[col], image="", compound="left")
     
     def _refresh_results_display(self, ph: float):
         """Refresh the results display without changing the data order."""
