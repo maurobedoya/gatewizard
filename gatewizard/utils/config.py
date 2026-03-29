@@ -19,6 +19,14 @@ from gatewizard.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+def _get_app_version() -> str:
+    """Get the current application version."""
+    try:
+        from gatewizard import __version__
+        return __version__
+    except Exception:
+        return "0.1.0"
+
 @dataclass
 class GuiConfig:
     """GUI-specific configuration."""
@@ -81,7 +89,7 @@ class Config:
     propka: PropkaConfig = field(default_factory=PropkaConfig)
     paths: PathsConfig = field(default_factory=PathsConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
-    version: str = "0.1.0"
+    version: str = field(default_factory=_get_app_version)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert configuration to dictionary with Path objects converted to strings."""
@@ -196,6 +204,8 @@ class ConfigManager:
         """
         try:
             self._ensure_config_dir()
+            # Always stamp the current app version
+            config.version = _get_app_version()
             
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(config.to_dict(), f, indent=2, ensure_ascii=False)
