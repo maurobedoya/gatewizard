@@ -441,16 +441,18 @@ class LigandParamWidget(ctk.CTkFrame):
                     text="Previous run found",
                     text_color="#60A5FA"  # blue
                 )
+            # Hide per-ligand button for already-parametrized ligands
+            self._show_retry_button(name, show=False)
 
         if missing:
             # Some ligands lack valid parametrization
             names_ok = ", ".join(found.keys())
             names_miss = ", ".join(missing)
             self.progress_label.configure(
-                text=(f"Existing parametrization found for: {names_ok}. "
+                text=(f"Found existing results for: {names_ok}. "
                       f"Missing: {names_miss}. "
-                      f"Click 'Parametrize All Ligands' to run the "
-                      f"remaining (or re-run all).")
+                      f"Use per-ligand buttons or "
+                      f"'Re-parametrize All' to re-run everything.")
             )
             # Pre-populate found ligands so they are reused
             self.parametrized_ligands.update(found)
@@ -600,7 +602,21 @@ class LigandParamWidget(ctk.CTkFrame):
             font=FONTS['small'],
             text_color=COLOR_SCHEME['inactive']
         )
-        elem_label.pack(anchor="w", padx=10, pady=(2, 6))
+        elem_label.pack(anchor="w", padx=10, pady=(2, 2))
+
+        # ---- Per-ligand run/retry button (visible by default) ----
+        retry_button = ctk.CTkButton(
+            card,
+            text=f"Parametrize {ligand.name}",
+            font=FONTS['small'],
+            height=24,
+            fg_color="#3B82F6",
+            hover_color="#2563EB",
+            text_color="#FFFFFF",
+            corner_radius=4,
+            command=lambda n=ligand.name: self._parametrize_single(n),
+        )
+        retry_button.pack(padx=10, pady=(2, 6), anchor="w")
 
         # Store references
         self.ligand_widgets[ligand.name] = {
@@ -609,6 +625,7 @@ class LigandParamWidget(ctk.CTkFrame):
             'multiplicity_entry': mult_entry,
             'status_label': status_label,
             'image_label': image_label,
+            'retry_button': retry_button,
             'ligand': ligand,
         }
 
@@ -780,6 +797,209 @@ class LigandParamWidget(ctk.CTkFrame):
     # Parametrization
     # ------------------------------------------------------------------
 
+    def _show_retry_button(self, ligand_name: str, show: bool = True):
+        """Show or hide the per-ligand button."""
+        w = self.ligand_widgets.get(ligand_name, {})
+        btn = w.get('retry_button')
+        if not btn:
+            return
+        if show:
+            # Determine text/color based on whether it already completed once
+            if ligand_name in self.parametrized_ligands:
+                btn.configure(
+                    text=f"Re-parametrize {ligand_name}",
+                    state="normal",
+                    fg_color="#3B82F6",
+                )
+            else:
+                btn.configure(
+                    text=f"Parametrize {ligand_name}",
+                    state="normal",
+                    fg_color="#3B82F6",
+                )
+            btn.pack(padx=10, pady=(2, 6), anchor="w")
+        else:
+            btn.pack_forget()
+
+    def _show_retry_button_failed(self, ligand_name: str):
+        """Show per-ligand button in failed/retry style."""
+        w = self.ligand_widgets.get(ligand_name, {})
+        btn = w.get('retry_button')
+        if not btn:
+            return
+        btn.configure(
+            text=f"Retry {ligand_name}",
+            state="normal",
+            fg_color="#F59E0B",
+            hover_color="#D97706",
+        )
+        btn.pack(padx=10, pady=(2, 6), anchor="w")
+
+    def _parametrize_single(self, ligand_name: str):
+        """Parametrize (or retry) a single ligand."""
+        if self._parametrizing:
+            messagebox.showinfo(
+                "In Progress", "Parametrization is already running."
+            )
+            return
+
+        # Find the ligand info
+        ligand = None
+        for lig in self.detected_ligands:
+            if lig.name == ligand_name:
+                ligand = lig
+                break
+        if ligand is None:
+            return
+
+        # Working directory
+        working_dir = None
+        if self.working_dir_callback:
+            working_dir = self.working_dir_callback()
+        if not working_dir:
+            working_dir = str(Path.cwd())
+
+        charge_method = self._get_selected_charge_method()
+        atom_type = self._get_selected_atom_type()
+
+        # Warn for non-recommended combos
+        if (atom_type, charge_method) in NON_RECOMMENDED_COMBOS:
+            proceed = messagebox.askyesno(
+                "Non-Recommended Combination",
+                f"The combination {atom_type}/{charge_method} is not "
+                f"recommended by the AMBER manual.\n\n"
+                f"Recommended pairings are gaff/bcc and gaff2/abcg2.\n\n"
+                f"Do you want to proceed anyway?",
+                icon="warning",
+            )
+            if not proceed:
+                return
+
+        w = self.ligand_widgets.get(ligand_name, {})
+        try:
+            charge = int(w['charge_entry'].get())
+        except (KeyError, ValueError):
+            charge = 0
+        try:
+            multiplicity = int(w['multiplicity_entry'].get())
+        except (KeyError, ValueError):
+            multiplicity = 1
+
+        self._parametrizing = True
+        # Hide retry button while running
+        self._show_retry_button(ligand_name, show=False)
+        sl = w.get('status_label')
+        if sl:
+            sl.configure(text="Running...", text_color="#F59E0B")
+        self.progress_label.configure(
+            text=f"Parametrizing {ligand_name}..."
+        )
+
+        def _run():
+            try:
+                lig_dir = str(
+                    Path(working_dir) / "ligand_params" / ligand_name
+                )
+                lig_pdb = extract_ligand_pdb(
+                    self.current_pdb_file, ligand_name, lig_dir
+                )
+                files = parametrize_ligand(
+                    ligand_pdb=lig_pdb,
+                    ligand_name=ligand_name,
+                    output_dir=lig_dir,
+                    charge=charge,
+                    charge_method=charge_method,
+                    atom_type=atom_type,
+                    multiplicity=multiplicity,
+                )
+                self.parametrized_ligands[ligand_name] = files
+
+                if sl:
+                    sl.after(0, lambda s=sl: s.configure(
+                        text="Completed", text_color="#10B981"
+                    ))
+                # Hide the per-ligand button after success
+                self.after(
+                    0,
+                    lambda: self._show_retry_button(
+                        ligand_name, show=False
+                    )
+                )
+
+                # Check if all ligands are now parametrized
+                all_done = all(
+                    l.name in self.parametrized_ligands
+                    for l in self.detected_ligands
+                )
+                if all_done:
+                    total = len(self.detected_ligands)
+                    self.progress_label.after(
+                        0,
+                        lambda: self.progress_label.configure(
+                            text=f"All {total} ligand(s) parametrized "
+                                 f"successfully"
+                        )
+                    )
+                    self.parametrize_button.after(
+                        0,
+                        lambda: self.parametrize_button.configure(
+                            state="normal",
+                            text="Re-parametrize All Ligands",
+                            fg_color="#10B981"
+                        )
+                    )
+                else:
+                    done = sum(
+                        1 for l in self.detected_ligands
+                        if l.name in self.parametrized_ligands
+                    )
+                    total = len(self.detected_ligands)
+                    self.progress_label.after(
+                        0,
+                        lambda: self.progress_label.configure(
+                            text=f"{ligand_name} completed "
+                                 f"({done}/{total} done)"
+                        )
+                    )
+
+                if self.status_callback:
+                    self.status_callback(
+                        f"Ligand {ligand_name} parametrized successfully"
+                    )
+
+            except (LigandParametrizationError, Exception) as e:
+                err_msg = str(e)
+                logger.error(
+                    f"Parametrization error for {ligand_name}: {err_msg}",
+                    exc_info=True
+                )
+                if sl:
+                    sl.after(0, lambda s=sl: s.configure(
+                        text="Failed", text_color="#EF4444"
+                    ))
+                self.after(
+                    0,
+                    lambda: self._show_retry_button_failed(ligand_name)
+                )
+
+                sync_hint = ""
+                if self._is_cloud_sync_error(err_msg):
+                    sync_hint = (
+                        " -- Pause cloud sync and retry."
+                    )
+                display_msg = f"Error ({ligand_name}): " \
+                              f"{err_msg[:80]}{sync_hint}"
+                self.progress_label.after(
+                    0,
+                    lambda m=display_msg:
+                        self.progress_label.configure(text=m)
+                )
+            finally:
+                self._parametrizing = False
+
+        thread = threading.Thread(target=_run, daemon=True)
+        thread.start()
+
     def _parametrize_all(self):
         """Parametrize all detected ligands."""
         if self._parametrizing:
@@ -830,6 +1050,10 @@ class LigandParamWidget(ctk.CTkFrame):
             except (KeyError, ValueError):
                 multiplicities[ligand.name] = 1
 
+        # Hide all retry buttons before starting
+        for ligand in self.detected_ligands:
+            self._show_retry_button(ligand.name, show=False)
+
         self._parametrizing = True
         self.parametrize_button.configure(
             state="disabled", text="Parametrizing..."
@@ -839,27 +1063,28 @@ class LigandParamWidget(ctk.CTkFrame):
         # Background thread
         def _run():
             results: Dict[str, Dict[str, str]] = {}
-            try:
-                total = len(self.detected_ligands)
+            failed: List[str] = []
+            total = len(self.detected_ligands)
 
-                for i, ligand in enumerate(self.detected_ligands, 1):
-                    # Progress
-                    self.progress_label.after(
-                        0,
-                        lambda n=ligand.name, idx=i, t=total:
-                            self.progress_label.configure(
-                                text=f"Parametrizing {n} ({idx}/{t})..."
-                            )
-                    )
+            for i, ligand in enumerate(self.detected_ligands, 1):
+                # Progress
+                self.progress_label.after(
+                    0,
+                    lambda n=ligand.name, idx=i, t=total:
+                        self.progress_label.configure(
+                            text=f"Parametrizing {n} ({idx}/{t})..."
+                        )
+                )
 
-                    # Status -> Running
-                    w = self.ligand_widgets.get(ligand.name, {})
-                    sl = w.get('status_label')
-                    if sl:
-                        sl.after(0, lambda s=sl: s.configure(
-                            text="Running...", text_color="#F59E0B"
-                        ))
+                # Status -> Running
+                w = self.ligand_widgets.get(ligand.name, {})
+                sl = w.get('status_label')
+                if sl:
+                    sl.after(0, lambda s=sl: s.configure(
+                        text="Running...", text_color="#F59E0B"
+                    ))
 
+                try:
                     lig_dir = str(
                         Path(working_dir) / "ligand_params" / ligand.name
                     )
@@ -884,9 +1109,39 @@ class LigandParamWidget(ctk.CTkFrame):
                         sl.after(0, lambda s=sl: s.configure(
                             text="Completed", text_color="#10B981"
                         ))
+                    # Hide per-ligand button on success
+                    _ok_name = ligand.name
+                    self.after(
+                        0,
+                        lambda n=_ok_name: self._show_retry_button(
+                            n, show=False
+                        )
+                    )
 
+                except (LigandParametrizationError, Exception) as e:
+                    err_msg = str(e)
+                    logger.error(
+                        f"Parametrization error for {ligand.name}: "
+                        f"{err_msg}", exc_info=True
+                    )
+                    failed.append(ligand.name)
+
+                    if sl:
+                        sl.after(0, lambda s=sl: s.configure(
+                            text="Failed", text_color="#EF4444"
+                        ))
+                    # Show amber retry button for the failed ligand
+                    _name = ligand.name
+                    self.after(
+                        0,
+                        lambda n=_name: self._show_retry_button_failed(n)
+                    )
+
+            # Store partial (or full) results
+            self.parametrized_ligands.update(results)
+
+            if not failed:
                 # All succeeded
-                self.parametrized_ligands = results
                 self.progress_label.after(
                     0,
                     lambda: self.progress_label.configure(
@@ -898,7 +1153,7 @@ class LigandParamWidget(ctk.CTkFrame):
                     0,
                     lambda: self.parametrize_button.configure(
                         state="normal",
-                        text="Parametrize All Ligands",
+                        text="Re-parametrize All Ligands",
                         fg_color="#10B981"
                     )
                 )
@@ -907,74 +1162,44 @@ class LigandParamWidget(ctk.CTkFrame):
                         f"Ligand parametrization complete: "
                         f"{list(results.keys())}"
                     )
-
-            except (LigandParametrizationError, Exception) as e:
-                err_msg = str(e)
-                logger.error(
-                    f"Ligand parametrization error: {err_msg}",
-                    exc_info=True
+            else:
+                # Some failed
+                ok_count = len(results)
+                fail_names = ", ".join(failed)
+                summary = (
+                    f"{ok_count}/{total} succeeded. "
+                    f"Failed: {fail_names}. "
+                    f"Use per-ligand Retry buttons or "
+                    f"'Re-parametrize All' to re-run everything."
                 )
-
-                # Detect cloud-sync permission errors
-                sync_hint = ""
-                if self._is_cloud_sync_error(err_msg):
-                    sync_hint = (
-                        " -- This may be caused by cloud sync "
-                        "software (Dropbox, OneDrive, Google Drive, "
-                        "iCloud, etc.) locking files. Please "
-                        "PAUSE SYNCHRONIZATION for the working "
-                        "folder and try again."
-                    )
-                    logger.warning(
-                        "Cloud sync lock detected. Suggest user "
-                        "pauses synchronization."
-                    )
-
-                display_msg = f"Error: {err_msg[:100]}{sync_hint}"
-
                 self.progress_label.after(
                     0,
-                    lambda m=display_msg: self.progress_label.configure(
-                        text=m
-                    )
+                    lambda m=summary:
+                        self.progress_label.configure(text=m)
                 )
+                btn_color = "#10B981" if ok_count > 0 else "#EF4444"
                 self.parametrize_button.after(
                     0,
-                    lambda: self.parametrize_button.configure(
+                    lambda c=btn_color: self.parametrize_button.configure(
                         state="normal",
-                        text="Parametrize All Ligands",
-                        fg_color="#EF4444"
+                        text="Re-parametrize All Ligands",
+                        fg_color=c
                     )
                 )
+
+                # Detect cloud-sync permission errors from last failure
+                last_fail = failed[-1]
                 for lig in self.detected_ligands:
-                    if lig.name not in results:
-                        w = self.ligand_widgets.get(lig.name, {})
-                        sl = w.get('status_label')
-                        if sl:
-                            sl.after(0, lambda s=sl: s.configure(
-                                text="Failed", text_color="#EF4444"
-                            ))
+                    if lig.name == last_fail:
                         break
 
-                # Show messagebox for cloud-sync errors
-                if sync_hint:
-                    self.after(
-                        0,
-                        lambda: messagebox.showwarning(
-                            "Cloud Sync Detected",
-                            "Permission denied error detected.\n\n"
-                            "This is likely caused by a cloud "
-                            "synchronization service (Dropbox, "
-                            "OneDrive, Google Drive, iCloud) "
-                            "locking files in the working "
-                            "directory.\n\n"
-                            "Please PAUSE or DISABLE "
-                            "synchronization for this folder "
-                            "and try again."
-                        )
+                if self.status_callback:
+                    self.status_callback(
+                        f"Ligand parametrization: {ok_count}/{total} "
+                        f"succeeded, failed: {fail_names}"
                     )
-            finally:
-                self._parametrizing = False
+
+            self._parametrizing = False
 
         thread = threading.Thread(target=_run, daemon=True)
         thread.start()
