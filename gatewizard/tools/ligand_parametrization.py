@@ -51,8 +51,8 @@ STANDARD_RESIDUES = {
 
 # Charge methods supported by antechamber
 CHARGE_METHODS = {
-    'bcc': 'AM1-BCC',
     'abcg2': 'ABCG2',
+    'bcc': 'AM1-BCC',
     'gas': 'Gasteiger',
     'mul': 'Mulliken',
     'cm2': 'CM2',
