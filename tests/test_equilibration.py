@@ -656,6 +656,133 @@ class TestEquilibrationExamples:
 
 
 # ============================================================================
+# SECTION: MDANALYSIS SELECTION TESTS
+# ============================================================================
+
+class TestMDAnalysisSelections:
+    """Test the MDAnalysis-based selection features for restraint generation."""
+
+    @pytest.fixture
+    def system_pdb(self):
+        """Path to the test system PDB file."""
+        return Path(__file__).parent / "equilibration_examples" / "popc_membrane" / "bilayer_protein_protonated_prepared_lipid.pdb"
+
+    @pytest.fixture
+    def manager(self, tmp_path):
+        return NAMDEquilibrationManager(working_dir=tmp_path, namd_executable="namd3")
+
+    def test_default_selections_keys(self):
+        """DEFAULT_SELECTIONS must include the seven standard categories."""
+        keys = set(NAMDEquilibrationManager.DEFAULT_SELECTIONS.keys())
+        expected = {
+            'protein_backbone', 'protein_sidechain',
+            'lipid_head', 'lipid_tail',
+            'water', 'ions', 'other',
+        }
+        assert expected == keys
+
+    def test_count_selection_atoms(self, system_pdb):
+        """count_selection_atoms should return a positive int for protein."""
+        if not system_pdb.exists():
+            pytest.skip("Test PDB not available")
+        count = NAMDEquilibrationManager.count_selection_atoms(
+            str(system_pdb), "protein and backbone"
+        )
+        assert isinstance(count, int)
+        assert count > 0
+
+    def test_count_selection_atoms_invalid(self, system_pdb):
+        """An invalid selection returns 0 instead of raising."""
+        if not system_pdb.exists():
+            pytest.skip("Test PDB not available")
+        count = NAMDEquilibrationManager.count_selection_atoms(
+            str(system_pdb), "INVALID_KEYWORD_XYZ"
+        )
+        assert count == 0
+
+    def test_count_all_selections(self, system_pdb):
+        """count_all_selections should return a dict with the same keys."""
+        if not system_pdb.exists():
+            pytest.skip("Test PDB not available")
+        counts = NAMDEquilibrationManager.count_all_selections(str(system_pdb))
+        assert isinstance(counts, dict)
+        for key in NAMDEquilibrationManager.DEFAULT_SELECTIONS:
+            assert key in counts
+            assert isinstance(counts[key], int)
+
+    def test_get_default_selections_detects_ligands(self, system_pdb):
+        """get_default_selections should include ligand_ entries for non-standard residues."""
+        if not system_pdb.exists():
+            pytest.skip("Test PDB not available")
+        sels = NAMDEquilibrationManager.get_default_selections(str(system_pdb))
+        # Should always include the seven standard keys
+        for key in NAMDEquilibrationManager.DEFAULT_SELECTIONS:
+            assert key in sels
+        # Any ligand_ keys should have valid selection strings
+        for key, sel_str in sels.items():
+            if key.startswith("ligand_"):
+                assert sel_str.startswith("resname ")
+
+    def test_generate_restraints_file_mda(self, system_pdb, manager, tmp_path):
+        """generate_restraints_file_mda should produce a valid PDB with modified B-factors."""
+        if not system_pdb.exists():
+            pytest.skip("Test PDB not available")
+
+        output = tmp_path / "restraints_mda.pdb"
+        selections_with_forces = {
+            'protein_backbone': ('protein and backbone', 10.0),
+            'protein_sidechain': ('protein and not backbone', 5.0),
+        }
+        manager.generate_restraints_file_mda(
+            system_pdb, selections_with_forces, output, "test_stage"
+        )
+        assert output.exists()
+        # Verify some B-factors were changed to 10.00 or 5.00
+        content = output.read_text()
+        assert "10.00" in content or "5.00" in content
+
+    def test_generate_restraints_file_with_selections(self, system_pdb, manager, tmp_path):
+        """generate_restraints_file should delegate to MDA when selections given."""
+        if not system_pdb.exists():
+            pytest.skip("Test PDB not available")
+
+        output = tmp_path / "restraints_sel.pdb"
+        constraints = {'protein_backbone': 10.0, 'water': 0.0}
+        selections = {
+            'protein_backbone': 'protein and backbone',
+            'water': 'resname TIP3 HOH WAT SOL',
+        }
+        manager.generate_restraints_file(
+            system_pdb, constraints, output, "test", selections=selections
+        )
+        assert output.exists()
+        content = output.read_text()
+        assert "10.00" in content
+
+    def test_generate_restraints_file_legacy(self, system_pdb, manager, tmp_path):
+        """Without selections, generate_restraints_file uses the legacy heuristic."""
+        if not system_pdb.exists():
+            pytest.skip("Test PDB not available")
+
+        output = tmp_path / "restraints_legacy.pdb"
+        constraints = {
+            'protein_backbone': 10.0,
+            'protein_sidechain': 5.0,
+            'lipid_head': 2.5,
+            'lipid_tail': 2.5,
+            'water': 0.0,
+            'ions': 10.0,
+            'other': 0.0,
+        }
+        manager.generate_restraints_file(
+            system_pdb, constraints, output, "test_legacy"
+        )
+        assert output.exists()
+        content = output.read_text()
+        assert "10.00" in content
+
+
+# ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
 
