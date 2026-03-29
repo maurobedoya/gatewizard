@@ -62,18 +62,16 @@ class FileManager:
         
         # Check if file is readable
         try:
+            has_atom_records = False
             with open(file_path, 'r') as f:
-                # Read first few lines to check format
-                lines = [f.readline().strip() for _ in range(10)]
+                for line in f:
+                    if line.startswith(('ATOM', 'HETATM')):
+                        has_atom_records = True
+                        break
         except PermissionError:
             return False, f"Permission denied reading file: {file_path}"
         except Exception as e:
             return False, f"Error reading file: {str(e)}"
-        
-        # Basic PDB format validation
-        has_atom_records = any(
-            line.startswith(('ATOM', 'HETATM')) for line in lines if line
-        )
         
         if not has_atom_records:
             return False, "File does not contain ATOM or HETATM records"

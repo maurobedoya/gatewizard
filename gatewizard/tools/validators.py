@@ -64,13 +64,12 @@ class SystemValidator:
         
         # Check if file is readable and has basic PDB content
         try:
+            has_atoms = False
             with open(file_path, 'r') as f:
-                lines = [f.readline().strip() for _ in range(20)]
-            
-            # Look for ATOM or HETATM records
-            has_atoms = any(
-                line.startswith(('ATOM', 'HETATM')) for line in lines if line
-            )
+                for line in f:
+                    if line.startswith(('ATOM', 'HETATM')):
+                        has_atoms = True
+                        break
             
             if not has_atoms:
                 return False, "File does not contain ATOM or HETATM records"
