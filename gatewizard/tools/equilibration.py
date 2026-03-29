@@ -805,21 +805,264 @@ class NAMDEquilibrationManager:
             ])
         
         return "\n".join(config_lines)
-    
+
+    # ------------------------------------------------------------------ #
+    #  MDAnalysis-based restraint selection helpers                        #
+    # ------------------------------------------------------------------ #
+
+    # Default MDAnalysis selection strings for each restraint category
+    DEFAULT_SELECTIONS = {
+        'protein_backbone': 'protein and backbone',
+        'protein_sidechain': 'protein and not backbone',
+        'lipid_head': (
+            '(resname POPC POPE POPS DPPC DMPC DOPC DSPC PC PE PS PA PG PI SM '
+            'OL LA MY ST AR OLE PAL STE LIN CHOL CHL CHOLEST PALM OLEO STEROL) '
+            'and (name P O11 O12 O13 O14 O21 O22 O31 O32 O33 O34 '
+            'O1P O2P O3P O4P OP1 OP2 OP3 OP4 '
+            'N C11 C12 C13 C14 N31 C32 C33 C34 C35 C1 C2 C3 '
+            'HN1 HN2 HN3 HO2 HO3 HS)'
+        ),
+        'lipid_tail': (
+            '(resname POPC POPE POPS DPPC DMPC DOPC DSPC PC PE PS PA PG PI SM '
+            'OL LA MY ST AR OLE PAL STE LIN CHOL CHL CHOLEST PALM OLEO STEROL) '
+            'and not (name P O11 O12 O13 O14 O21 O22 O31 O32 O33 O34 '
+            'O1P O2P O3P O4P OP1 OP2 OP3 OP4 '
+            'N C11 C12 C13 C14 N31 C32 C33 C34 C35 C1 C2 C3 '
+            'HN1 HN2 HN3 HO2 HO3 HS)'
+        ),
+        'water': 'resname TIP3 HOH WAT SOL TIP4 SPC T3P T4P',
+        'ions': (
+            'resname NA CL K CA MG ZN FE CU SOD CLA POT CAL MAG ZIN IRN COP '
+            'Na+ Cl- K+ Ca2+ Mg2+ Zn2+ Fe2+ Fe3+ Cu2+ '
+            'NA+ CL- LIT RUB CES BAR'
+        ),
+        'other': (
+            'not (protein or '
+            '(resname POPC POPE POPS DPPC DMPC DOPC DSPC PC PE PS PA PG PI SM '
+            'OL LA MY ST AR OLE PAL STE LIN CHOL CHL CHOLEST PALM OLEO STEROL) or '
+            '(resname TIP3 HOH WAT SOL TIP4 SPC T3P T4P) or '
+            '(resname NA CL K CA MG ZN FE CU SOD CLA POT CAL MAG ZIN IRN COP '
+            'Na+ Cl- K+ Ca2+ Mg2+ Zn2+ Fe2+ Fe3+ Cu2+ '
+            'NA+ CL- LIT RUB CES BAR))'
+        ),
+    }
+
+    @staticmethod
+    def count_selection_atoms(pdb_path: str, selection: str) -> int:
+        """
+        Count atoms matching an MDAnalysis selection expression.
+
+        Args:
+            pdb_path: Path to a PDB file.
+            selection: MDAnalysis selection string.
+
+        Returns:
+            Number of atoms matching the selection (0 if selection is invalid
+            or MDAnalysis is not available).
+        """
+        try:
+            import MDAnalysis as mda
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                u = mda.Universe(str(pdb_path))
+                ag = u.select_atoms(selection)
+                return len(ag)
+        except Exception as exc:
+            logger.debug(f"count_selection_atoms failed for '{selection}': {exc}")
+            return 0
+
+    @staticmethod
+    def get_default_selections(pdb_path: str) -> Dict[str, str]:
+        """
+        Build the default selection dict, auto-detecting extra ligands / residues.
+
+        The seven standard categories (protein_backbone, protein_sidechain,
+        lipid_head, lipid_tail, water, ions, other) are always present.
+        Any residue that falls into the *other* category is additionally
+        split into individual ``ligand_<RESNAME>`` entries so users can
+        assign per-ligand restraint forces.
+
+        Args:
+            pdb_path: Path to a PDB file.
+
+        Returns:
+            ``{category_name: mda_selection_string, ...}`` including any
+            auto-detected ligand entries.
+        """
+        sels = dict(NAMDEquilibrationManager.DEFAULT_SELECTIONS)
+
+        try:
+            import MDAnalysis as mda
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                u = mda.Universe(str(pdb_path))
+
+                # Identify residues in "other" (not protein/lipid/water/ion)
+                other_ag = u.select_atoms(sels['other'])
+                if len(other_ag) > 0:
+                    unique_resnames = sorted(set(other_ag.resnames))
+                    for resname in unique_resnames:
+                        key = f"ligand_{resname}"
+                        sels[key] = f"resname {resname}"
+        except Exception as exc:
+            logger.debug(f"get_default_selections ligand detection failed: {exc}")
+
+        return sels
+
+    @staticmethod
+    def count_all_selections(pdb_path: str,
+                             selections: Optional[Dict[str, str]] = None
+                             ) -> Dict[str, int]:
+        """
+        Count atoms for every selection in the dict.
+
+        Args:
+            pdb_path: Path to a PDB file.
+            selections: ``{name: mda_selection_string}``.  If *None* the
+                default selections (with auto-detected ligands) are used.
+
+        Returns:
+            ``{name: atom_count, ...}``
+        """
+        if selections is None:
+            selections = NAMDEquilibrationManager.get_default_selections(pdb_path)
+
+        counts: Dict[str, int] = {}
+        try:
+            import MDAnalysis as mda
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                u = mda.Universe(str(pdb_path))
+                for name, sel_str in selections.items():
+                    try:
+                        counts[name] = len(u.select_atoms(sel_str))
+                    except Exception:
+                        counts[name] = 0
+        except Exception as exc:
+            logger.debug(f"count_all_selections failed: {exc}")
+            for name in selections:
+                counts[name] = 0
+        return counts
+
+    def generate_restraints_file_mda(
+        self,
+        system_pdb: Path,
+        selections_with_forces: Dict[str, Tuple[str, float]],
+        output_file: Path,
+        stage_name: str = "",
+    ) -> None:
+        """
+        Generate a restraints PDB using MDAnalysis selections.
+
+        Each entry in *selections_with_forces* maps a category name to a
+        ``(mda_selection_string, force)`` tuple.  For every ATOM/HETATM line
+        the **first matching** selection determines the B-factor written.
+        Atoms that match no selection get B-factor 0.0.
+
+        Args:
+            system_pdb: Path to the system PDB file.
+            selections_with_forces: ``{name: (selection_string, force), ...}``
+            output_file: Destination path for the restraints PDB.
+            stage_name: Label used in log messages.
+        """
+        import MDAnalysis as mda
+        import warnings
+
+        if not system_pdb.exists():
+            self.logger.error(f"System PDB not found: {system_pdb}")
+            return
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            u = mda.Universe(str(system_pdb))
+
+        # Pre-compute index sets for each selection
+        ordered_selections: List[Tuple[str, set, float]] = []
+        stats: Dict[str, int] = {}
+        for name, (sel_str, force) in selections_with_forces.items():
+            try:
+                indices = set(u.select_atoms(sel_str).indices)
+            except Exception as exc:
+                self.logger.warning(f"Selection '{name}' failed: {exc}")
+                indices = set()
+            ordered_selections.append((name, indices, force))
+            stats[name] = 0
+
+        # Build per-atom force array (first match wins)
+        n_atoms = len(u.atoms)
+        forces = [0.0] * n_atoms
+        for atom_idx in range(n_atoms):
+            for name, idx_set, force in ordered_selections:
+                if atom_idx in idx_set:
+                    forces[atom_idx] = force
+                    stats[name] += 1
+                    break
+
+        # Read original PDB and replace B-factors
+        with open(system_pdb, 'r') as fh:
+            lines = fh.readlines()
+
+        out_lines: List[str] = []
+        atom_serial = 0
+        for line in lines:
+            if line.startswith(('ATOM', 'HETATM')):
+                new_line = line[:60] + f"{forces[atom_serial]:6.2f}" + line[66:]
+                out_lines.append(new_line)
+                atom_serial += 1
+            else:
+                out_lines.append(line)
+
+        with open(output_file, 'w') as fh:
+            fh.writelines(out_lines)
+
+        self.logger.info(f"Generated MDAnalysis restraints: {output_file}")
+        self.logger.info(f"Stage: {stage_name} | Total atoms: {n_atoms}")
+        for name, count in stats.items():
+            if count > 0:
+                force_val = selections_with_forces[name][1]
+                self.logger.info(
+                    f"  {name}: {count} atoms, force = {force_val} kcal/mol/Å²"
+                )
+
     def generate_restraints_file(self, system_pdb: Path, constraints: Dict[str, float], 
-                               output_file: Path, stage_name: str = "") -> None:
+                               output_file: Path, stage_name: str = "",
+                               selections: Optional[Dict[str, str]] = None) -> None:
         """
         Generate restraints PDB file with B-factors for constraint forces.
         
         Uses the final system.pdb file for generating restraints to ensure
         consistency with the parametrized system used in simulations.
         
+        When *selections* is provided, each key in *constraints* is resolved
+        to the corresponding MDAnalysis selection string and
+        ``generate_restraints_file_mda`` is used.  Otherwise the legacy
+        residue-name heuristic is applied.
+        
         Args:
             system_pdb: Path to the system.pdb file  
             constraints: Dictionary of constraint types and forces
             output_file: Path for output restraints file
             stage_name: Name of the equilibration stage (for documentation)
+            selections: Optional ``{constraint_name: mda_selection_string}``
+                mapping.  If provided, MDAnalysis is used instead of the
+                built-in classification heuristic.
         """
+        
+        # If MDAnalysis selections are provided, delegate to the MDA method
+        if selections:
+            sel_with_forces: Dict[str, Tuple[str, float]] = {}
+            for name, force in constraints.items():
+                sel_str = selections.get(name)
+                if sel_str:
+                    sel_with_forces[name] = (sel_str, force)
+            if sel_with_forces:
+                self.generate_restraints_file_mda(
+                    system_pdb, sel_with_forces, output_file, stage_name
+                )
+                return
         
         # Use only the final system.pdb file for restraints
         if not system_pdb.exists():

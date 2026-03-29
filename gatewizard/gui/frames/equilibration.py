@@ -11,9 +11,10 @@ using various molecular simulation engines, starting with NAMD.
 
 import tkinter as tk
 from tkinter import messagebox, filedialog
-from typing import Optional, Callable, List, Dict, Any
+from typing import Optional, Callable, List, Dict, Any, Tuple
 from pathlib import Path
 import json
+import math
 import threading
 import shutil
 
@@ -32,6 +33,213 @@ from gatewizard.utils.logger import get_logger
 from gatewizard.utils.namd_analysis import get_equilibration_progress, format_timing_info, format_progress_summary
 
 logger = get_logger(__name__)
+
+
+def _make_gear_image(size=16, color="white", teeth=8):
+    """Draw a gear icon as a PIL image (no font/unicode needed)."""
+    from PIL import Image, ImageDraw
+    s2 = size * 2
+    img = Image.new("RGBA", (s2, s2), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    cx, cy = s2 / 2, s2 / 2
+    outer_r = s2 / 2 - 1
+    inner_r = outer_r * 0.65
+    tooth_half = math.pi / (teeth * 2) * 0.75
+    points = []
+    for i in range(teeth):
+        ca = 2 * math.pi * i / teeth - math.pi / 2
+        a1 = ca - tooth_half * 1.6
+        points.append((cx + inner_r * math.cos(a1), cy + inner_r * math.sin(a1)))
+        a2 = ca - tooth_half
+        points.append((cx + outer_r * math.cos(a2), cy + outer_r * math.sin(a2)))
+        a3 = ca + tooth_half
+        points.append((cx + outer_r * math.cos(a3), cy + outer_r * math.sin(a3)))
+        a4 = ca + tooth_half * 1.6
+        points.append((cx + inner_r * math.cos(a4), cy + inner_r * math.sin(a4)))
+    draw.polygon(points, fill=color)
+    hole_r = inner_r * 0.45
+    draw.ellipse([cx - hole_r, cy - hole_r, cx + hole_r, cy + hole_r],
+                 fill=(0, 0, 0, 0))
+    img = img.resize((size, size), Image.LANCZOS)
+    return ctk.CTkImage(light_image=img, dark_image=img, size=(size, size))
+
+
+def _make_plus_image(size=16, color="white"):
+    """Draw a plus (+) icon as a PIL image."""
+    from PIL import Image, ImageDraw
+    s2 = size * 2
+    img = Image.new("RGBA", (s2, s2), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    cx, cy = s2 / 2, s2 / 2
+    bar = max(2, s2 // 5)
+    arm = s2 // 2 - 2
+    draw.rectangle([cx - bar, cy - arm, cx + bar, cy + arm], fill=color)
+    draw.rectangle([cx - arm, cy - bar, cx + arm, cy + bar], fill=color)
+    img = img.resize((size, size), Image.LANCZOS)
+    return ctk.CTkImage(light_image=img, dark_image=img, size=(size, size))
+
+
+# ====================================================================== #
+#  Selection editor dialogs                                               #
+# ====================================================================== #
+
+class _SelectionEditorDialog(ctk.CTkToplevel):
+    """Modal dialog to edit an MDAnalysis selection string."""
+
+    def __init__(self, parent, title: str, initial_selection: str,
+                 pdb_path: Optional[str] = None):
+        super().__init__(parent)
+        self.title(title)
+        self.geometry("520x220")
+        self.resizable(False, False)
+        self.transient(parent)
+        self.result: Optional[str] = None
+        self._pdb_path = pdb_path
+
+        ctk.CTkLabel(self, text="MDAnalysis Selection:", font=("", 13)).pack(
+            anchor="w", padx=12, pady=(12, 4)
+        )
+
+        self._entry = ctk.CTkTextbox(self, height=80, wrap="word")
+        self._entry.pack(fill="x", padx=12)
+        self._entry.insert("1.0", initial_selection)
+
+        info_frame = ctk.CTkFrame(self, fg_color="transparent")
+        info_frame.pack(fill="x", padx=12, pady=4)
+
+        self._count_label = ctk.CTkLabel(info_frame, text="", font=("", 11))
+        self._count_label.pack(side="left")
+
+        test_btn = ctk.CTkButton(
+            info_frame, text="Test", width=60, height=26,
+            command=self._test_selection,
+        )
+        test_btn.pack(side="right")
+
+        btn_frame = ctk.CTkFrame(self, fg_color="transparent")
+        btn_frame.pack(fill="x", padx=12, pady=(4, 12))
+
+        ctk.CTkButton(btn_frame, text="OK", width=80, command=self._ok).pack(
+            side="right", padx=4
+        )
+        ctk.CTkButton(btn_frame, text="Cancel", width=80,
+                       command=self.destroy).pack(side="right", padx=4)
+
+        # Initial count
+        self._test_selection()
+
+        # grab_set must happen after the window is mapped
+        self.after(50, self._safe_grab)
+
+    def _get_selection_text(self) -> str:
+        return self._entry.get("1.0", "end-1c").strip()
+
+    def _test_selection(self):
+        sel = self._get_selection_text()
+        if not self._pdb_path:
+            self._count_label.configure(text="No PDB loaded")
+            return
+        from gatewizard.tools.equilibration import NAMDEquilibrationManager
+        count = NAMDEquilibrationManager.count_selection_atoms(self._pdb_path, sel)
+        self._count_label.configure(text=f"Matching atoms: {count}")
+
+    def _safe_grab(self):
+        try:
+            self.wait_visibility()
+            self.grab_set()
+        except Exception:
+            pass
+
+    def _ok(self):
+        self.result = self._get_selection_text()
+        self.destroy()
+
+
+class _NewSelectionDialog(ctk.CTkToplevel):
+    """Modal dialog to create a new named selection."""
+
+    def __init__(self, parent, pdb_path: Optional[str] = None):
+        super().__init__(parent)
+        self.title("Add Custom Selection")
+        self.geometry("520x290")
+        self.resizable(False, False)
+        self.transient(parent)
+        self.result: Optional[Tuple[str, str, float]] = None
+        self._pdb_path = pdb_path
+
+        ctk.CTkLabel(self, text="Selection Name:", font=("", 13)).pack(
+            anchor="w", padx=12, pady=(12, 2)
+        )
+        self._name_entry = ctk.CTkEntry(self, placeholder_text="e.g. ligand_ABC")
+        self._name_entry.pack(fill="x", padx=12)
+
+        ctk.CTkLabel(self, text="MDAnalysis Selection:", font=("", 13)).pack(
+            anchor="w", padx=12, pady=(8, 2)
+        )
+        self._sel_entry = ctk.CTkTextbox(self, height=60, wrap="word")
+        self._sel_entry.pack(fill="x", padx=12)
+        self._sel_entry.insert("1.0", "resname LIG")
+
+        force_frame = ctk.CTkFrame(self, fg_color="transparent")
+        force_frame.pack(fill="x", padx=12, pady=4)
+        ctk.CTkLabel(force_frame, text="Force (kcal/mol/Å²):", font=("", 13)).pack(
+            side="left"
+        )
+        self._force_entry = ctk.CTkEntry(force_frame, width=80)
+        self._force_entry.pack(side="left", padx=8)
+        self._force_entry.insert(0, "0.0")
+
+        self._count_label = ctk.CTkLabel(force_frame, text="", font=("", 11))
+        self._count_label.pack(side="left", padx=8)
+
+        test_btn = ctk.CTkButton(
+            force_frame, text="Test", width=60, height=26,
+            command=self._test_selection,
+        )
+        test_btn.pack(side="right")
+
+        btn_frame = ctk.CTkFrame(self, fg_color="transparent")
+        btn_frame.pack(fill="x", padx=12, pady=(4, 12))
+        ctk.CTkButton(btn_frame, text="OK", width=80, command=self._ok).pack(
+            side="right", padx=4
+        )
+        ctk.CTkButton(btn_frame, text="Cancel", width=80,
+                       command=self.destroy).pack(side="right", padx=4)
+
+        # grab_set must happen after the window is mapped
+        self.after(50, self._safe_grab)
+
+    def _safe_grab(self):
+        try:
+            self.wait_visibility()
+            self.grab_set()
+        except Exception:
+            pass
+
+    def _test_selection(self):
+        sel = self._sel_entry.get("1.0", "end-1c").strip()
+        if not self._pdb_path:
+            self._count_label.configure(text="No PDB loaded")
+            return
+        from gatewizard.tools.equilibration import NAMDEquilibrationManager
+        count = NAMDEquilibrationManager.count_selection_atoms(self._pdb_path, sel)
+        self._count_label.configure(text=f"Matching atoms: {count}")
+
+    def _ok(self):
+        name = self._name_entry.get().strip()
+        sel = self._sel_entry.get("1.0", "end-1c").strip()
+        if not name:
+            messagebox.showwarning("Invalid", "Please enter a selection name.")
+            return
+        safe_name = name.replace(" ", "_").lower()
+        try:
+            force = float(self._force_entry.get())
+        except ValueError:
+            messagebox.showwarning("Invalid", "Force must be a number.")
+            return
+        self.result = (safe_name, sel, force)
+        self.destroy()
+
 
 class EquilibrationFrame(ctk.CTkFrame):
     """
@@ -76,6 +284,12 @@ class EquilibrationFrame(ctk.CTkFrame):
         # Progress monitoring variables
         self.monitoring_active = False
         self.progress_timer = None
+        
+        # MDAnalysis selection state
+        self.mda_selections: Dict[str, Dict[str, str]] = {}  # stage -> {constraint: mda_sel}
+        self.atom_counts: Dict[str, Dict[str, int]] = {}     # stage -> {constraint: count}
+        self._gear_img = None   # lazy-init CTkImage
+        self._plus_img = None   # lazy-init CTkImage
         
         # Default AMBER protocol parameters
         self.default_protocols = self._get_default_protocols()
@@ -1450,28 +1664,230 @@ class EquilibrationFrame(ctk.CTkFrame):
         
         stage_widgets["constraints"] = {}
         stage_widgets["constraint_labels"] = []
+        stage_widgets["constraint_frames"] = {}
+        stage_widgets["atom_count_labels"] = {}
+        stage_widgets["gear_buttons"] = {}
+        stage_widgets["constraints_container"] = constraints_frame
+
+        # Initialize MDAnalysis selections for this stage if not present
+        if stage_key not in self.mda_selections:
+            self.mda_selections[stage_key] = dict(
+                NAMDEquilibrationManager.DEFAULT_SELECTIONS
+            )
         
         for constraint_name, constraint_value in stage_data["constraints"].items():
-            const_frame = ctk.CTkFrame(constraints_frame, fg_color="transparent")
-            const_frame.pack(fill="x", pady=1)
-            
-            display_name = constraint_name.replace("_", " ").title()
-            const_name_label = ctk.CTkLabel(const_frame, text=f"{display_name}:", width=150, anchor="w")
-            const_name_label.pack(side="left")
-            
-            const_var = ctk.StringVar(value=str(constraint_value))
-            const_entry = ctk.CTkEntry(const_frame, textvariable=const_var, width=100)
-            const_entry.pack(side="left", padx=5)
-            
-            stage_widgets["constraints"][constraint_name] = const_var
-            # Store entry and label for fonts
-            if "constraint_entries" not in stage_widgets:
-                stage_widgets["constraint_entries"] = []
-            stage_widgets["constraint_entries"].append(const_entry)
-            stage_widgets["constraint_labels"].append(const_name_label)
+            self._create_constraint_row(
+                constraints_frame, stage_key, stage_widgets,
+                constraint_name, constraint_value,
+            )
+        
+        # "Add Selection" button at the bottom of constraints
+        if self._plus_img is None:
+            self._plus_img = _make_plus_image(size=14, color="white")
+        
+        add_sel_frame = ctk.CTkFrame(constraints_frame, fg_color="transparent")
+        add_sel_frame.pack(fill="x", pady=(4, 2))
+        
+        add_sel_btn = ctk.CTkButton(
+            add_sel_frame,
+            text="Add Selection",
+            image=self._plus_img,
+            compound="left",
+            width=130,
+            height=24,
+            font=FONTS['small'],
+            command=lambda sk=stage_key: self._on_add_selection(sk),
+        )
+        add_sel_btn.pack(side="left", padx=5)
+        stage_widgets["add_selection_btn"] = add_sel_btn
         
         self.stage_widgets[stage_key] = stage_widgets
-    
+
+    def _create_constraint_row(
+        self, parent, stage_key, stage_widgets,
+        constraint_name, constraint_value,
+    ):
+        """Create a single constraint row: [Label] [Entry] [AtomCount] [Gear]."""
+        const_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        const_frame.pack(fill="x", pady=1)
+        
+        display_name = constraint_name.replace("_", " ").title()
+        const_name_label = ctk.CTkLabel(
+            const_frame, text=f"{display_name}:", width=120, anchor="w"
+        )
+        const_name_label.pack(side="left")
+        
+        const_var = ctk.StringVar(value=str(constraint_value))
+        const_entry = ctk.CTkEntry(const_frame, textvariable=const_var, width=60)
+        const_entry.pack(side="left", padx=2)
+        
+        # Atom count label (updated when PDB is loaded)
+        count = self.atom_counts.get(stage_key, {}).get(constraint_name, 0)
+        count_text = f"({count})" if count else ""
+        atom_count_label = ctk.CTkLabel(
+            const_frame, text=count_text, width=55, anchor="w",
+            font=FONTS['small'], text_color=COLOR_SCHEME.get('inactive', '#888888'),
+        )
+        atom_count_label.pack(side="left", padx=2)
+        
+        # Gear button to edit MDAnalysis selection
+        if self._gear_img is None:
+            self._gear_img = _make_gear_image(size=14, color="white")
+        
+        gear_btn = ctk.CTkButton(
+            const_frame,
+            text="",
+            image=self._gear_img,
+            width=24, height=24,
+            fg_color="transparent",
+            hover_color=COLOR_SCHEME.get('content_inside_bg', '#333333'),
+            command=lambda sk=stage_key, cn=constraint_name: self._on_edit_selection(sk, cn),
+        )
+        gear_btn.pack(side="left", padx=2)
+        
+        # Store references
+        stage_widgets["constraints"][constraint_name] = const_var
+        stage_widgets["constraint_frames"][constraint_name] = const_frame
+        stage_widgets["atom_count_labels"][constraint_name] = atom_count_label
+        stage_widgets["gear_buttons"][constraint_name] = gear_btn
+        if "constraint_entries" not in stage_widgets:
+            stage_widgets["constraint_entries"] = []
+        stage_widgets["constraint_entries"].append(const_entry)
+        stage_widgets["constraint_labels"].append(const_name_label)
+
+    # ------------------------------------------------------------------ #
+    #  MDAnalysis selection helpers (GUI)                                  #
+    # ------------------------------------------------------------------ #
+
+    def _resolve_pdb_path(self) -> Optional[str]:
+        """Return the path of the current PDB, or *None*."""
+        # Try the callback first (from the Visualize frame)
+        if self.get_current_pdb:
+            pdb = self.get_current_pdb()
+            if pdb and Path(pdb).exists():
+                return str(pdb)
+        # Fall back to the input folder / working directory
+        for base in (self.inputfolder_entry.get().strip(), str(self.working_directory)):
+            if not base:
+                continue
+            p = Path(base) / "system.pdb"
+            if p.exists():
+                return str(p)
+            # Check for any PDB
+            pdbs = list(Path(base).glob("*.pdb"))
+            if pdbs:
+                return str(pdbs[0])
+        return None
+
+    def _refresh_atom_counts(self):
+        """(Re)count atoms for every selection in every stage and update labels."""
+        pdb_path = self._resolve_pdb_path()
+        if not pdb_path:
+            return
+
+        for stage_key, sw in self.stage_widgets.items():
+            sels = self.mda_selections.get(stage_key, {})
+            counts = NAMDEquilibrationManager.count_all_selections(pdb_path, sels)
+            self.atom_counts[stage_key] = counts
+
+            for cname, label in sw.get("atom_count_labels", {}).items():
+                c = counts.get(cname, 0)
+                label.configure(text=f"({c})" if c else "")
+
+        if self.status_callback:
+            self.status_callback("Atom counts refreshed from PDB")
+
+    def _on_edit_selection(self, stage_key: str, constraint_name: str):
+        """Open a dialog to edit the MDAnalysis selection for *constraint_name*."""
+        current_sel = self.mda_selections.get(stage_key, {}).get(
+            constraint_name, NAMDEquilibrationManager.DEFAULT_SELECTIONS.get(constraint_name, "")
+        )
+        dialog = _SelectionEditorDialog(
+            self,
+            title=f"Edit Selection — {constraint_name.replace('_', ' ').title()}",
+            initial_selection=current_sel,
+            pdb_path=self._resolve_pdb_path(),
+        )
+        self.wait_window(dialog)
+        if dialog.result is not None:
+            self.mda_selections.setdefault(stage_key, {})[constraint_name] = dialog.result
+            self._refresh_atom_counts()
+
+    def _on_add_selection(self, stage_key: str):
+        """Dialog to create a brand-new named selection for a stage."""
+        dialog = _NewSelectionDialog(self, pdb_path=self._resolve_pdb_path())
+        self.wait_window(dialog)
+        if dialog.result is None:
+            return
+        sel_name, sel_str, force_val = dialog.result
+
+        # Store MDAnalysis selection
+        self.mda_selections.setdefault(stage_key, {})[sel_name] = sel_str
+
+        # Add the new constraint row to the GUI
+        sw = self.stage_widgets[stage_key]
+        container = sw["constraints_container"]
+
+        # Remove the "Add Selection" button so the new row goes before it
+        add_btn = sw.get("add_selection_btn")
+        if add_btn and add_btn.winfo_exists():
+            add_btn.master.pack_forget()
+
+        self._create_constraint_row(container, stage_key, sw, sel_name, force_val)
+
+        # Re-pack the Add Selection button at the end
+        if add_btn:
+            add_btn.master.pack(fill="x", pady=(4, 2))
+
+        # Update the protocol template to include this constraint in all stages
+        # (with force 0.0 for stages other than the current one)
+        for other_key, other_sw in self.stage_widgets.items():
+            if other_key == stage_key:
+                continue
+            if sel_name not in other_sw["constraints"]:
+                other_container = other_sw["constraints_container"]
+                other_add_btn = other_sw.get("add_selection_btn")
+                if other_add_btn and other_add_btn.winfo_exists():
+                    other_add_btn.master.pack_forget()
+                self._create_constraint_row(
+                    other_container, other_key, other_sw, sel_name, 0.0
+                )
+                self.mda_selections.setdefault(other_key, {})[sel_name] = sel_str
+                if other_add_btn:
+                    other_add_btn.master.pack(fill="x", pady=(4, 2))
+
+        self._refresh_atom_counts()
+
+    def _auto_detect_ligands(self):
+        """Detect non-standard residues and add them as ligand selections."""
+        pdb_path = self._resolve_pdb_path()
+        if not pdb_path:
+            return
+
+        sels = NAMDEquilibrationManager.get_default_selections(pdb_path)
+        # Find auto-detected ligand entries (keys starting with 'ligand_')
+        new_ligands = {k: v for k, v in sels.items() if k.startswith("ligand_")}
+        if not new_ligands:
+            return
+
+        for stage_key, sw in self.stage_widgets.items():
+            for lig_name, lig_sel in new_ligands.items():
+                if lig_name in sw["constraints"]:
+                    continue  # already present
+                self.mda_selections.setdefault(stage_key, {})[lig_name] = lig_sel
+                container = sw["constraints_container"]
+                add_btn = sw.get("add_selection_btn")
+                if add_btn and add_btn.winfo_exists():
+                    add_btn.master.pack_forget()
+                self._create_constraint_row(container, stage_key, sw, lig_name, 0.0)
+                if add_btn:
+                    add_btn.master.pack(fill="x", pady=(4, 2))
+
+        self._refresh_atom_counts()
+        if self.status_callback:
+            names = ", ".join(new_ligands.keys())
+            self.status_callback(f"Auto-detected ligands: {names}")
+
     def _create_action_section(self):
         """Create the action buttons section."""
         self.action_section = ctk.CTkFrame(self.main_scroll, fg_color=COLOR_SCHEME['content_inside_bg'])
@@ -1832,6 +2248,13 @@ class EquilibrationFrame(ctk.CTkFrame):
             else:
                 if self.status_callback:
                     self.status_callback(f"✓ Input folder validated: {input_folder.name}")
+
+            # Auto-detect ligands and refresh atom counts from the new PDB
+            try:
+                self._auto_detect_ligands()
+                self._refresh_atom_counts()
+            except Exception as exc:
+                self.logger.debug(f"Auto-detect after browse: {exc}")
     
     def _on_outputname_changed(self, event=None):
         """Handle output name change."""
@@ -2579,11 +3002,13 @@ class EquilibrationFrame(ctk.CTkFrame):
                             restraints_file = restraints_dir / f"{config_name}_restraints.pdb"
                         else:
                             restraints_file = restraints_dir / f"{config_name}_equilibration_restraints.pdb"
+                        stage_sels = self.mda_selections.get(stage_key)
                         namd_manager.generate_restraints_file(
                             system_pdb, 
                             stage_constraints,
                             restraints_file,
-                            stage_data.get('name', stage_key)
+                            stage_data.get('name', stage_key),
+                            selections=stage_sels,
                         )
                         self.logger.info(f"Generated restraints for {stage_key}: {restraints_file}")
                     
@@ -2593,11 +3018,13 @@ class EquilibrationFrame(ctk.CTkFrame):
                 # Use constraints from first stage for this
                 first_stage = list(protocols.values())[0]
                 general_restraints = output_dir / "restraints.pdb"
+                first_key = list(protocols.keys())[0]
                 namd_manager.generate_restraints_file(
                     system_pdb, 
                     first_stage.get('constraints', {}),
                     general_restraints,
-                    "General"
+                    "General",
+                    selections=self.mda_selections.get(first_key),
                 )
                 
                 self.logger.info(f"Generated general restraints file: {general_restraints}")
@@ -3289,6 +3716,10 @@ class EquilibrationFrame(ctk.CTkFrame):
             # Update bilayer thickness restraint settings if present
             if 'force_constant' in stage_widgets:
                 stage_data['force_constant'] = float(stage_widgets['force_constant'].get())
+            
+            # Include MDAnalysis selections if available
+            if stage_key in self.mda_selections:
+                stage_data['selections'] = dict(self.mda_selections[stage_key])
             
             protocols[stage_key] = stage_data
         
