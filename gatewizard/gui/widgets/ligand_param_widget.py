@@ -197,6 +197,34 @@ class LigandParamWidget(ctk.CTkFrame):
             justify="left",
         )
 
+        # SQM keywords row (advanced convergence options)
+        self.sqm_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.sqm_label = ctk.CTkLabel(
+            self.sqm_frame,
+            text="SQM Keywords:",
+            font=FONTS['body'],
+        )
+        self.sqm_entry = ctk.CTkEntry(
+            self.sqm_frame,
+            width=420,
+            height=WIDGET_SIZES['combobox_height'],
+            placeholder_text=(
+                "e.g. maxcyc=0, scfconv=1.d-6, ndiis_attempts=700"
+            ),
+        )
+        self.sqm_help_label = ctk.CTkLabel(
+            self,
+            text=(
+                "Optional: enter custom SQM keywords passed to antechamber "
+                "-ek flag. Useful for SCF convergence issues with large "
+                "molecules."
+            ),
+            font=FONTS['small'],
+            text_color=COLOR_SCHEME.get('muted_text', '#888888'),
+            wraplength=600,
+            justify="left",
+        )
+
         # Parametrize all button
         self.parametrize_button = ctk.CTkButton(
             self,
@@ -234,6 +262,11 @@ class LigandParamWidget(ctk.CTkFrame):
         self.charge_method_combo.pack(side="left", padx=pad_s)
 
         self.combo_warning_label.pack(anchor="w", padx=pad_m, pady=0)
+
+        self.sqm_frame.pack(fill="x", padx=pad_m, pady=pad_s)
+        self.sqm_label.pack(side="left", padx=(0, pad_s))
+        self.sqm_entry.pack(side="left", padx=pad_s)
+        self.sqm_help_label.pack(anchor="w", padx=pad_m, pady=0)
 
         self.parametrize_button.pack(anchor="w", padx=pad_m, pady=pad_s)
         self.progress_label.pack(anchor="w", padx=pad_m, pady=(0, pad_m))
@@ -781,6 +814,10 @@ class LigandParamWidget(ctk.CTkFrame):
             return value.split(" - ")[0].strip()
         return DEFAULT_CHARGE_METHOD
 
+    def _get_sqm_keywords(self) -> str:
+        """Get user-supplied SQM keywords (empty = auto for large molecules)."""
+        return self.sqm_entry.get().strip()
+
     def _on_combo_changed(self, _event=None):
         """Check atom-type / charge-method pairing and show warning if needed."""
         at = self._get_selected_atom_type()
@@ -861,6 +898,7 @@ class LigandParamWidget(ctk.CTkFrame):
 
         charge_method = self._get_selected_charge_method()
         atom_type = self._get_selected_atom_type()
+        sqm_keywords = self._get_sqm_keywords()
 
         # Warn for non-recommended combos
         if (atom_type, charge_method) in NON_RECOMMENDED_COMBOS:
@@ -911,6 +949,7 @@ class LigandParamWidget(ctk.CTkFrame):
                     charge_method=charge_method,
                     atom_type=atom_type,
                     multiplicity=multiplicity,
+                    sqm_keywords=sqm_keywords,
                 )
                 self.parametrized_ligands[ligand_name] = files
 
@@ -1020,6 +1059,7 @@ class LigandParamWidget(ctk.CTkFrame):
 
         charge_method = self._get_selected_charge_method()
         atom_type = self._get_selected_atom_type()
+        sqm_keywords = self._get_sqm_keywords()
 
         # Warn for non-recommended atom-type / charge-method combos
         if (atom_type, charge_method) in NON_RECOMMENDED_COMBOS:
@@ -1101,6 +1141,7 @@ class LigandParamWidget(ctk.CTkFrame):
                         charge_method=charge_method,
                         atom_type=atom_type,
                         multiplicity=multiplicities.get(ligand.name, 1),
+                        sqm_keywords=sqm_keywords,
                     )
 
                     results[ligand.name] = files

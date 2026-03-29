@@ -67,7 +67,7 @@ ATOM_TYPES = {
     'gaff': 'GAFF',
 }
 
-DEFAULT_CHARGE_METHOD = 'bcc'
+DEFAULT_CHARGE_METHOD = 'abcg2'
 DEFAULT_ATOM_TYPE = 'gaff2'
 
 # Recommended pairings per AMBER manual:
@@ -217,7 +217,11 @@ def detect_ligands(pdb_file: str) -> List[LigandInfo]:
 
 def extract_ligand_pdb(pdb_file: str, ligand_name: str, output_dir: str) -> str:
     """
-    Extract a ligand from a PDB file into its own PDB file.
+    Extract a single copy of a ligand from a PDB file into its own PDB file.
+
+    When multiple copies exist (e.g. in different chains or symmetry mates),
+    only the first occurrence is extracted so that antechamber parametrises
+    one molecule instead of a supermolecule.
 
     Args:
         pdb_file: Path to the source PDB file
@@ -237,17 +241,34 @@ def extract_ligand_pdb(pdb_file: str, ligand_name: str, output_dir: str) -> str:
     output_pdb = out_dir / f"{ligand_name}.pdb"
 
     try:
-        lines = []
+        # Group HETATM lines by (chain, resSeq) to identify copies
+        copies: Dict[Tuple[str, str], List[str]] = {}
         with open(pdb_path, 'r') as f:
             for line in f:
                 if line.startswith('HETATM'):
                     res_name = line[17:20].strip()
                     if res_name == ligand_name:
-                        lines.append(line)
+                        chain = line[21:22]
+                        res_seq = line[22:27].strip()  # includes iCode
+                        key = (chain, res_seq)
+                        copies.setdefault(key, []).append(line)
 
-        if not lines:
+        if not copies:
             raise LigandParametrizationError(
                 f"Ligand '{ligand_name}' not found in {pdb_file}")
+
+        # Pick the first copy (by chain, then resSeq)
+        first_key = sorted(copies.keys())[0]
+        lines = copies[first_key]
+
+        if len(copies) > 1:
+            logger.info(
+                f"Found {len(copies)} copies of {ligand_name} "
+                f"(chains/resSeqs: {sorted(copies.keys())}). "
+                f"Extracting only the first copy "
+                f"(chain={first_key[0]}, resSeq={first_key[1]}, "
+                f"{len(lines)} atoms) for parametrization."
+            )
 
         with open(output_pdb, 'w') as f:
             for line in lines:
@@ -271,6 +292,7 @@ def parametrize_ligand(
     charge_method: str = DEFAULT_CHARGE_METHOD,
     multiplicity: int = 1,
     atom_type: str = DEFAULT_ATOM_TYPE,
+    sqm_keywords: str = '',
 ) -> Dict[str, str]:
     """
     Parametrize a single ligand using antechamber + parmchk2 + tleap.
@@ -293,6 +315,9 @@ def parametrize_ligand(
         charge_method: Charge calculation method (default: 'bcc')
         multiplicity: Spin multiplicity (default: 1)
         atom_type: Atom type set — 'gaff2' or 'gaff' (default: 'gaff2')
+        sqm_keywords: Extra SQM keywords for antechamber ``-ek`` flag.
+            Only applied when explicitly provided. Useful for SCF
+            convergence issues (e.g. ``maxcyc=0, scfconv=1.d-6``).
 
     Returns:
         Dictionary with paths to generated files:
@@ -360,6 +385,12 @@ def parametrize_ligand(
             '-s', '2',
             '-at', atom_type,
         ]
+
+        # Add SQM keywords (-ek) only if the user explicitly provided them
+        ek = sqm_keywords.strip()
+        if ek:
+            antechamber_cmd.extend(['-ek', ek])
+            logger.info(f"Using custom SQM keywords: '{ek}'")
 
         result = subprocess.run(
             antechamber_cmd,
@@ -512,6 +543,7 @@ def parametrize_all_ligands(
     charges: Optional[Dict[str, int]] = None,
     charge_method: str = DEFAULT_CHARGE_METHOD,
     atom_type: str = DEFAULT_ATOM_TYPE,
+    sqm_keywords: str = '',
 ) -> Dict[str, Dict[str, str]]:
     """
     Detect and parametrize all ligands in a PDB file.
@@ -523,6 +555,8 @@ def parametrize_all_ligands(
                  (default: 0 for all)
         charge_method: Charge method for antechamber (default: 'bcc')
         atom_type: Atom type set — 'gaff2' or 'gaff' (default: 'gaff2')
+        sqm_keywords: Extra SQM keywords for antechamber ``-ek`` flag.
+            Only applied when explicitly provided.
 
     Returns:
         Dictionary mapping ligand names to their output file paths
@@ -569,6 +603,7 @@ def parametrize_all_ligands(
             charge=charge,
             charge_method=charge_method,
             atom_type=atom_type,
+            sqm_keywords=sqm_keywords,
         )
 
         results[ligand.name] = files
