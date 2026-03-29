@@ -224,6 +224,8 @@ class ProteinViewerApp(ctk.CTk):
         logger.info(f"Setting window size to {width}x{height} (screen: {screen_width}x{screen_height})")
 
         # Set window size and constraints
+        self._initial_width = width
+        self._initial_height = height
         self.geometry(f"{width}x{height}")
         
         # Set minimum size constraints, but don't make them larger than what fits on screen
@@ -244,40 +246,164 @@ class ProteinViewerApp(ctk.CTk):
         except Exception:
             pass  # Not all window managers support this
     
+    def _get_monitor_geometries(self):
+        """Detect monitor geometries using platform tools.
+
+        Returns a list of ``(x, y, width, height)`` tuples ordered by
+        x-offset.  Falls back to treating the virtual desktop as a single
+        monitor when detection is not available.
+        """
+        monitors = []
+
+        # --- Try screeninfo (lightweight, cross-platform) ----------------
+        try:
+            from screeninfo import get_monitors  # type: ignore
+            for m in get_monitors():
+                monitors.append((m.x, m.y, m.width, m.height))
+            if monitors:
+                # Sort so the leftmost / topmost monitor comes first
+                monitors.sort(key=lambda g: (g[0], g[1]))
+                # Move the primary monitor to index 0 if screeninfo tells us
+                try:
+                    raw = get_monitors()
+                    for idx, m in enumerate(raw):
+                        if getattr(m, 'is_primary', False):
+                            geo = (m.x, m.y, m.width, m.height)
+                            if geo in monitors:
+                                monitors.remove(geo)
+                                monitors.insert(0, geo)
+                            break
+                except Exception:
+                    pass
+                return monitors
+        except Exception:
+            pass
+
+        # --- Try xrandr (Linux / WSL) ------------------------------------
+        try:
+            import subprocess, re as _re
+            result = subprocess.run(
+                ['xrandr', '--query'],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0:
+                primary_geo = None
+                for line in result.stdout.splitlines():
+                    if ' connected' not in line:
+                        continue
+                    match = _re.search(
+                        r'(\d+)x(\d+)\+(\d+)\+(\d+)', line
+                    )
+                    if match:
+                        w, h = int(match.group(1)), int(match.group(2))
+                        mx, my = int(match.group(3)), int(match.group(4))
+                        geo = (mx, my, w, h)
+                        if ' primary ' in line:
+                            primary_geo = geo
+                        else:
+                            monitors.append(geo)
+                if primary_geo:
+                    monitors.insert(0, primary_geo)
+                elif monitors:
+                    monitors.sort(key=lambda g: (g[0], g[1]))
+                if monitors:
+                    return monitors
+        except Exception:
+            pass
+
+        # --- Try Windows ctypes (works on native Windows & WSL2/WSLg) ----
+        try:
+            import ctypes
+            import ctypes.wintypes
+
+            user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+            monitors = []
+
+            MONITORINFOF_PRIMARY = 0x1
+
+            class MONITORINFOEX(ctypes.Structure):
+                _fields_ = [
+                    ("cbSize", ctypes.wintypes.DWORD),
+                    ("rcMonitor", ctypes.wintypes.RECT),
+                    ("rcWork", ctypes.wintypes.RECT),
+                    ("dwFlags", ctypes.wintypes.DWORD),
+                    ("szDevice", ctypes.c_wchar * 32),
+                ]
+
+            MONITORENUMPROC = ctypes.WINFUNCTYPE(
+                ctypes.c_int,
+                ctypes.c_ulong,
+                ctypes.c_ulong,
+                ctypes.POINTER(ctypes.wintypes.RECT),
+                ctypes.c_double,
+            )
+
+            primary_geo = None
+
+            def _monitor_enum_cb(hMonitor, hdcMonitor, lprcMonitor, dwData):
+                nonlocal primary_geo
+                info = MONITORINFOEX()
+                info.cbSize = ctypes.sizeof(MONITORINFOEX)
+                if user32.GetMonitorInfoW(hMonitor, ctypes.byref(info)):
+                    rc = info.rcMonitor
+                    geo = (rc.left, rc.top,
+                           rc.right - rc.left, rc.bottom - rc.top)
+                    if info.dwFlags & MONITORINFOF_PRIMARY:
+                        primary_geo = geo
+                    else:
+                        monitors.append(geo)
+                return 1  # continue enumeration
+
+            user32.EnumDisplayMonitors(
+                None, None, MONITORENUMPROC(_monitor_enum_cb), 0
+            )
+            if primary_geo:
+                monitors.insert(0, primary_geo)
+            else:
+                monitors.sort(key=lambda g: (g[0], g[1]))
+            if monitors:
+                return monitors
+        except Exception:
+            pass
+
+        # --- Fallback: split virtual desktop heuristically ---------------
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        # If the virtual desktop is much wider than tall, assume two
+        # equal side-by-side monitors (common dual-monitor setup).
+        if sw >= sh * 2.5:
+            half = sw // 2
+            return [(0, 0, half, sh), (half, 0, sw - half, sh)]
+        return [(0, 0, sw, sh)]
+
     def _position_on_screen(self):
         """Position window on the target screen."""
         try:
             # Update the window to get accurate geometry
             self.update_idletasks()
 
-            # Get window dimensions
-            window_width = self.winfo_reqwidth()
-            window_height = self.winfo_reqheight()
+            # Use the actual geometry dimensions (winfo_reqwidth/reqheight
+            # return the *requested* size before layout, which is too small)
+            window_width = getattr(self, '_initial_width', None) or self.winfo_width()
+            window_height = getattr(self, '_initial_height', None) or self.winfo_height()
 
             # Get screen dimensions (total virtual desktop)
             screen_width = self.winfo_screenwidth()
             screen_height = self.winfo_screenheight()
 
-            # Simple centering approach - avoid complex multi-monitor detection for initial positioning
-            if self.target_screen == 0 or self.target_screen is None:
-                # Center on primary screen (assume left half if ultra-wide or multi-monitor)
-                primary_width = screen_width // 2 if screen_width > 2000 else screen_width
-                x = (primary_width - window_width) // 2
-                y = (screen_height - window_height) // 2
-            else:
-                # For secondary screen, use a safe offset approach
-                # Assume secondary screen is to the right
-                primary_width = screen_width // 2 if screen_width > 2000 else 1920  # Common primary width
-                x = primary_width + 100  # Offset into second screen
-                y = 100
+            # Detect monitors and pick the target one
+            monitors = self._get_monitor_geometries()
+            idx = min(self.target_screen or 0, len(monitors) - 1)
+            mon_x, mon_y, mon_w, mon_h = monitors[idx]
 
-            # Ensure window stays within safe bounds (leave margin for taskbar/decorations)
+            # Center the window on the chosen monitor
+            x = mon_x + (mon_w - window_width) // 2
+            y = mon_y + (mon_h - window_height) // 2
+
+            # Ensure window stays within that monitor's bounds
             margin = 50
-            max_x = screen_width - window_width - margin
-            max_y = screen_height - window_height - margin
-            
-            x = max(margin, min(x, max_x))
-            y = max(margin, min(y, max_y))
+            x = max(mon_x + margin, min(x, mon_x + mon_w - window_width - margin))
+            y = max(mon_y + margin, min(y, mon_y + mon_h - window_height - margin))
 
             # Check for saved position (but validate it's safe and reasonable)
             if get_config_value('gui.remember_window_position', True):
