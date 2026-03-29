@@ -51,16 +51,39 @@ STANDARD_RESIDUES = {
 
 # Charge methods supported by antechamber
 CHARGE_METHODS = {
-    'bcc': 'AM1-BCC (recommended)',
-    'resp': 'RESP Fitting',
-    'cm2': 'CM2 Charges',
-    'mul': 'Mulliken Charges',
-    'rc': 'RC Charges',
-    'esp': 'ESP Fitting',
-    'gas': 'Gasteiger Charges',
+    'bcc': 'AM1-BCC',
+    'abcg2': 'ABCG2',
+    'gas': 'Gasteiger',
+    'mul': 'Mulliken',
+    'cm2': 'CM2',
+    'rc': 'Read-in Charges',
+    'resp': 'RESP (requires Gaussian)',
+    'esp': 'ESP (requires Gaussian)',
+}
+
+# Atom type sets supported by antechamber
+ATOM_TYPES = {
+    'gaff2': 'GAFF2',
+    'gaff': 'GAFF',
 }
 
 DEFAULT_CHARGE_METHOD = 'bcc'
+DEFAULT_ATOM_TYPE = 'gaff2'
+
+# Recommended pairings per AMBER manual:
+#   gaff  + bcc    ✓
+#   gaff2 + abcg2  ✓
+# Non-recommended (warning):
+#   gaff2 + bcc
+#   gaff  + abcg2
+RECOMMENDED_COMBOS = {
+    ('gaff', 'bcc'),
+    ('gaff2', 'abcg2'),
+}
+NON_RECOMMENDED_COMBOS = {
+    ('gaff2', 'bcc'),
+    ('gaff', 'abcg2'),
+}
 
 
 class LigandParametrizationError(Exception):
@@ -247,12 +270,13 @@ def parametrize_ligand(
     charge: int = 0,
     charge_method: str = DEFAULT_CHARGE_METHOD,
     multiplicity: int = 1,
+    atom_type: str = DEFAULT_ATOM_TYPE,
 ) -> Dict[str, str]:
     """
     Parametrize a single ligand using antechamber + parmchk2 + tleap.
 
-    This follows the AMBER/GAFF2 workflow:
-    1. antechamber: atom typing (GAFF2) and charge assignment
+    This follows the AMBER/GAFF workflow:
+    1. antechamber: atom typing and charge assignment
     2. parmchk2: missing parameter generation
     3. tleap: generate .lib file with residue library
 
@@ -268,6 +292,7 @@ def parametrize_ligand(
         charge: Net charge of the ligand (default: 0)
         charge_method: Charge calculation method (default: 'bcc')
         multiplicity: Spin multiplicity (default: 1)
+        atom_type: Atom type set — 'gaff2' or 'gaff' (default: 'gaff2')
 
     Returns:
         Dictionary with paths to generated files:
@@ -308,6 +333,7 @@ def parametrize_ligand(
         "ligand_name": ligand_name,
         "charge": charge,
         "charge_method": charge_method,
+        "atom_type": atom_type,
         "status": "running",
         "current_step": "antechamber",
         "steps_completed": [],
@@ -319,7 +345,7 @@ def parametrize_ligand(
     try:
         # Step 1: Antechamber - atom typing and charge assignment
         logger.info(f"Running antechamber for {ligand_name} "
-                     f"(charge={charge}, method={charge_method})")
+                     f"(charge={charge}, method={charge_method}, at={atom_type})")
 
         antechamber_cmd = [
             'antechamber',
@@ -332,7 +358,7 @@ def parametrize_ligand(
             '-m', str(multiplicity),
             '-rn', ligand_name,
             '-s', '2',
-            '-at', 'gaff2',
+            '-at', atom_type,
         ]
 
         result = subprocess.run(
@@ -371,7 +397,7 @@ def parametrize_ligand(
             '-i', str(mol2_file),
             '-f', 'mol2',
             '-o', str(frcmod_file),
-            '-s', 'gaff2',
+            '-s', atom_type,
         ]
 
         result = subprocess.run(
@@ -406,7 +432,8 @@ def parametrize_ligand(
         logger.info(f"Running tleap for {ligand_name}")
 
         tleap_input = out_dir / "tleap.in"
-        tleap_content = f"""source leaprc.gaff2
+        leaprc = f"leaprc.{atom_type}"
+        tleap_content = f"""source {leaprc}
 loadamberparams {ligand_name}.frcmod
 {ligand_name} = loadmol2 {ligand_name}.mol2
 check {ligand_name}
@@ -484,6 +511,7 @@ def parametrize_all_ligands(
     output_dir: str,
     charges: Optional[Dict[str, int]] = None,
     charge_method: str = DEFAULT_CHARGE_METHOD,
+    atom_type: str = DEFAULT_ATOM_TYPE,
 ) -> Dict[str, Dict[str, str]]:
     """
     Detect and parametrize all ligands in a PDB file.
@@ -494,6 +522,7 @@ def parametrize_all_ligands(
         charges: Dictionary mapping ligand names to net charges
                  (default: 0 for all)
         charge_method: Charge method for antechamber (default: 'bcc')
+        atom_type: Atom type set — 'gaff2' or 'gaff' (default: 'gaff2')
 
     Returns:
         Dictionary mapping ligand names to their output file paths
@@ -539,6 +568,7 @@ def parametrize_all_ligands(
             output_dir=str(lig_dir),
             charge=charge,
             charge_method=charge_method,
+            atom_type=atom_type,
         )
 
         results[ligand.name] = files
@@ -872,7 +902,8 @@ def build_ligand_param_args(
 
 
 def build_tleap_ligand_lines(
-    ligand_files: Dict[str, Dict[str, str]]
+    ligand_files: Dict[str, Dict[str, str]],
+    atom_type: str = DEFAULT_ATOM_TYPE,
 ) -> str:
     """
     Build tleap input lines to load ligand parameters.
@@ -881,6 +912,7 @@ def build_tleap_ligand_lines(
 
     Args:
         ligand_files: Dict mapping ligand name to file paths
+        atom_type: Atom type set — 'gaff2' or 'gaff' (default: 'gaff2')
 
     Returns:
         Multi-line string with tleap commands
@@ -898,7 +930,9 @@ def build_tleap_ligand_lines(
     if not ligand_files:
         return ""
 
-    lines = ["# Load GAFF2 and ligand parameters", "source leaprc.gaff2"]
+    leaprc = f"leaprc.{atom_type}"
+    label = atom_type.upper()
+    lines = [f"# Load {label} and ligand parameters", f"source {leaprc}"]
 
     for name, files in ligand_files.items():
         frcmod = files.get('frcmod', '')

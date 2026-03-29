@@ -36,6 +36,9 @@ from gatewizard.tools.ligand_parametrization import (
     LigandParametrizationError,
     CHARGE_METHODS,
     DEFAULT_CHARGE_METHOD,
+    ATOM_TYPES,
+    DEFAULT_ATOM_TYPE,
+    NON_RECOMMENDED_COMBOS,
 )
 from gatewizard.utils.logger import get_logger
 
@@ -143,6 +146,26 @@ class LigandParamWidget(ctk.CTkFrame):
         # Global charge method selector
         self.global_frame = ctk.CTkFrame(self, fg_color="transparent")
 
+        self.atom_type_label = ctk.CTkLabel(
+            self.global_frame,
+            text="Atom Type:",
+            font=FONTS['body']
+        )
+
+        atom_type_values = [
+            f"{k} - {v}" for k, v in ATOM_TYPES.items()
+        ]
+        self.atom_type_combo = ctk.CTkComboBox(
+            self.global_frame,
+            values=atom_type_values,
+            width=140,
+            height=WIDGET_SIZES['combobox_height'],
+            command=self._on_combo_changed,
+        )
+        self.atom_type_combo.set(
+            f"{DEFAULT_ATOM_TYPE} - {ATOM_TYPES[DEFAULT_ATOM_TYPE]}"
+        )
+
         self.charge_method_label = ctk.CTkLabel(
             self.global_frame,
             text="Charge Method:",
@@ -155,12 +178,23 @@ class LigandParamWidget(ctk.CTkFrame):
         self.charge_method_combo = ctk.CTkComboBox(
             self.global_frame,
             values=charge_method_values,
-            width=200,
+            width=220,
             height=WIDGET_SIZES['combobox_height'],
+            command=self._on_combo_changed,
         )
         self.charge_method_combo.set(
             f"{DEFAULT_CHARGE_METHOD} - "
             f"{CHARGE_METHODS[DEFAULT_CHARGE_METHOD]}"
+        )
+
+        # Warning label for non-recommended combos
+        self.combo_warning_label = ctk.CTkLabel(
+            self,
+            text="",
+            font=FONTS['small'],
+            text_color="#e8a838",
+            wraplength=600,
+            justify="left",
         )
 
         # Parametrize all button
@@ -194,8 +228,12 @@ class LigandParamWidget(ctk.CTkFrame):
         self.ligands_container.pack(fill="x", padx=pad_m, pady=pad_s)
 
         self.global_frame.pack(fill="x", padx=pad_m, pady=pad_s)
-        self.charge_method_label.pack(side="left", padx=(0, pad_s))
+        self.atom_type_label.pack(side="left", padx=(0, pad_s))
+        self.atom_type_combo.pack(side="left", padx=pad_s)
+        self.charge_method_label.pack(side="left", padx=(pad_m, pad_s))
         self.charge_method_combo.pack(side="left", padx=pad_s)
+
+        self.combo_warning_label.pack(anchor="w", padx=pad_m, pady=0)
 
         self.parametrize_button.pack(anchor="w", padx=pad_m, pady=pad_s)
         self.progress_label.pack(anchor="w", padx=pad_m, pady=(0, pad_m))
@@ -250,6 +288,14 @@ class LigandParamWidget(ctk.CTkFrame):
                 )
             if hasattr(self, 'progress_label'):
                 self.progress_label.configure(
+                    font=scaled_fonts.get('small', FONTS['small'])
+                )
+            if hasattr(self, 'atom_type_label'):
+                self.atom_type_label.configure(
+                    font=scaled_fonts.get('small', FONTS['small'])
+                )
+            if hasattr(self, 'combo_warning_label'):
+                self.combo_warning_label.configure(
                     font=scaled_fonts.get('small', FONTS['small'])
                 )
         except Exception as e:
@@ -701,8 +747,15 @@ class LigandParamWidget(ctk.CTkFrame):
         return None
 
     # ------------------------------------------------------------------
-    # Charge method
+    # Atom type / Charge method
     # ------------------------------------------------------------------
+
+    def _get_selected_atom_type(self) -> str:
+        """Get the selected atom type code."""
+        value = self.atom_type_combo.get()
+        if " - " in value:
+            return value.split(" - ")[0].strip()
+        return DEFAULT_ATOM_TYPE
 
     def _get_selected_charge_method(self) -> str:
         """Get the selected charge method code."""
@@ -710,6 +763,18 @@ class LigandParamWidget(ctk.CTkFrame):
         if " - " in value:
             return value.split(" - ")[0].strip()
         return DEFAULT_CHARGE_METHOD
+
+    def _on_combo_changed(self, _event=None):
+        """Check atom-type / charge-method pairing and show warning if needed."""
+        at = self._get_selected_atom_type()
+        cm = self._get_selected_charge_method()
+        if (at, cm) in NON_RECOMMENDED_COMBOS:
+            self.combo_warning_label.configure(
+                text=f"Warning: {at}/{cm} is not recommended. "
+                     f"Use gaff/bcc or gaff2/abcg2 instead (AMBER manual)."
+            )
+        else:
+            self.combo_warning_label.configure(text="")
 
     # ------------------------------------------------------------------
     # Parametrization
@@ -734,6 +799,20 @@ class LigandParamWidget(ctk.CTkFrame):
             working_dir = str(Path.cwd())
 
         charge_method = self._get_selected_charge_method()
+        atom_type = self._get_selected_atom_type()
+
+        # Warn for non-recommended atom-type / charge-method combos
+        if (atom_type, charge_method) in NON_RECOMMENDED_COMBOS:
+            proceed = messagebox.askyesno(
+                "Non-Recommended Combination",
+                f"The combination {atom_type}/{charge_method} is not "
+                f"recommended by the AMBER manual.\n\n"
+                f"Recommended pairings are gaff/bcc and gaff2/abcg2.\n\n"
+                f"Do you want to proceed anyway?",
+                icon="warning",
+            )
+            if not proceed:
+                return
 
         # Collect per-ligand settings
         charges: Dict[str, int] = {}
@@ -795,6 +874,7 @@ class LigandParamWidget(ctk.CTkFrame):
                         output_dir=lig_dir,
                         charge=charges.get(ligand.name, 0),
                         charge_method=charge_method,
+                        atom_type=atom_type,
                         multiplicity=multiplicities.get(ligand.name, 1),
                     )
 

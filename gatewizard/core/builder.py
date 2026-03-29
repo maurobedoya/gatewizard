@@ -1241,7 +1241,13 @@ EOF
         
         # Generate ligand parameter lines if ligands are present
         ligand_params = config.get('ligand_params', {})
-        ligand_lines = build_tleap_ligand_lines(ligand_params)
+        # Extract atom type from parametrized ligand info (all ligands share the same type)
+        ligand_atom_type = 'gaff2'
+        for _lig_info in ligand_params.values():
+            if isinstance(_lig_info, dict) and 'atom_type' in _lig_info:
+                ligand_atom_type = _lig_info['atom_type']
+                break
+        ligand_lines = build_tleap_ligand_lines(ligand_params, atom_type=ligand_atom_type)
 
         # Generate tleap input content
         leap_content = f"""# Load force field for proteins {protein_ff}
