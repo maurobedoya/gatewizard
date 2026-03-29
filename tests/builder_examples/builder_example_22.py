@@ -34,7 +34,8 @@ results = parametrize_all_ligands(
     pdb_file=pdb_file,
     output_dir=output_dir,
     charges=charges,
-    charge_method='bcc',  # AM1-BCC charges (recommended)
+    charge_method='bcc',  # AM1-BCC charges
+    atom_type='gaff2',    # GAFF2 atom types (recommended with abcg2; bcc also works)
 )
 
 print(f"\nParametrized {len(results)} ligand(s):")

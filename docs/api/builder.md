@@ -1138,8 +1138,10 @@ cat systems/popc_membrane/status.json
 ## Ligand Parametrization
 
 Module for detecting, extracting, and parametrizing non-standard (ligand) residues found in PDB files.
-Uses the AMBER/GAFF2 workflow (antechamber → parmchk2 → tleap) to generate force field parameters
+Uses the AMBER/GAFF workflow (antechamber → parmchk2 → tleap) to generate force field parameters
 that integrate with the Builder's packmol-memgen and final tleap steps.
+Supports both GAFF and GAFF2 atom type sets, with recommended pairings
+per the AMBER manual: **gaff/bcc** and **gaff2/abcg2**.
 
 ### Import
 
@@ -1157,6 +1159,11 @@ from gatewizard.tools.ligand_parametrization import (
     LigandParametrizationError,
     STANDARD_RESIDUES,
     CHARGE_METHODS,
+    ATOM_TYPES,
+    DEFAULT_CHARGE_METHOD,
+    DEFAULT_ATOM_TYPE,
+    RECOMMENDED_COMBOS,
+    NON_RECOMMENDED_COMBOS,
 )
 ```
 
@@ -1185,8 +1192,31 @@ Information container for a detected ligand residue.
 | Constant | Type | Description |
 |----------|------|-------------|
 | `STANDARD_RESIDUES` | `set` | Residue names excluded from detection (amino acids, water, ions, lipids, capping groups) |
-| `CHARGE_METHODS` | `dict` | Antechamber charge methods: `'bcc'` (AM1-BCC, recommended), `'resp'`, `'cm2'`, `'mul'`, `'rc'`, `'esp'`, `'gas'` |
+| `CHARGE_METHODS` | `dict` | Antechamber charge methods: `'bcc'` (AM1-BCC), `'abcg2'` (ABCG2), `'gas'` (Gasteiger), `'mul'` (Mulliken), `'cm2'` (CM2), `'rc'` (Read-in), `'resp'` (RESP — requires Gaussian), `'esp'` (ESP — requires Gaussian) |
+| `ATOM_TYPES` | `dict` | Antechamber atom type sets: `'gaff2'` → `'GAFF2'`, `'gaff'` → `'GAFF'` |
 | `DEFAULT_CHARGE_METHOD` | `str` | `'bcc'` |
+| `DEFAULT_ATOM_TYPE` | `str` | `'gaff2'` |
+| `RECOMMENDED_COMBOS` | `set` | Recommended (atom_type, charge_method) pairings per AMBER manual: `{('gaff', 'bcc'), ('gaff2', 'abcg2')}` |
+| `NON_RECOMMENDED_COMBOS` | `set` | Non-recommended pairings (warning shown in GUI): `{('gaff2', 'bcc'), ('gaff', 'abcg2')}` |
+
+!!! warning "Recommended Atom Type / Charge Method Pairings"
+    Per the AMBER manual, the efficient charge models `bcc` (AM1-BCC) and `abcg2` (ABCG2)
+    should be paired with specific atom type sets:
+
+    | Atom Type | Charge Method | Status |
+    |-----------|---------------|--------|
+    | `gaff` | `bcc` | **Recommended** ✓ |
+    | `gaff2` | `abcg2` | **Recommended** ✓ |
+    | `gaff2` | `bcc` | Not recommended ✗ |
+    | `gaff` | `abcg2` | Not recommended ✗ |
+
+    The GUI shows an amber warning label when a non-recommended combination is selected,
+    and displays a confirmation dialog before proceeding with parametrization.
+
+!!! info "External QM Software Requirements"
+    The `resp` and `esp` charge methods require **Gaussian** (external quantum-mechanics
+    software, not included in AmberTools). All other methods (`bcc`, `abcg2`, `gas`,
+    `mul`, `cm2`) use **sqm**, which is bundled with AmberTools.
 
 ### Function: detect_ligands()
 
@@ -1298,7 +1328,7 @@ print(f"\nAll extracted ligands saved in: {output_dir}")
 
 ### Function: parametrize_ligand()
 
-Parametrize a single ligand using the AMBER/GAFF2 workflow (antechamber → parmchk2 → tleap).
+Parametrize a single ligand using the AMBER/GAFF workflow (antechamber → parmchk2 → tleap).
 
 ```python
 parametrize_ligand(
@@ -1308,6 +1338,7 @@ parametrize_ligand(
     charge: int = 0,
     charge_method: str = 'bcc',
     multiplicity: int = 1,
+    atom_type: str = 'gaff2',
 ) -> Dict[str, str]
 ```
 
@@ -1321,12 +1352,13 @@ parametrize_ligand(
 | `charge` | `int` | `0` | Net charge of the ligand |
 | `charge_method` | `str` | `'bcc'` | Charge method (see `CHARGE_METHODS`) |
 | `multiplicity` | `int` | `1` | Spin multiplicity |
+| `atom_type` | `str` | `'gaff2'` | Atom type set — `'gaff2'` or `'gaff'` (see `ATOM_TYPES`) |
 
 **Returns:** Dictionary with paths to generated files:
 
 | Key | Description |
 |-----|-------------|
-| `'mol2'` | Typed MOL2 file (GAFF2 atom types + charges) |
+| `'mol2'` | Typed MOL2 file (GAFF/GAFF2 atom types + charges) |
 | `'frcmod'` | Force field modification file (missing parameters) |
 | `'lib'` | Residue library file for tleap |
 | `'prmtop'` | AMBER topology file |
@@ -1352,6 +1384,7 @@ parametrize_all_ligands(
     output_dir: str,
     charges: Optional[Dict[str, int]] = None,
     charge_method: str = 'bcc',
+    atom_type: str = 'gaff2',
 ) -> Dict[str, Dict[str, str]]
 ```
 
@@ -1363,6 +1396,7 @@ parametrize_all_ligands(
 | `output_dir` | `str` | — | Base directory (each ligand gets a subdirectory) |
 | `charges` | `Dict[str, int]` or `None` | `None` | Map of ligand name → net charge (default: 0 for all) |
 | `charge_method` | `str` | `'bcc'` | Charge method for antechamber |
+| `atom_type` | `str` | `'gaff2'` | Atom type set — `'gaff2'` or `'gaff'` (see `ATOM_TYPES`) |
 
 **Returns:** `Dict[str, Dict[str, str]]` — maps ligand names to their file paths (same structure as `parametrize_ligand()`)
 
@@ -1405,7 +1439,8 @@ results = parametrize_all_ligands(
     pdb_file=pdb_file,
     output_dir=output_dir,
     charges=charges,
-    charge_method='bcc',  # AM1-BCC charges (recommended)
+    charge_method='bcc',  # AM1-BCC charges
+    atom_type='gaff2',    # GAFF2 atom types (recommended with abcg2; bcc also works)
 )
 
 print(f"\nParametrized {len(results)} ligand(s):")
@@ -1630,11 +1665,12 @@ build_ligand_param_args(
 
 ### Function: build_tleap_ligand_lines()
 
-Build tleap input lines to load GAFF2 and ligand parameters. Insert these **before** `loadPDB`.
+Build tleap input lines to load GAFF/GAFF2 and ligand parameters. Insert these **before** `loadPDB`.
 
 ```python
 build_tleap_ligand_lines(
-    ligand_files: Dict[str, Dict[str, str]]
+    ligand_files: Dict[str, Dict[str, str]],
+    atom_type: str = 'gaff2',
 ) -> str
 ```
 
@@ -1643,8 +1679,9 @@ build_tleap_ligand_lines(
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `ligand_files` | `Dict[str, Dict[str, str]]` | Ligand name → file paths |
+| `atom_type` | `str` | Atom type set — `'gaff2'` or `'gaff'` (default: `'gaff2'`). Determines the `leaprc` source line |
 
-**Returns:** Multi-line string with tleap commands (`source leaprc.gaff2`, `loadamberparams`, `loadoff`)
+**Returns:** Multi-line string with tleap commands (`source leaprc.gaff2` or `source leaprc.gaff`, `loadamberparams`, `loadoff`)
 
 ### Example 21: Build packmol-memgen and tleap Arguments
 
@@ -1689,6 +1726,11 @@ print()
 tleap_lines = build_tleap_ligand_lines(ligand_files)
 print("tleap input lines:")
 print(tleap_lines)
+
+# With GAFF atom types instead of GAFF2
+tleap_lines_gaff = build_tleap_ligand_lines(ligand_files, atom_type='gaff')
+print("\ntleap input lines (GAFF):")
+print(tleap_lines_gaff)
 ```
 
 ---
@@ -1714,8 +1756,9 @@ config['ligand_params'] = {
 
 **What happens during build:**
 
-1. **packmol-memgen** receives `--ligand_param frcmod:lib` for each ligand, plus `--gaff2`
-2. **tleap parametrization** loads `source leaprc.gaff2`, then `loadamberparams` and `loadoff` for each ligand before `loadPDB`
+1. **packmol-memgen** receives `--ligand_param frcmod:lib` for each ligand, plus `--gaff2` (or `--gaff` depending on the atom type used)
+2. **tleap parametrization** loads `source leaprc.gaff2` (or `source leaprc.gaff`), then `loadamberparams` and `loadoff` for each ligand before `loadPDB`
+3. The atom type is automatically extracted from the parametrized ligand results, so matching `leaprc` is always used
 
 ### Example 23: Full Membrane System with Ligand Parametrization
 
@@ -1754,6 +1797,7 @@ ligand_results = parametrize_all_ligands(
     output_dir=f"{working_dir}/ligand_params",
     charges={'AAA': 0, 'BBB': 0},
     charge_method='bcc',
+    atom_type='gaff2',    # GAFF2 atom types
 )
 
 print(f"  Parametrized: {list(ligand_results.keys())}")
@@ -1794,6 +1838,86 @@ print("  - packmol-memgen (--ligand_param flags)")
 print("  - tleap (loadamberparams/loadoff commands)")
 ```
 
+### Example 26: Atom Type Selection and Recommended Pairings
+
+```python
+"""
+Builder Example 26: Atom type selection and recommended pairings
+
+Demonstrates how to choose between GAFF and GAFF2 atom types,
+check recommended pairings per the AMBER manual, and use
+the ABCG2 charge method with GAFF2.
+
+NOTE: This example requires AmberTools (antechamber, parmchk2, tleap)
+to be installed and accessible in the PATH.
+"""
+
+from gatewizard.tools.ligand_parametrization import (
+    parametrize_all_ligands,
+    build_tleap_ligand_lines,
+    ATOM_TYPES,
+    CHARGE_METHODS,
+    DEFAULT_ATOM_TYPE,
+    DEFAULT_CHARGE_METHOD,
+    RECOMMENDED_COMBOS,
+    NON_RECOMMENDED_COMBOS,
+)
+
+# ── Available options ────────────────────────────────────────────────
+print("Available atom types:")
+for key, label in ATOM_TYPES.items():
+    default = " (default)" if key == DEFAULT_ATOM_TYPE else ""
+    print(f"  {key}: {label}{default}")
+
+print("\nAvailable charge methods:")
+for key, label in CHARGE_METHODS.items():
+    default = " (default)" if key == DEFAULT_CHARGE_METHOD else ""
+    print(f"  {key}: {label}{default}")
+
+# ── Recommended pairings ─────────────────────────────────────────────
+print("\nRecommended pairings (AMBER manual):")
+for at, cm in sorted(RECOMMENDED_COMBOS):
+    print(f"  {at} + {cm}  ✓")
+
+print("\nNon-recommended pairings (will show warning):")
+for at, cm in sorted(NON_RECOMMENDED_COMBOS):
+    print(f"  {at} + {cm}  ✗")
+
+# ── Check a pairing before parametrizing ─────────────────────────────
+atom_type = 'gaff2'
+charge_method = 'abcg2'
+
+if (atom_type, charge_method) in RECOMMENDED_COMBOS:
+    print(f"\n{atom_type}/{charge_method} is a recommended pairing.")
+elif (atom_type, charge_method) in NON_RECOMMENDED_COMBOS:
+    print(f"\nWARNING: {atom_type}/{charge_method} is NOT recommended.")
+else:
+    print(f"\n{atom_type}/{charge_method} has no specific recommendation.")
+
+# ── Parametrize with gaff2/abcg2 (recommended) ──────────────────────
+pdb_file = "tests/2MVJ_2ligs.pdb"
+output_dir = "./systems/ligand_params_gaff2_abcg2"
+
+results = parametrize_all_ligands(
+    pdb_file=pdb_file,
+    output_dir=output_dir,
+    charges={'AAA': 0, 'BBB': 0},
+    charge_method='abcg2',   # ABCG2 charges
+    atom_type='gaff2',       # GAFF2 atom types (recommended with abcg2)
+)
+
+print(f"\nParametrized {len(results)} ligand(s) with gaff2/abcg2:")
+for name, files in results.items():
+    print(f"  {name}: {files.get('frcmod', 'N/A')}")
+
+# ── tleap lines reflect the chosen atom type ─────────────────────────
+tleap_gaff2 = build_tleap_ligand_lines(results, atom_type='gaff2')
+print(f"\ntleap lines (GAFF2):\n{tleap_gaff2}")
+
+tleap_gaff = build_tleap_ligand_lines(results, atom_type='gaff')
+print(f"\ntleap lines (GAFF):\n{tleap_gaff}")
+```
+
 ### Ligand Parametrization Troubleshooting
 
 **"Antechamber failed":**
@@ -1813,7 +1937,21 @@ print("  - tleap (loadamberparams/loadoff commands)")
 
 - The tleap variable name must match the 3-letter residue name exactly
 - Ensure `.lib` file was generated with the correct residue name in `saveoff`
-- Check that `source leaprc.gaff2` is loaded before `loadamberparams`
+- Check that `source leaprc.gaff2` (or `source leaprc.gaff`) is loaded before `loadamberparams`
+
+**"Non-recommended combination" warning (gaff2/bcc or gaff/abcg2):**
+
+- The AMBER manual recommends `gaff/bcc` and `gaff2/abcg2` pairings
+- Using `gaff2/bcc` or `gaff/abcg2` may produce suboptimal parameters
+- The GUI shows an amber warning label and a confirmation dialog
+- To silence the warning, switch to a recommended pairing
+- Check `RECOMMENDED_COMBOS` and `NON_RECOMMENDED_COMBOS` constants for the full list
+
+**"resp/esp: Gaussian not found":**
+
+- The `resp` and `esp` charge methods require Gaussian (external QM software)
+- Gaussian is **not** included in AmberTools
+- Use `bcc` or `abcg2` instead (both use the built-in `sqm` engine)
 
 **"RDKit not available":**
 

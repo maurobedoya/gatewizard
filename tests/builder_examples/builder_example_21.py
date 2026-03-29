@@ -38,3 +38,8 @@ print()
 tleap_lines = build_tleap_ligand_lines(ligand_files)
 print("tleap input lines:")
 print(tleap_lines)
+
+# With GAFF atom types instead of GAFF2
+tleap_lines_gaff = build_tleap_ligand_lines(ligand_files, atom_type='gaff')
+print("\ntleap input lines (GAFF):")
+print(tleap_lines_gaff)

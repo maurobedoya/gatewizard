@@ -32,6 +32,7 @@ ligand_results = parametrize_all_ligands(
     output_dir=f"{working_dir}/ligand_params",
     charges={'AAA': 0, 'BBB': 0},
     charge_method='bcc',
+    atom_type='gaff2',    # GAFF2 atom types
 )
 
 print(f"  Parametrized: {list(ligand_results.keys())}")
