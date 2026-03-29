@@ -546,14 +546,17 @@ class ProteinViewerApp(ctk.CTk):
         self.status_frame = ctk.CTkFrame(
             self.main_container,
             fg_color=COLOR_SCHEME['canvas'],
-            height=30
+            height=30,
+            corner_radius=0
         )
 
-        self.status_label = ctk.CTkLabel(
+        self.status_label = tk.Label(
             self.status_frame,
             text="Ready",
             font=FONTS['small'],
-            text_color=COLOR_SCHEME['text']
+            fg=COLOR_SCHEME['text'],
+            bg=COLOR_SCHEME['canvas'],
+            anchor="w"
         )
 
         # NOW create frames for each stage (after status_label exists)
@@ -592,7 +595,9 @@ class ProteinViewerApp(ctk.CTk):
             self.content_frame,
             get_current_pdb=self._get_current_pdb,
             status_callback=self._update_status,
-            initial_directory=self.initial_working_directory
+            initial_directory=self.initial_working_directory,
+            set_status_busy=self._set_status_busy,
+            set_status_ready=self._set_status_ready
         )
         
         # Collective Variables frame
@@ -801,6 +806,17 @@ class ProteinViewerApp(ctk.CTk):
                         current_frame.status_text_label.configure(text=message)
                 except Exception as e:
                     logger.warning(f"Failed to update frame status: {e}")
+
+    def _set_status_busy(self, message: str = "Working"):
+        """Highlight the status bar orange to indicate a task is running."""
+        self.status_frame.configure(fg_color="#D4820A")
+        self.status_label.configure(text=message, bg="#D4820A", fg="#FFFFFF")
+        self.update_idletasks()
+
+    def _set_status_ready(self, message: str = "Ready"):
+        """Restore the status bar to its normal appearance."""
+        self.status_frame.configure(fg_color=COLOR_SCHEME['canvas'])
+        self.status_label.configure(text=message, bg=COLOR_SCHEME['canvas'], fg=COLOR_SCHEME['text'])
     
     def _open_file_dialog(self):
         """Open file dialog for PDB selection."""

@@ -254,7 +254,9 @@ class EquilibrationFrame(ctk.CTkFrame):
         parent,
         get_current_pdb: Optional[Callable[[], Optional[str]]] = None,
         status_callback: Optional[Callable[[str], None]] = None,
-        initial_directory: Optional[str] = None
+        initial_directory: Optional[str] = None,
+        set_status_busy: Optional[Callable[[str], None]] = None,
+        set_status_ready: Optional[Callable[[str], None]] = None
     ):
         """
         Initialize the equilibration frame.
@@ -264,6 +266,8 @@ class EquilibrationFrame(ctk.CTkFrame):
             get_current_pdb: Callback to get current PDB file
             status_callback: Callback for status updates
             initial_directory: Initial directory for file dialogs
+            set_status_busy: Callback to highlight status bar during work
+            set_status_ready: Callback to restore status bar after work
         """
         super().__init__(parent, fg_color=COLOR_SCHEME['content_bg'])
         
@@ -273,6 +277,8 @@ class EquilibrationFrame(ctk.CTkFrame):
         self.get_current_pdb = get_current_pdb
         self.status_callback = status_callback
         self.initial_directory = initial_directory or str(Path.cwd())
+        self._set_status_busy = set_status_busy
+        self._set_status_ready = set_status_ready
         
         # State variables
         self.current_pdb_file = None
@@ -2247,15 +2253,29 @@ class EquilibrationFrame(ctk.CTkFrame):
                 )
             else:
                 if self.status_callback:
-                    self.status_callback(f"✓ Input folder validated: {input_folder.name}")
+                    self.status_callback(f"[OK] Input folder validated: {input_folder.name}")
 
-            # Auto-detect ligands and refresh atom counts from the new PDB
-            try:
-                self._auto_detect_ligands()
-                self._refresh_atom_counts()
-            except Exception as exc:
-                self.logger.debug(f"Auto-detect after browse: {exc}")
-    
+            # Auto-detect ligands and refresh atom counts in a background
+            # thread so the GUI stays responsive (MDAnalysis is slow).
+            if self._set_status_busy:
+                self._set_status_busy("Reading prepared system...")
+
+            def _do_load():
+                try:
+                    self._auto_detect_ligands()
+                except Exception as e:
+                    self.logger.debug(f"Auto-detect after browse: {e}")
+                self.after(0, lambda: self._on_inputfolder_loaded(input_folder))
+
+            threading.Thread(target=_do_load, daemon=True).start()
+
+    def _on_inputfolder_loaded(self, input_folder: Path):
+        """Restore status bar after background folder analysis finishes."""
+        if self._set_status_ready:
+            self._set_status_ready(f"[OK] Input folder loaded: {input_folder.name}")
+        elif self.status_callback:
+            self.status_callback(f"[OK] Input folder loaded: {input_folder.name}")
+
     def _on_outputname_changed(self, event=None):
         """Handle output name change."""
         new_name = self.outputname_entry.get().strip()
@@ -2843,27 +2863,63 @@ class EquilibrationFrame(ctk.CTkFrame):
         
         engine = self.engine_var.get()
         
-        try:
-            if engine == "NAMD":
-                self._generate_namd_files()
-            elif engine == "GROMACS":
-                self._generate_gromacs_files()
-            elif engine == "AMBER":
-                self._generate_amber_files()
-            
+        # Snapshot all GUI state on the main thread before spawning the
+        # background thread.  Tkinter widgets are NOT thread-safe — reading
+        # them from another thread dead-locks the event loop.
+        gui_snapshot = {
+            'protocols': self._get_current_protocols(),
+            'input_folder': self.inputfolder_entry.get().strip(),
+            'scheme_type': self.scheme_type_var.get(),
+            'namd_exe': getattr(self, 'namd_path_var',
+                                ctk.StringVar(value="namd3")).get(),
+            'mda_selections': {k: dict(v) for k, v in self.mda_selections.items()},
+        }
+        
+        # Disable button to prevent double-clicks
+        if hasattr(self, 'generate_files_btn'):
+            self.generate_files_btn.configure(state="disabled")
+
+        if self._set_status_busy:
+            self._set_status_busy(f"Generating {engine} input files...")
+
+        def _do_generate():
+            error = None
+            try:
+                if engine == "NAMD":
+                    self._generate_namd_files(gui_snapshot)
+                elif engine == "GROMACS":
+                    self._generate_gromacs_files()
+                elif engine == "AMBER":
+                    self._generate_amber_files()
+            except Exception as e:
+                error = e
+            self.after(0, lambda: self._on_generate_done(engine, error))
+
+        threading.Thread(target=_do_generate, daemon=True).start()
+
+    def _on_generate_done(self, engine: str, error: Optional[Exception]):
+        """Handle completion of input file generation (called on main thread)."""
+        # Re-enable button
+        if hasattr(self, 'generate_files_btn'):
+            self.generate_files_btn.configure(state="normal")
+
+        if error:
+            if self._set_status_ready:
+                self._set_status_ready("Error generating input files")
+            self.logger.error(f"Error generating input files: {error}")
+            messagebox.showerror("Error", f"Failed to generate input files: {str(error)}")
+        else:
+            if self._set_status_ready:
+                self._set_status_ready(f"Generated {engine} input files")
             messagebox.showinfo(
                 "Success",
                 f"Input files generated successfully for {engine}!"
             )
-            
+
             if self.status_callback:
                 self.status_callback(f"Generated {engine} input files")
-        
-        except Exception as e:
-            self.logger.error(f"Error generating input files: {e}")
-            messagebox.showerror("Error", f"Failed to generate input files: {str(e)}")
     
-    def _generate_namd_files(self):
+    def _generate_namd_files(self, gui_snapshot: Optional[Dict[str, Any]] = None):
         """Generate NAMD input files for all equilibration stages."""
         output_dir = Path(self.working_directory) / self.equilibration_output_name / "namd"
         
@@ -2883,8 +2939,18 @@ class EquilibrationFrame(ctk.CTkFrame):
         # Copy system files to NAMD directory for self-contained execution
         self._copy_system_files_to_namd_dir(self.working_directory, output_dir)
         
-        # Get current protocol parameters
-        protocols = self._get_current_protocols()
+        # Use pre-snapshotted GUI values (thread-safe) or fall back to
+        # live widget reads when called directly from the main thread.
+        if gui_snapshot:
+            protocols = gui_snapshot['protocols']
+            namd_exe = gui_snapshot['namd_exe']
+            input_folder_str = gui_snapshot['input_folder']
+            mda_sels = gui_snapshot['mda_selections']
+        else:
+            protocols = self._get_current_protocols()
+            namd_exe = getattr(self, 'namd_path_var', ctk.StringVar(value="namd3")).get()
+            input_folder_str = self.inputfolder_entry.get().strip()
+            mda_sels = self.mda_selections
         
         # Force field is AMBER only
         force_field = "amber"
@@ -2895,11 +2961,9 @@ class EquilibrationFrame(ctk.CTkFrame):
         
         # Initialize NAMD manager with output_dir (where system files were copied to)
         # All system files (prmtop, inpcrd, pdb, bilayer_pdb) are now in output_dir
-        namd_exe = getattr(self, 'namd_path_var', ctk.StringVar(value="namd3")).get()
         namd_manager = NAMDEquilibrationManager(output_dir, namd_exe)
         
         # Get input folder (if specified by user) or use working directory
-        input_folder_str = self.inputfolder_entry.get().strip()
         source_dir = Path(input_folder_str) if input_folder_str else working_dir
         
         # Check for AMBER files from preparation (in source directory)
@@ -2930,7 +2994,7 @@ class EquilibrationFrame(ctk.CTkFrame):
             self.logger.info(f"Found coordinate file: {inpcrd_files[0].name}")
         
         # Always use CHARMM-GUI scheme
-        scheme_type = self.scheme_type_var.get()
+        scheme_type = gui_snapshot['scheme_type'] if gui_snapshot else self.scheme_type_var.get()
         
         # Generate configuration files for each stage (skip minimization)
         previous_stage_key = None
@@ -3002,7 +3066,7 @@ class EquilibrationFrame(ctk.CTkFrame):
                             restraints_file = restraints_dir / f"{config_name}_restraints.pdb"
                         else:
                             restraints_file = restraints_dir / f"{config_name}_equilibration_restraints.pdb"
-                        stage_sels = self.mda_selections.get(stage_key)
+                        stage_sels = mda_sels.get(stage_key)
                         namd_manager.generate_restraints_file(
                             system_pdb, 
                             stage_constraints,
@@ -3024,7 +3088,7 @@ class EquilibrationFrame(ctk.CTkFrame):
                     first_stage.get('constraints', {}),
                     general_restraints,
                     "General",
-                    selections=self.mda_selections.get(first_key),
+                    selections=mda_sels.get(first_key),
                 )
                 
                 self.logger.info(f"Generated general restraints file: {general_restraints}")
@@ -3348,22 +3412,66 @@ class EquilibrationFrame(ctk.CTkFrame):
                 'log_file': log_file,
                 'running': False,
                 'command': '',
+                'namd_command': '',
                 'start_time': '',
                 'cpu_percent': 0.0,
-                'memory_percent': 0.0
+                'memory_percent': 0.0,
+                'num_children': 0
             }
             
             # Check if process is still running and get details
             try:
                 import psutil  # type: ignore
+                import time
                 if psutil.pid_exists(pid):
                     process = psutil.Process(pid)
                     if process.is_running():
                         info['running'] = True
                         info['command'] = ' '.join(process.cmdline())
                         info['start_time'] = str(process.create_time())
-                        info['cpu_percent'] = process.cpu_percent()
-                        info['memory_percent'] = process.memory_percent()
+                        
+                        # The saved PID is the bash wrapper; the actual work
+                        # (NAMD) runs as a child process. Aggregate CPU/memory
+                        # across the entire process tree.
+                        try:
+                            children = process.children(recursive=True)
+                            all_procs = [process] + children
+                            info['num_children'] = len(children)
+                            
+                            # First cpu_percent() call initializes the measurement
+                            for p in all_procs:
+                                try:
+                                    p.cpu_percent()
+                                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                    pass
+                            
+                            # Brief pause so second call returns real values
+                            time.sleep(0.5)
+                            
+                            # Second call gives actual CPU usage
+                            total_cpu = 0.0
+                            total_memory = 0.0
+                            for p in all_procs:
+                                try:
+                                    total_cpu += p.cpu_percent()
+                                    total_memory += p.memory_percent()
+                                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                    pass
+                            
+                            info['cpu_percent'] = total_cpu
+                            info['memory_percent'] = total_memory
+                            
+                            # Extract the actual NAMD command from children
+                            for child in children:
+                                try:
+                                    cmd = ' '.join(child.cmdline())
+                                    if 'namd' in cmd.lower():
+                                        info['namd_command'] = cmd
+                                        break
+                                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                    pass
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
             except ImportError:
                 # psutil not available, use basic check
                 import os
@@ -3397,14 +3505,21 @@ class EquilibrationFrame(ctk.CTkFrame):
         if info['running']:
             try:
                 import psutil  # type: ignore
+                # Show the NAMD command if found, otherwise the bash wrapper
+                display_command = info.get('namd_command') or info['command']
+                children_info = ""
+                if info.get('num_children', 0) > 0:
+                    children_info = f"Child Processes: {info['num_children']}\n"
+                
                 process_info = (
                     f"Equilibration Process Information\n"
                     f"{'=' * 40}\n\n"
                     f"Status: RUNNING [OK]\n"
                     f"Process ID: {info['pid']}\n"
+                    f"{children_info}"
                     f"CPU Usage: {info['cpu_percent']:.1f}%\n"
                     f"Memory Usage: {info['memory_percent']:.1f}%\n"
-                    f"Command: {info['command']}\n\n"
+                    f"Command: {display_command}\n\n"
                     f"Files:\n"
                     f"• PID file: {info['pid_file']}\n"
                     f"• Log file: {info['log_file']}\n\n"
