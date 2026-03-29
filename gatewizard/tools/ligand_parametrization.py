@@ -696,7 +696,12 @@ def get_ligand_2d_image(
         # Load molecule based on file type
         mol = None
         if file_path.suffix.lower() == '.mol2':
-            mol = Chem.MolFromMol2File(str(file_path), removeHs=False)
+            if _mol2_has_gaff_types(file_path):
+                # Antechamber writes GAFF atom types (ca, c3, os …) that
+                # RDKit cannot parse.  Convert to SYBYL first.
+                mol = _load_gaff_mol2(file_path)
+            else:
+                mol = Chem.MolFromMol2File(str(file_path), removeHs=False)
         elif file_path.suffix.lower() == '.pdb':
             mol = Chem.MolFromPDBFile(str(file_path), removeHs=False)
 
@@ -832,6 +837,132 @@ LIGHT_PALETTE: Dict[int, Tuple] = {
     35: (0.5, 0.1, 0.1),    # Br: brown
     53: (0.4, 0.0, 0.4),    # I:  purple
 }
+
+# Mapping from GAFF atom type prefixes to SYBYL atom types.
+# Only the element-defining prefix matters for RDKit mol2 parsing.
+_GAFF_TO_SYBYL = {
+    'c3': 'C.3',  'cx': 'C.3',  'cy': 'C.3',
+    'c2': 'C.2',  'ce': 'C.2',  'cf': 'C.2',  'cc': 'C.2',  'cd': 'C.2',
+    'c1': 'C.1',  'cg': 'C.1',  'ch': 'C.1',
+    'ca': 'C.ar', 'cp': 'C.ar', 'cq': 'C.ar', 'cb': 'C.ar',
+    'c':  'C.2',
+    'n3': 'N.3',  'n4': 'N.4',
+    'n2': 'N.2',  'ne': 'N.2',  'nf': 'N.2',  'nc': 'N.2',  'nd': 'N.2',
+    'n1': 'N.1',
+    'n':  'N.am', 'nh': 'N.am', 'na': 'N.ar', 'nb': 'N.ar', 'ns': 'N.am',
+    'o':  'O.2',
+    'oh': 'O.3',  'os': 'O.3',  'ow': 'O.3',
+    'f':  'F',    'cl': 'Cl',   'br': 'Br',   'i':  'I',
+    's2': 'S.2',  's4': 'S.3',  's6': 'S.o2',
+    'ss': 'S.3',  'sh': 'S.3',  's':  'S.2',
+    'p2': 'P.3',  'p3': 'P.3',  'p4': 'P.3',  'p5': 'P.3',
+    'h1': 'H',    'h2': 'H',    'h3': 'H',    'h4': 'H',    'h5': 'H',
+    'ha': 'H',    'hc': 'H',    'hn': 'H',    'ho': 'H',    'hp': 'H',
+    'hs': 'H',    'hw': 'H',    'hx': 'H',
+}
+
+
+def _gaff_to_sybyl(gaff_type: str) -> str:
+    """Convert a GAFF atom type string to a SYBYL type for RDKit."""
+    gt = gaff_type.strip().lower()
+    if gt in _GAFF_TO_SYBYL:
+        return _GAFF_TO_SYBYL[gt]
+    # Fallback: derive element from the first letter(s)
+    if len(gt) >= 2 and gt[:2] in ('cl', 'br'):
+        return gt[:2].capitalize()
+    return gt[0].upper() if gt else 'Du'
+
+
+def _mol2_has_gaff_types(mol2_path) -> bool:
+    """Return True if the mol2 file uses GAFF atom types instead of SYBYL.
+
+    Checks the first few atom-type fields in the @<TRIPOS>ATOM section.
+    SYBYL types contain a dot (e.g. ``C.ar``, ``N.am``), while GAFF types
+    are short lowercase strings without dots (e.g. ``ca``, ``c3``, ``os``).
+    """
+    try:
+        in_atom = False
+        checked = 0
+        for line in Path(mol2_path).open():
+            stripped = line.strip()
+            if stripped.upper().startswith('@<TRIPOS>ATOM'):
+                in_atom = True
+                continue
+            if stripped.upper().startswith('@<TRIPOS>'):
+                if in_atom:
+                    break
+                continue
+            if in_atom and stripped:
+                parts = stripped.split()
+                if len(parts) >= 6:
+                    atom_type = parts[5]
+                    # SYBYL types always contain a dot; GAFF types don't
+                    if '.' not in atom_type and atom_type.lower() in _GAFF_TO_SYBYL:
+                        return True
+                    if '.' in atom_type:
+                        return False
+                    checked += 1
+                    if checked >= 5:
+                        # Checked enough atoms — likely GAFF
+                        return True
+        return False
+    except Exception:
+        return False
+
+
+def _load_gaff_mol2(mol2_path):
+    """Load an antechamber mol2 whose atom types are GAFF, not SYBYL.
+
+    Reads the file, converts GAFF types in the @<TRIPOS>ATOM section to
+    SYBYL types, writes a temp copy, and loads it with RDKit.
+    """
+    import tempfile
+    from rdkit import Chem
+
+    try:
+        lines = Path(mol2_path).read_text().splitlines(keepends=True)
+    except Exception:
+        return None
+
+    in_atom = False
+    new_lines = []
+    for line in lines:
+        if line.strip().upper().startswith('@<TRIPOS>ATOM'):
+            in_atom = True
+            new_lines.append(line)
+            continue
+        if line.strip().upper().startswith('@<TRIPOS>'):
+            in_atom = False
+            new_lines.append(line)
+            continue
+        if in_atom and line.strip():
+            # mol2 ATOM line columns (whitespace-separated):
+            # id  name  x  y  z  type  [resid  resname  charge]
+            parts = line.split()
+            if len(parts) >= 6:
+                parts[5] = _gaff_to_sybyl(parts[5])
+                new_lines.append('  '.join(parts) + '\n')
+            else:
+                new_lines.append(line)
+        else:
+            new_lines.append(line)
+
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode='w', suffix='.mol2', delete=False
+        ) as tmp:
+            tmp.writelines(new_lines)
+            tmp_path = tmp.name
+        mol = Chem.MolFromMol2File(tmp_path, removeHs=False)
+        return mol
+    except Exception:
+        return None
+    finally:
+        try:
+            import os
+            os.unlink(tmp_path)
+        except Exception:
+            pass
 
 
 def _remove_nonpolar_hydrogens(mol):

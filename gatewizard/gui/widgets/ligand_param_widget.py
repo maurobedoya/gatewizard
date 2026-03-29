@@ -489,10 +489,16 @@ class LigandParamWidget(ctk.CTkFrame):
             )
             # Pre-populate found ligands so they are reused
             self.parametrized_ligands.update(found)
+            # Switch found ligands to Final view
+            for name in found:
+                self._switch_to_final_view(name)
             return
 
         # ALL ligands have valid cached results
         self.parametrized_ligands = found
+        # Switch all to Final view
+        for name in found:
+            self._switch_to_final_view(name)
         self.parametrize_button.configure(
             state="normal",
             text="Re-parametrize All Ligands",
@@ -599,6 +605,23 @@ class LigandParamWidget(ctk.CTkFrame):
 
         self._generate_2d_image_async(ligand, image_label)
 
+        # ---- 2D view toggle: Initial / Final ----
+        view_toggle = ctk.CTkSegmentedButton(
+            card,
+            values=["Initial", "Final"],
+            font=FONTS['small'],
+            height=22,
+            corner_radius=4,
+            fg_color=COLOR_SCHEME['canvas'],
+            unselected_color=COLOR_SCHEME['canvas'],
+            unselected_hover_color="#3A3A3A",
+            command=lambda val, n=ligand.name: self._on_view_toggle(
+                n, val
+            ),
+        )
+        view_toggle.set("Initial")
+        view_toggle.pack(padx=8, pady=(0, 4))
+
         # ---- Controls row: charge + multiplicity side-by-side ----
         ctrl_frame = ctk.CTkFrame(card, fg_color="transparent")
         ctrl_frame.pack(fill="x", padx=8, pady=(4, 2))
@@ -659,6 +682,7 @@ class LigandParamWidget(ctk.CTkFrame):
             'status_label': status_label,
             'image_label': image_label,
             'retry_button': retry_button,
+            'view_toggle': view_toggle,
             'ligand': ligand,
         }
 
@@ -741,6 +765,86 @@ class LigandParamWidget(ctk.CTkFrame):
                 os.unlink(image_path)
             except Exception:
                 pass
+
+    def _on_view_toggle(self, ligand_name: str, value: str):
+        """Handle Initial / Final 2D view toggle."""
+        w = self.ligand_widgets.get(ligand_name, {})
+        image_label = w.get('image_label')
+        if not image_label:
+            return
+
+        if value == "Initial":
+            # Show the initial PDB-based image
+            ligand = w.get('ligand')
+            if ligand:
+                self._generate_2d_image_async(ligand, image_label)
+        elif value == "Final":
+            # Show the final mol2-based image (correct bond orders)
+            files = self.parametrized_ligands.get(ligand_name)
+            if not files or not files.get('mol2'):
+                image_label.configure(
+                    text="Not yet parametrized", image=None
+                )
+                return
+            mol2_path = files['mol2']
+            if not Path(mol2_path).exists():
+                image_label.configure(
+                    text="mol2 file not found", image=None
+                )
+                return
+            self._generate_final_2d_image_async(
+                ligand_name, mol2_path, image_label
+            )
+
+    def _generate_final_2d_image_async(
+        self, ligand_name: str, mol2_path: str, image_label
+    ):
+        """Generate 2D image from a mol2 file (has correct bond orders)."""
+        def _generate():
+            try:
+                import tempfile
+                with tempfile.NamedTemporaryFile(
+                    suffix='.png', delete=False
+                ) as tmp:
+                    tmp_path = tmp.name
+
+                iw, ih = getattr(self, '_current_img_size', _DEFAULT_SIZE)
+                result = get_ligand_2d_image(
+                    mol2_path, tmp_path,
+                    width=iw * 2, height=ih * 2,
+                    remove_nonpolar_h=True,
+                )
+
+                if result and Path(tmp_path).exists():
+                    image_label.after(
+                        0,
+                        lambda p=tmp_path: self._display_image(
+                            image_label, p, ligand_name
+                        )
+                    )
+                else:
+                    image_label.after(
+                        0,
+                        lambda: image_label.configure(
+                            text="2D structure\nnot available",
+                            image=None
+                        )
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Error generating final 2D for {ligand_name}: {e}"
+                )
+
+        thread = threading.Thread(target=_generate, daemon=True)
+        thread.start()
+
+    def _switch_to_final_view(self, ligand_name: str):
+        """Switch toggle to 'Final' and refresh the 2D image."""
+        w = self.ligand_widgets.get(ligand_name, {})
+        toggle = w.get('view_toggle')
+        if toggle:
+            toggle.set("Final")
+        self._on_view_toggle(ligand_name, "Final")
 
     # ------------------------------------------------------------------
     # Mouse-wheel scroll propagation
@@ -964,6 +1068,11 @@ class LigandParamWidget(ctk.CTkFrame):
                         ligand_name, show=False
                     )
                 )
+                # Auto-switch to "Final" 2D view
+                self.after(
+                    0,
+                    lambda n=ligand_name: self._switch_to_final_view(n)
+                )
 
                 # Check if all ligands are now parametrized
                 all_done = all(
@@ -1157,6 +1266,11 @@ class LigandParamWidget(ctk.CTkFrame):
                         lambda n=_ok_name: self._show_retry_button(
                             n, show=False
                         )
+                    )
+                    # Auto-switch to "Final" 2D view
+                    self.after(
+                        0,
+                        lambda n=_ok_name: self._switch_to_final_view(n)
                     )
 
                 except (LigandParametrizationError, Exception) as e:
