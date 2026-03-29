@@ -392,6 +392,41 @@ export DISPLAY=$(cat /etc/resolv.conf | grep nameserver | awk '{print $2}'):0
 **Issue**: File path issues (Windows vs WSL paths)
 **Solution**: Use WSL paths (/mnt/c/...) inside WSL
 
+**Issue**: App window not visible (icon appears in taskbar but window is off-screen or invisible)
+
+This can happen after a crash, a display configuration change, or when the WSLg graphics server enters a bad state.
+
+**Solution (step by step)**:
+
+1. Kill any running gatewizard process:
+```bash
+pkill -f gatewizard
+```
+
+2. Reset the saved window position:
+```bash
+python3 -c "
+import json
+p = '/home/$USER/.config/gatewizard/config.json'
+with open(p) as f:
+    cfg = json.load(f)
+cfg['gui']['last_window_x'] = None
+cfg['gui']['last_window_y'] = None
+with open(p, 'w') as f:
+    json.dump(cfg, f, indent=2)
+print('Window position reset')
+"
+```
+
+3. If the window is still not visible, restart the WSL graphics server:
+```powershell
+# Run in PowerShell (Windows side)
+wsl --shutdown
+```
+Then reopen your WSL terminal and launch gatewizard again. WSLg restarts automatically.
+
+> **Note**: If you use VcXsrv or X410 instead of WSLg, close and reopen the X server application instead.
+
 ## Getting More Help
 
 If you're still experiencing issues:
