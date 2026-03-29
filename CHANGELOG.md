@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.26] - 2026-03-29
+
 ### Added
+- **Initial/Final 2D structure toggle** on each ligand card: view the PDB-derived structure (Initial) or the parametrized mol2 structure with correct bond orders (Final)
+- Auto-switch to Final view after successful parametrization or when cached results are detected
+- GAFF→SYBYL atom type conversion for loading antechamber mol2 files into RDKit (`_GAFF_TO_SYBYL` mapping, `_load_gaff_mol2()`, `_mol2_has_gaff_types()`)
 - SS Assignment segmented button (PSIQUE / PDB / Heuristic) in Visualize controls to manually select the secondary structure method
 - **MDAnalysis-based atom selections for equilibration restraints:**
   - `DEFAULT_SELECTIONS` class attribute with MDAnalysis selection strings for all 7 standard restraint categories
@@ -24,10 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Default SS assignment order is now PSIQUE → PDB records → heuristic (was PDB → PSIQUE → heuristic)
 - SearchableComboBox dropdown is now a floating overlay instead of an inline child (no longer expands the parent section)
 - SearchableComboBox arrows changed from filled triangles to V-shape chevrons matching native CTk style
+- Removed complex `_infer_bond_orders()` logic; 2D ligand images now use simple PDB loading for Initial view
 
 ### Fixed
 - Removed DrawEngine monkey-patch; `circle_shapes` drawing method already renders V-shape arrows natively
 - Replaced Unicode sort arrows (▲/▼) in Preparation frame with PIL-drawn images
+- GAFF atom types (`ca`, `c3`, `os`, etc.) in antechamber mol2 files no longer cause RDKit `Element not found` errors
 
 ## [1.0.25] - 2026-03-25
 
