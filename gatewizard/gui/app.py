@@ -298,8 +298,9 @@ class ProteinViewerApp(ctk.CTk):
                         saved_width < screen_width + tolerance and 
                         saved_height < screen_height + tolerance):
                         
-                        x = saved_x
-                        y = saved_y
+                        # Clamp to non-negative so window is always on-screen
+                        x = max(0, saved_x)
+                        y = max(0, saved_y)
                         # Also restore saved size
                         self.geometry(f"{saved_width}x{saved_height}")
 
@@ -1550,9 +1551,10 @@ For more information, visit the documentation.
                 return
             
             # Load config, update values, save once
+            # Clamp to non-negative so restoring never places window off-screen
             config = load_config()
-            config.gui.last_window_x = x
-            config.gui.last_window_y = y
+            config.gui.last_window_x = max(0, x)
+            config.gui.last_window_y = max(0, y)
             config.gui.window_width = width
             config.gui.window_height = height
             save_config(config)
@@ -1849,8 +1851,8 @@ For more information, visit the documentation.
                     config = load_config()
                     config.gui.window_width = self.winfo_width()
                     config.gui.window_height = self.winfo_height()
-                    config.gui.last_window_x = self.winfo_x()
-                    config.gui.last_window_y = self.winfo_y()
+                    config.gui.last_window_x = max(0, self.winfo_x())
+                    config.gui.last_window_y = max(0, self.winfo_y())
                     save_config(config)
                 else:
                     logger.info(f"Not saving window position - window state is {current_state}")
