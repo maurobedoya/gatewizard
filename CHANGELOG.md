@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - SS Assignment segmented button (PSIQUE / PDB / Heuristic) in Visualize controls to manually select the secondary structure method
+- **MDAnalysis-based atom selections for equilibration restraints:**
+  - `DEFAULT_SELECTIONS` class attribute with MDAnalysis selection strings for all 7 standard restraint categories
+  - `count_selection_atoms()` — count atoms matching any MDAnalysis selection expression
+  - `get_default_selections()` — build selection dict with auto-detected `ligand_<RESNAME>` entries for non-standard residues
+  - `count_all_selections()` — count atoms for all selections in one call
+  - `generate_restraints_file_mda()` — generate restraint PDB using MDAnalysis selections instead of heuristic
+  - `generate_restraints_file()` now accepts optional `selections` parameter to use MDAnalysis mode
+  - GUI: atom count labels, gear button (⚙) to edit selections, Add Selection (+) button per stage
+  - GUI: auto-detect ligands when input folder is selected
+  - New equilibration example 08 demonstrating MDAnalysis selection features
 
 ### Changed
 - Default SS assignment order is now PSIQUE → PDB records → heuristic (was PDB → PSIQUE → heuristic)

@@ -427,6 +427,37 @@ stages = [
 - `step6.1_equilibration.inp` through `step6.6_equilibration.inp` (6 equilibration stages)
 - `step7_production.inp` (production stage)
 
+### MDAnalysis Atom Counts and Selection Editing (GUI)
+
+When using the Equilibration GUI frame, the constraint section for each stage now displays:
+
+- **Atom count labels** next to each constraint entry, showing how many atoms match the selection
+- **Gear button** (⚙) on each constraint row to edit the MDAnalysis selection string
+- **Add Selection button** (+) at the bottom of each stage to add custom named selections
+- **Auto-detect ligands** when an input folder is selected — non-standard residues are automatically added as `ligand_<RESNAME>` entries
+
+**Gear Button (Selection Editor):**
+
+Clicking the gear icon opens a modal dialog where you can:
+
+- View the current MDAnalysis selection string
+- Edit the selection expression
+- Click **Test** to count matching atoms in the loaded PDB
+- Click **Apply** to save the modified selection
+
+**Add Selection Button:**
+
+Clicking the **+** button opens a dialog to:
+
+- Enter a custom name (e.g., `drug_A`)
+- Provide an MDAnalysis selection string (e.g., `resname LIG and around 5 protein`)
+- Set the default restraint force (kcal/mol/Å²)
+- Test the selection before adding
+
+New selections are added to **all stages** in the protocol.
+
+---
+
 ### Custom Stage Names
 
 Stage names can be anything - they don't need to follow the "Equilibration N" convention:
@@ -796,6 +827,81 @@ print(f"  Total equilibration: {sum(s['time_ns'] for s in stages[:-1]):.3f} ns")
 print(f"  Production: {stages[-1]['time_ns']:.1f} ns")
 ```
 
+### Example 8: MDAnalysis Selections for Restraints
+
+This example demonstrates the MDAnalysis-based selection system for precise atom counting and restraint generation, including auto-detection of non-standard residues (ligands, ions):
+
+```python
+from pathlib import Path
+from gatewizard.tools.equilibration import NAMDEquilibrationManager
+
+# Point to the system folder
+work_dir = Path("popc_membrane")
+system_pdb = work_dir / "bilayer_protein_protonated_prepared_lipid.pdb"
+
+manager = NAMDEquilibrationManager(work_dir)
+
+# 1. Inspect default selections and atom counts
+for name, sel in NAMDEquilibrationManager.DEFAULT_SELECTIONS.items():
+    count = NAMDEquilibrationManager.count_selection_atoms(str(system_pdb), sel)
+    print(f"  {name:25s}  →  {count:>7d} atoms")
+
+# 2. Auto-detect ligands / non-standard residues
+all_sels = NAMDEquilibrationManager.get_default_selections(str(system_pdb))
+for name, sel in all_sels.items():
+    if name.startswith("ligand_"):
+        count = NAMDEquilibrationManager.count_selection_atoms(str(system_pdb), sel)
+        print(f"  {name:25s}  →  {count:>7d} atoms  |  {sel}")
+
+# 3. Count all selections at once
+counts = NAMDEquilibrationManager.count_all_selections(str(system_pdb))
+
+# 4. Generate restraints PDB via MDAnalysis selections
+output_file = work_dir / "namd" / "restraints" / "step1_restraints.pdb"
+selections_with_forces = {
+    "protein_backbone":  ("protein and backbone", 10.0),
+    "protein_sidechain": ("protein and not backbone", 5.0),
+    "lipid_head":        (NAMDEquilibrationManager.DEFAULT_SELECTIONS["lipid_head"], 2.5),
+    "lipid_tail":        (NAMDEquilibrationManager.DEFAULT_SELECTIONS["lipid_tail"], 2.5),
+    "water":             (NAMDEquilibrationManager.DEFAULT_SELECTIONS["water"], 0.0),
+    "ions":              (NAMDEquilibrationManager.DEFAULT_SELECTIONS["ions"], 10.0),
+}
+# Add any auto-detected ligand with force 1.0
+for name, sel in all_sels.items():
+    if name.startswith("ligand_"):
+        selections_with_forces[name] = (sel, 1.0)
+
+manager.generate_restraints_file_mda(
+    system_pdb, selections_with_forces, output_file,
+    stage_name="Equilibration 1",
+)
+
+# 5. Or use the high-level API with selections parameter
+constraints = {"protein_backbone": 10.0, "protein_sidechain": 5.0, "lipid_head": 2.5,
+               "lipid_tail": 2.5, "water": 0.0, "ions": 10.0}
+selections = {name: sel for name, (sel, _) in selections_with_forces.items()}
+
+manager.generate_restraints_file(
+    system_pdb, constraints, output_file,
+    stage_name="Eq1", selections=selections,
+)
+```
+
+**Output:**
+```
+  protein_backbone            →      204 atoms
+  protein_sidechain           →      488 atoms
+  lipid_head                  →     2904 atoms
+  lipid_tail                  →    13310 atoms
+  water                       →    14685 atoms
+  ions                        →        0 atoms
+  other                       →       21 atoms
+  ligand_Cl-                  →       10 atoms  |  resname Cl-
+  ligand_K+                   →       11 atoms  |  resname K+
+```
+
+---
+
 ### Example 7: Custom Template Selection
 
 This example demonstrates explicit template control for advanced workflows:
@@ -1051,14 +1157,126 @@ stage = {
 
 ## Internal Methods (Advanced)
 
-### Method: generate_restraints_file()
+### Class Attribute: DEFAULT_SELECTIONS
 
-Generates restraint PDB files with B-factors encoding restraint forces for each atom type.
+Default MDAnalysis selection strings for the seven standard restraint categories.
+These selections are used when MDAnalysis-based restraint generation is enabled.
 
 ```python
-generate_restraints_file(
+NAMDEquilibrationManager.DEFAULT_SELECTIONS = {
+    'protein_backbone':  'protein and backbone',
+    'protein_sidechain': 'protein and not backbone',
+    'lipid_head':        '(resname POPC POPE POPS DPPC ...) and (name P O11 O12 ...)',
+    'lipid_tail':        '(resname POPC POPE POPS DPPC ...) and not (name P O11 ...)',
+    'water':             'resname TIP3 HOH WAT SOL TIP4 SPC T3P T4P',
+    'ions':              'resname NA CL K CA MG ZN FE CU SOD CLA POT CAL MAG ZIN IRN COP',
+    'other':             'not (protein or lipids or water or ions)',
+}
+```
+
+Each value is a valid [MDAnalysis selection string](https://docs.mdanalysis.org/stable/documentation_pages/selections.html).
+Users can override any selection through the GUI gear button or the API `selections` parameter.
+
+---
+
+### Static Method: count_selection_atoms()
+
+Count atoms matching an MDAnalysis selection expression.
+
+```python
+NAMDEquilibrationManager.count_selection_atoms(pdb_path: str, selection: str) -> int
+```
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `pdb_path` | `str` | Path to a PDB file |
+| `selection` | `str` | MDAnalysis selection string |
+
+**Returns:** `int` — number of matching atoms (0 if selection is invalid or MDAnalysis unavailable)
+
+```python
+count = NAMDEquilibrationManager.count_selection_atoms(
+    "system.pdb", "protein and backbone"
+)
+print(f"Backbone atoms: {count}")
+```
+
+---
+
+### Static Method: get_default_selections()
+
+Build the default selection dict, auto-detecting extra ligands / non-standard residues.
+
+```python
+NAMDEquilibrationManager.get_default_selections(pdb_path: str) -> Dict[str, str]
+```
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `pdb_path` | `str` | Path to a PDB file |
+
+**Returns:** `Dict[str, str]` — `{category_name: mda_selection_string, ...}` including any
+auto-detected `ligand_<RESNAME>` entries.
+
+The seven standard categories are always present. Any residue that falls into the *other*
+category is additionally split into individual `ligand_<RESNAME>` entries so users can
+assign per-ligand restraint forces.
+
+```python
+sels = NAMDEquilibrationManager.get_default_selections("system.pdb")
+for name, sel in sels.items():
+    if name.startswith("ligand_"):
+        print(f"  Detected: {name} → {sel}")
+# Output:
+#   Detected: ligand_Cl- → resname Cl-
+#   Detected: ligand_K+  → resname K+
+```
+
+---
+
+### Static Method: count_all_selections()
+
+Count atoms for every selection in a dictionary in one call.
+
+```python
+NAMDEquilibrationManager.count_all_selections(
+    pdb_path: str,
+    selections: Optional[Dict[str, str]] = None
+) -> Dict[str, int]
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `pdb_path` | `str` | Required | Path to a PDB file |
+| `selections` | `Optional[Dict[str, str]]` | `None` | `{name: mda_selection_string}`. If `None`, uses `get_default_selections()` (with auto-detected ligands) |
+
+**Returns:** `Dict[str, int]` — `{name: atom_count, ...}`
+
+```python
+counts = NAMDEquilibrationManager.count_all_selections("system.pdb")
+for name, n in counts.items():
+    print(f"  {name:25s}  {n:>7d} atoms")
+```
+
+---
+
+### Method: generate_restraints_file_mda()
+
+Generate a restraints PDB using MDAnalysis selections instead of the built-in heuristic.
+Each entry maps a category name to a `(mda_selection_string, force)` tuple.
+For every ATOM/HETATM line the **first matching** selection determines the B-factor.
+Atoms matching no selection get B-factor 0.0.
+
+```python
+generate_restraints_file_mda(
     system_pdb: Path,
-    constraints: Dict[str, float],
+    selections_with_forces: Dict[str, Tuple[str, float]],
     output_file: Path,
     stage_name: str = ""
 ) -> None
@@ -1068,16 +1286,60 @@ generate_restraints_file(
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `system_pdb` | `Path` | Path to the **system.pdb** file (full system: protein + lipids + water + ions) |
-| `constraints` | `Dict[str, float]` | Dictionary of restraint forces (kcal/mol/Å²) for each atom type |
-| `output_file` | `Path` | Path for output restraints PDB file |
-| `stage_name` | `str` | Stage name for logging (optional) |
+| `system_pdb` | `Path` | Path to the system PDB file |
+| `selections_with_forces` | `Dict[str, Tuple[str, float]]` | `{name: (selection_string, force), ...}` |
+| `output_file` | `Path` | Destination path for the restraints PDB |
+| `stage_name` | `str` | Label for log messages (optional) |
+
+```python
+selections_with_forces = {
+    "protein_backbone":  ("protein and backbone", 10.0),
+    "protein_sidechain": ("protein and not backbone", 5.0),
+    "lipid_head":        (DEFAULT_SELS["lipid_head"], 2.5),
+    "lipid_tail":        (DEFAULT_SELS["lipid_tail"], 2.5),
+    "water":             (DEFAULT_SELS["water"], 0.0),
+    "ions":              (DEFAULT_SELS["ions"], 10.0),
+    "ligand_Cl-":        ("resname Cl-", 1.0),
+}
+
+manager.generate_restraints_file_mda(
+    system_pdb, selections_with_forces, output_file,
+    stage_name="Equilibration 1",
+)
+```
+
+---
+
+### Method: generate_restraints_file()
+
+Generates restraint PDB files with B-factors encoding restraint forces for each atom type.
+Now supports optional MDAnalysis selections for precise atom classification.
+
+```python
+generate_restraints_file(
+    system_pdb: Path,
+    constraints: Dict[str, float],
+    output_file: Path,
+    stage_name: str = "",
+    selections: Optional[Dict[str, str]] = None
+) -> None
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `system_pdb` | `Path` | Required | Path to the **system.pdb** file (full system: protein + lipids + water + ions) |
+| `constraints` | `Dict[str, float]` | Required | Dictionary of restraint forces (kcal/mol/Å²) for each atom type |
+| `output_file` | `Path` | Required | Path for output restraints PDB file |
+| `stage_name` | `str` | `""` | Stage name for logging (optional) |
+| `selections` | `Optional[Dict[str, str]]` | `None` | `{constraint_name: mda_selection_string}`. When provided, MDAnalysis is used instead of the built-in heuristic |
 
 **Behavior:**
 
-Reads the **system.pdb** file (NOT protein.pdb - includes all atoms)
+When `selections` is `None` (legacy mode):
 
-A. Classifies each atom by type:
+A. Classifies each atom by type using built-in residue/atom-name heuristics:
 
    - `protein_backbone`: CA, C, N, O atoms in protein residues
    - `protein_sidechain`: Heavy sidechain atoms in protein residues
@@ -1091,8 +1353,29 @@ B. Assigns B-factor values based on constraints dictionary
 
 C. Writes restraints PDB file with modified B-factors
 
-D. Logs detailed statistics: total atoms, counts per type, force values
+When `selections` is provided (MDAnalysis mode):
 
+A. Pairs each constraint name with its MDAnalysis selection string
+
+B. Delegates to `generate_restraints_file_mda()` for precise MDAnalysis-based classification
+
+C. Useful for custom selections, auto-detected ligands, or non-standard residues
+
+```python
+# Legacy mode (heuristic-based)
+manager.generate_restraints_file(system_pdb, constraints, output_file)
+
+# MDAnalysis mode (selection-based)
+selections = {
+    "protein_backbone": "protein and backbone",
+    "protein_sidechain": "protein and not backbone",
+    "ligand_Cl-": "resname Cl-",
+}
+manager.generate_restraints_file(
+    system_pdb, constraints, output_file,
+    selections=selections,
+)
+```
 
 **Example Output Log:**
 ```

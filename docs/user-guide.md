@@ -420,6 +420,10 @@ The equilibration protocol consists of 6 stages + production:
 - Set CPU cores or enable GPU
 - Modify restraint strengths
 - Change timestep
+- **Atom count display**: Each constraint row shows the number of matching atoms (requires a PDB to be loaded)
+- **Edit selection (⚙)**: Click the gear icon to modify the MDAnalysis selection string for any constraint
+- **Add custom selection (+)**: Add new named selections (e.g., ligands) to all stages
+- **Auto-detect ligands**: When a system folder is selected, non-standard residues are automatically detected and added as `ligand_<RESNAME>` entries
 
 #### 8. Generate Input Files
 
