@@ -31,4 +31,6 @@ print(f"{'='*60}")
 
 for job_id, job_info in completed_jobs.items():
     status_icon = "✓" if job_info.status.value == "completed" else "✗"
-    print(f"{status_icon} {job_info.job_dir.name}: {job_info.status.value} ({job_info.elapsed_time:.0f}s)")
+    print(
+        f"{status_icon} {job_info.job_dir.name}: {job_info.status.value} ({job_info.elapsed_time:.0f}s)"
+    )

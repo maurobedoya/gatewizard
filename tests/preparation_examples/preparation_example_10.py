@@ -14,6 +14,5 @@ stats = analyzer.apply_protonation_states(
 
 # Step 2: Apply disulfide bonds to protonated structure
 num_bonds = analyzer.apply_disulfide_bonds(
-    input_pdb="protein_ph7.pdb",
-    output_pdb="protein_ph7_ss.pdb"
+    input_pdb="protein_ph7.pdb", output_pdb="protein_ph7_ss.pdb"
 )

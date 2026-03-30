@@ -28,72 +28,75 @@ from gatewizard.tools.ligand_parametrization import (
 
 logger = get_logger(__name__)
 
+
 class BuilderError(Exception):
     """Custom exception for system building errors."""
+
     pass
+
 
 class Builder:
     """
     Main class for building membrane protein systems.
-    
+
     This class handles the complete workflow of preparing membrane protein
     systems including lipid composition, force field selection, and system
     parameterization.
     """
-    
+
     def __init__(self):
         """Initialize the Builder."""
         self.ff_manager = ForceFieldManager()
         self.validator = SystemValidator()
-        
+
         # Default configuration
         self.config = {
-            'water_model': 'tip3p',
-            'protein_ff': 'ff19SB',
-            'lipid_ff': 'lipid21',
-            'preoriented': True,
-            'parametrize': True,
-            'salt_concentration': 0.15,
-            'cation': 'K+',
-            'anion': 'Cl-',
-            'dist_wat': 17.5,  # Default water layer thickness in Angstroms
-            'notprotonate': False,  # False = allow protonation (default)
-            'two_stage_process': False,  # Enable two-stage packing + parametrization
-            'pack_only': False,  # Only perform packing stage
-            'parametrize_only': False,  # Only perform parametrization stage
-            'ligand_params': {},  # Dict of ligand name -> {frcmod, lib} file paths
+            "water_model": "tip3p",
+            "protein_ff": "ff19SB",
+            "lipid_ff": "lipid21",
+            "preoriented": True,
+            "parametrize": True,
+            "salt_concentration": 0.15,
+            "cation": "K+",
+            "anion": "Cl-",
+            "dist_wat": 17.5,  # Default water layer thickness in Angstroms
+            "notprotonate": False,  # False = allow protonation (default)
+            "two_stage_process": False,  # Enable two-stage packing + parametrization
+            "pack_only": False,  # Only perform packing stage
+            "parametrize_only": False,  # Only perform parametrization stage
+            "ligand_params": {},  # Dict of ligand name -> {frcmod, lib} file paths
         }
-    
+
     def set_configuration(self, **kwargs):
         """Update configuration parameters."""
         self.config.update(kwargs)
         logger.info(f"Configuration updated: {kwargs}")
-    
+
     def validate_system_inputs(
         self,
         pdb_file: str,
         upper_lipids: List[str],
         lower_lipids: List[str],
         lipid_ratios: str = "",
-        **kwargs
+        **kwargs,
     ) -> Tuple[bool, str]:
         """
         Validate all inputs for system preparation.
-        
+
         Args:
             pdb_file: Path to input PDB file
             upper_lipids: List of lipids for upper leaflet
-            lower_lipids: List of lipids for lower leaflet  
+            lower_lipids: List of lipids for lower leaflet
             lipid_ratios: Ratio string (format: upper_ratios//lower_ratios)
             **kwargs: Additional parameters to validate
-            
+
         Returns:
             Tuple of (is_valid, error_message)
         """
         return self.validator.validate_system_inputs(
             pdb_file, upper_lipids, lower_lipids, lipid_ratios, **kwargs
         )
-    
+
     def prepare_system(
         self,
         pdb_file: str,
@@ -101,11 +104,11 @@ class Builder:
         upper_lipids: List[str],
         lower_lipids: List[str],
         lipid_ratios: str = "",
-        **kwargs
+        **kwargs,
     ) -> Tuple[bool, str, Optional[Path]]:
         """
         Prepare a complete membrane protein system.
-        
+
         Args:
             pdb_file: Path to input PDB file
             working_dir: Working directory for outputs
@@ -122,51 +125,57 @@ class Builder:
                   checks when *wait=True* (default ``5.0``).
                 * **wait_verbose** (*bool*) – Print progress while waiting
                   (default ``True``).
-            
+
         Returns:
             Tuple of (success, message, job_directory)
         """
         # Update configuration with provided parameters
         config = {**self.config, **kwargs}
-        
+
         # Validate inputs
         valid, error_msg = self.validate_system_inputs(
             pdb_file, upper_lipids, lower_lipids, lipid_ratios, **config
         )
         if not valid:
             return False, error_msg, None
-        
+
         try:
             # Create job directory
-            custom_output_name = config.get('output_folder_name', None)
-            job_dir = self._create_job_directory(pdb_file, working_dir, custom_output_name)
-            
+            custom_output_name = config.get("output_folder_name", None)
+            job_dir = self._create_job_directory(
+                pdb_file, working_dir, custom_output_name
+            )
+
             # Copy PDB file to job directory
             local_pdb = self._prepare_input_files(pdb_file, job_dir)
-            
+
             # Check if we need to use the notprotonate approach
             # When notprotonate=True, the user should have already prepared the PDB
             # with correct protonation states and residue names (e.g., GLU->GLH)
-            if config.get('notprotonate', False):
-                logger.info("Using notprotonate mode - assuming PDB has correct protonation states")
+            if config.get("notprotonate", False):
+                logger.info(
+                    "Using notprotonate mode - assuming PDB has correct protonation states"
+                )
                 # Add a comment in the generated script about the proper workflow
-                config['_workflow_note'] = "IMPORTANT: When using --notprotonate, ensure your PDB file has correct protonation states and residue names (e.g., GLU->GLH for protonated glutamate)"
-            
+                config["_workflow_note"] = (
+                    "IMPORTANT: When using --notprotonate, ensure your PDB file has correct protonation states and residue names (e.g., GLU->GLH for protonated glutamate)"
+                )
+
             # Build packmol-memgen command
             cmd = self._build_command(
                 local_pdb, upper_lipids, lower_lipids, lipid_ratios, config
             )
-            
+
             # Create and launch preparation script
             success = self._launch_preparation(cmd, job_dir, config)
-            
+
             if success:
                 # If wait=True, block until the job finishes
-                wait = config.get('wait', False)
+                wait = config.get("wait", False)
                 if wait:
-                    wait_timeout = config.get('wait_timeout', None)
-                    wait_poll = config.get('wait_poll_interval', 5.0)
-                    wait_verbose = config.get('wait_verbose', True)
+                    wait_timeout = config.get("wait_timeout", None)
+                    wait_poll = config.get("wait_poll_interval", 5.0)
+                    wait_verbose = config.get("wait_verbose", True)
                     completed, wait_msg = self.wait_for_completion(
                         job_dir,
                         poll_interval=wait_poll,
@@ -178,11 +187,11 @@ class Builder:
                 return True, "System preparation started successfully", job_dir
             else:
                 return False, "Failed to start system preparation", job_dir
-                
+
         except Exception as e:
             logger.error(f"Error preparing system: {e}", exc_info=True)
             return False, f"Error preparing system: {str(e)}", None
-    
+
     def wait_for_completion(
         self,
         job_dir,
@@ -227,7 +236,7 @@ class Builder:
             step_label = ""
             if status_file.exists():
                 try:
-                    with open(status_file, 'r', encoding='utf-8') as f:
+                    with open(status_file, "r", encoding="utf-8") as f:
                         content = f.read().strip()
                     if content:
                         status_data = json.loads(content)
@@ -262,7 +271,7 @@ class Builder:
                     time.sleep(2)
                     if status_file.exists():
                         try:
-                            with open(status_file, 'r', encoding='utf-8') as f:
+                            with open(status_file, "r", encoding="utf-8") as f:
                                 status_data = json.loads(f.read().strip())
                             if status_data.get("status") == "completed":
                                 msg = (
@@ -302,11 +311,13 @@ class Builder:
 
             time.sleep(poll_interval)
 
-    def _create_job_directory(self, pdb_file: str, working_dir: str, custom_output_name: Optional[str] = None) -> Path:
+    def _create_job_directory(
+        self, pdb_file: str, working_dir: str, custom_output_name: Optional[str] = None
+    ) -> Path:
         """Create unique job directory."""
         work_dir = Path(working_dir).resolve()
         work_dir.mkdir(parents=True, exist_ok=True)
-        
+
         if custom_output_name:
             # Use custom output name as-is, only add timestamp if directory already exists
             job_dir = work_dir / custom_output_name
@@ -319,38 +330,38 @@ class Builder:
             pdb_name = os.path.splitext(os.path.basename(pdb_file))[0]
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             job_dir = work_dir / f"membrane_{pdb_name}_{timestamp}"
-            
+
         job_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Create logs directory
         (job_dir / "logs").mkdir(exist_ok=True)
-        
+
         logger.info(f"Created job directory: {job_dir}")
         return job_dir
-    
+
     def _prepare_input_files(self, pdb_file: str, job_dir: Path) -> Path:
         """Copy input files to job directory."""
         pdb_name = os.path.splitext(os.path.basename(pdb_file))[0]
         local_pdb = job_dir / f"{pdb_name}.pdb"
         shutil.copy2(pdb_file, local_pdb)
-        
+
         logger.info(f"Copied PDB file to: {local_pdb}")
         return local_pdb
-    
+
     def _build_command(
         self,
         pdb_file: Path,
         upper_lipids: List[str],
         lower_lipids: List[str],
         lipid_ratios: str,
-        config: Dict[str, Any]
+        config: Dict[str, Any],
     ) -> List[str]:
         """Build packmol-memgen command."""
         cmd = ["packmol-memgen"]
         cmd.extend(["--pdb", str(pdb_file)])
 
         # Add lipids (only needed for packing stage or single-stage process)
-        if not config.get('parametrize_only', False):
+        if not config.get("parametrize_only", False):
             lipids_arg = self._prepare_lipids_argument(upper_lipids, lower_lipids)
             if lipids_arg:
                 cmd.extend(["--lipids", lipids_arg])
@@ -360,72 +371,67 @@ class Builder:
                 cmd.extend(["--ratio", lipid_ratios])
 
         # Add force fields
-        cmd.extend(["--ffwat", config['water_model']])
-        cmd.extend(["--ffprot", config['protein_ff']])
-        cmd.extend(["--fflip", config['lipid_ff']])
+        cmd.extend(["--ffwat", config["water_model"]])
+        cmd.extend(["--ffprot", config["protein_ff"]])
+        cmd.extend(["--fflip", config["lipid_ff"]])
 
         # Add flags
-        if config.get('preoriented', True):
+        if config.get("preoriented", True):
             cmd.append("--preoriented")
 
         # Add --parametrize to generate bilayer*_lipid.pdb with CRYST1 information
         # This file is needed for reading box dimensions during equilibration
-        if config.get('parametrize', True):
+        if config.get("parametrize", True):
             cmd.append("--parametrize")
-        
+
         # Only add notprotonate if specifically requested for legacy support
-        if config.get('notprotonate', False):
+        if config.get("notprotonate", False):
             cmd.append("--notprotonate")
 
         # Add salt options (only for packing stage or single-stage)
-        if not config.get('parametrize_only', False) and config.get('add_salt', True):
+        if not config.get("parametrize_only", False) and config.get("add_salt", True):
             cmd.append("--salt")
-            if config.get('salt_concentration'):
-                cmd.extend(["--saltcon", str(config['salt_concentration'])])
-            if config.get('cation') and config['cation'] != "K+":
-                cmd.extend(["--salt_c", config['cation']])
-            if config.get('anion') and config['anion'] != "Cl-":
-                cmd.extend(["--salt_a", config['anion']])
+            if config.get("salt_concentration"):
+                cmd.extend(["--saltcon", str(config["salt_concentration"])])
+            if config.get("cation") and config["cation"] != "K+":
+                cmd.extend(["--salt_c", config["cation"]])
+            if config.get("anion") and config["anion"] != "Cl-":
+                cmd.extend(["--salt_a", config["anion"]])
 
         # Add water layer distance (include even if default value for explicit control)
-        if config.get('dist_wat') is not None:
-            cmd.extend(["--dist_wat", str(config['dist_wat'])])
+        if config.get("dist_wat") is not None:
+            cmd.extend(["--dist_wat", str(config["dist_wat"])])
 
         # Add ligand parameters (--ligand_param frcmod:lib for each ligand)
-        ligand_params = config.get('ligand_params', {})
+        ligand_params = config.get("ligand_params", {})
         if ligand_params:
             ligand_args = build_ligand_param_args(ligand_params)
             cmd.extend(ligand_args)
             # Also add --gaff2 flag when ligands are present
-            cmd.append('--gaff2')
+            cmd.append("--gaff2")
             logger.info(f"Added ligand parameters for: {list(ligand_params.keys())}")
 
         logger.info(f"Built command: {' '.join(cmd)}")
         return cmd
-    
+
     def _prepare_lipids_argument(
-        self, 
-        upper_lipids: List[str], 
-        lower_lipids: List[str]
+        self, upper_lipids: List[str], lower_lipids: List[str]
     ) -> str:
         """Prepare lipids argument for packmol-memgen."""
         lipids_parts = []
-        
+
         if upper_lipids:
             lipids_parts.append(":".join(upper_lipids))
-        
+
         if lower_lipids:
             if not upper_lipids:
                 lipids_parts.append("")  # Empty upper leaflet
             lipids_parts.append(":".join(lower_lipids))
-        
+
         return "//".join(lipids_parts) if lipids_parts else ""
-    
+
     def _launch_preparation(
-        self, 
-        cmd: List[str], 
-        job_dir: Path, 
-        config: Dict[str, Any]
+        self, cmd: List[str], job_dir: Path, config: Dict[str, Any]
     ) -> bool:
         """Launch the preparation process."""
         try:
@@ -453,12 +459,9 @@ class Builder:
         except Exception as e:
             logger.error(f"Error launching preparation: {e}", exc_info=True)
             return False
-    
+
     def _create_initial_status(
-        self, 
-        cmd: List[str], 
-        job_dir: Path, 
-        config: Dict[str, Any]
+        self, cmd: List[str], job_dir: Path, config: Dict[str, Any]
     ):
         """Create initial status file for job monitoring."""
         status = {
@@ -469,21 +472,23 @@ class Builder:
             "status": "running",
             "error": None,
             "steps_completed": [],
-            "config": config
+            "config": config,
         }
-        
-        with open(job_dir / "status.json", 'w') as f:
+
+        with open(job_dir / "status.json", "w") as f:
             json.dump(status, f, indent=2)
-    
-    def _create_execution_script(self, cmd: List[str], job_dir: Path, config: Dict[str, Any]) -> Path:
+
+    def _create_execution_script(
+        self, cmd: List[str], job_dir: Path, config: Dict[str, Any]
+    ) -> Path:
         """Create bash script for execution."""
         script_path = job_dir / "run_preparation.sh"
-        cmd_str = " ".join(f'"{c}"' if ' ' in c else c for c in cmd)
+        cmd_str = " ".join(f'"{c}"' if " " in c else c for c in cmd)
 
         # Add workflow-specific notes
         workflow_note = ""
-        if config.get('notprotonate', False):
-            if config.get('pack_only', False):
+        if config.get("notprotonate", False):
+            if config.get("pack_only", False):
                 workflow_note = """#
     # Stage 1 of Propka Workflow: PACKING ONLY
     # This stage packs the protein into the membrane without parametrization.
@@ -492,13 +497,13 @@ class Builder:
     # 2. Modify residue names in the packed PDB file (bilayer_*.pdb)
     # 3. Run Stage 2 parametrization with --notprotonate
     #"""
-            elif config.get('parametrize_only', False):
+            elif config.get("parametrize_only", False):
                 workflow_note = """#
     # Stage 2 of Propka Workflow: PARAMETRIZATION ONLY
     # This stage assumes residue names have been modified based on Propka results.
     # Using --notprotonate to preserve the corrected protonation states.
     #"""
-        elif config.get('_workflow_note'):
+        elif config.get("_workflow_note"):
             workflow_note = f"""#
     # {config['_workflow_note']}
     #"""
@@ -1010,24 +1015,27 @@ EOF
     """
 
         # Write and make executable
-        with open(script_path, 'w', newline='\n') as f:
+        with open(script_path, "w", newline="\n") as f:
             f.write(script_content)
         script_path.chmod(0o755)
-        
+
         logger.info(f"Created execution script: {script_path}")
         return script_path
-    
+
     def _execute_script(self, script_path: Path) -> bool:
         """Execute the preparation script."""
         try:
             # Check if we're in WSL environment
-            is_wsl = os.path.exists('/proc/version') and 'microsoft' in open('/proc/version').read().lower()
-            
-            if sys.platform.startswith('win') and not is_wsl:
+            is_wsl = (
+                os.path.exists("/proc/version")
+                and "microsoft" in open("/proc/version").read().lower()
+            )
+
+            if sys.platform.startswith("win") and not is_wsl:
                 # Native Windows execution - use Windows-specific constants
                 DETACHED_PROCESS = 0x00000008
                 CREATE_NEW_PROCESS_GROUP = 0x00000200
-                
+
                 git_bash = r"C:\Program Files\Git\bin\bash.exe"
                 if os.path.exists(git_bash):
                     subprocess.Popen(
@@ -1035,30 +1043,30 @@ EOF
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                         env=get_clean_env(),
-                        creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+                        creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
                     )
                 else:
                     # Fallback to WSL from Windows
                     subprocess.Popen(
-                        ['wsl', 'bash', str(script_path)],
+                        ["wsl", "bash", str(script_path)],
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                         env=get_clean_env(),
-                        creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+                        creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
                     )
             else:
                 # Unix-like systems (including WSL)
                 subprocess.Popen(
-                    ['bash', str(script_path)],
+                    ["bash", str(script_path)],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     env=get_clean_env(),
-                    start_new_session=True
+                    start_new_session=True,
                 )
-            
+
             logger.info("Preparation script launched successfully")
             return True
-            
+
         except Exception as e:
             logger.error(f"Error executing script: {e}")
             return False
@@ -1067,13 +1075,13 @@ EOF
         """Post-process generated files with new workflow."""
         try:
             # Check if parametrization was requested
-            if not config.get('parametrize', True):
+            if not config.get("parametrize", True):
                 logger.info("Skipping parametrization - parametrize was False")
                 return True
 
             # Find the generated bilayer PDB file (from packmol-memgen with --parametrize)
             bilayer_pdb_files = list(job_dir.glob("bilayer_*.pdb"))
-            
+
             if not bilayer_pdb_files:
                 logger.warning(f"No bilayer PDB files found in {job_dir}")
                 return False
@@ -1115,10 +1123,10 @@ EOF
         try:
             output_pdb = "system_for_tleap.pdb"
             logger.info(f"Running pdb4amber on {input_pdb}")
-            
+
             # Build pdb4amber command
             cmd = ["pdb4amber", "-i", input_pdb, "-o", output_pdb]
-            
+
             # Execute pdb4amber
             result = subprocess.run(
                 cmd,
@@ -1127,7 +1135,7 @@ EOF
                 text=True,
                 env=get_clean_env(),
             )
-            
+
             if Path(output_pdb).exists():
                 logger.info(f"pdb4amber completed successfully: {output_pdb}")
                 logger.debug(f"pdb4amber output: {result.stdout}")
@@ -1135,7 +1143,7 @@ EOF
             else:
                 logger.error("pdb4amber did not create output file")
                 return None
-                
+
         except subprocess.CalledProcessError as e:
             logger.error(f"pdb4amber failed: {e.stderr if e.stderr else str(e)}")
             return None
@@ -1146,22 +1154,24 @@ EOF
             logger.error(f"Error running pdb4amber: {e}")
             return None
 
-    def _run_tleap_parametrization(self, input_pdb: str, config: Dict[str, Any]) -> bool:
+    def _run_tleap_parametrization(
+        self, input_pdb: str, config: Dict[str, Any]
+    ) -> bool:
         """Run tleap parametrization using the new workflow."""
         try:
             # Create tleap input file
             leap_input = self._create_tleap_input(input_pdb, config)
-            
+
             # Write leap input file
             leap_input_file = "leap_parametrize.in"
-            with open(leap_input_file, 'w') as f:
+            with open(leap_input_file, "w") as f:
                 f.write(leap_input)
-            
+
             logger.info(f"Created tleap input file: {leap_input_file}")
-            
+
             # Execute tleap
             cmd = ["tleap", "-f", leap_input_file]
-            
+
             result = subprocess.run(
                 cmd,
                 check=True,
@@ -1169,24 +1179,24 @@ EOF
                 text=True,
                 env=get_clean_env(),
             )
-            
+
             # Check if output files were created
             expected_files = ["system.prmtop", "system.inpcrd", "system.pdb"]
             success = True
-            
+
             for filename in expected_files:
                 if Path(filename).exists():
                     logger.info(f"Created: {filename}")
                 else:
                     logger.warning(f"Expected file not created: {filename}")
                     success = False
-            
+
             if success:
                 logger.info("tleap parametrization completed successfully")
                 logger.debug(f"tleap output: {result.stdout}")
-            
+
             return success
-            
+
         except subprocess.CalledProcessError as e:
             logger.error(f"tleap failed: {e.stderr if e.stderr else str(e)}")
             return False
@@ -1201,53 +1211,55 @@ EOF
         """Create tleap input file content."""
         # Get absolute path for PDB file
         pdb_path = Path(input_pdb).absolute()
-        
+
         # Get force field parameters from config
-        protein_ff = config.get('protein_ff', 'ff14SB')
-        lipid_ff = config.get('lipid_ff', 'lipid21')
-        water_model = config.get('water_model', 'tip3p')
-        
+        protein_ff = config.get("protein_ff", "ff14SB")
+        lipid_ff = config.get("lipid_ff", "lipid21")
+        water_model = config.get("water_model", "tip3p")
+
         # Map protein force fields to leaprc files
         protein_leaprc_map = {
-            'ff14SB': 'leaprc.protein.ff14SB',
-            'ff19SB': 'leaprc.protein.ff19SB',
-            'ff99SB': 'leaprc.protein.ff99SB',
-            'ff03': 'leaprc.protein.ff03'
+            "ff14SB": "leaprc.protein.ff14SB",
+            "ff19SB": "leaprc.protein.ff19SB",
+            "ff99SB": "leaprc.protein.ff99SB",
+            "ff03": "leaprc.protein.ff03",
         }
-        
+
         # Map lipid force fields to leaprc files
         lipid_leaprc_map = {
-            'lipid21': 'leaprc.lipid21',
-            'lipid17': 'leaprc.lipid17',
-            'GAFF': 'leaprc.gaff'
+            "lipid21": "leaprc.lipid21",
+            "lipid17": "leaprc.lipid17",
+            "GAFF": "leaprc.gaff",
         }
-        
+
         # Map water models to leaprc files
         water_leaprc_map = {
-            'tip3p': 'leaprc.water.tip3p',
-            'tip4pd': 'leaprc.water.tip4pd',
-            'tip4pew': 'leaprc.water.tip4pew',
-            'spce': 'leaprc.water.spce',
-            'opc': 'leaprc.water.opc',
-            'opc3': 'leaprc.water.opc3',
-            'spceb': 'leaprc.water.spceb',
-            'fb3': 'leaprc.water.fb3'
+            "tip3p": "leaprc.water.tip3p",
+            "tip4pd": "leaprc.water.tip4pd",
+            "tip4pew": "leaprc.water.tip4pew",
+            "spce": "leaprc.water.spce",
+            "opc": "leaprc.water.opc",
+            "opc3": "leaprc.water.opc3",
+            "spceb": "leaprc.water.spceb",
+            "fb3": "leaprc.water.fb3",
         }
-        
+
         # Get the appropriate leaprc files
-        protein_leaprc = protein_leaprc_map.get(protein_ff, 'leaprc.protein.ff14SB')
-        lipid_leaprc = lipid_leaprc_map.get(lipid_ff, 'leaprc.lipid21') 
-        water_leaprc = water_leaprc_map.get(water_model, 'leaprc.water.tip3p')
-        
+        protein_leaprc = protein_leaprc_map.get(protein_ff, "leaprc.protein.ff14SB")
+        lipid_leaprc = lipid_leaprc_map.get(lipid_ff, "leaprc.lipid21")
+        water_leaprc = water_leaprc_map.get(water_model, "leaprc.water.tip3p")
+
         # Generate ligand parameter lines if ligands are present
-        ligand_params = config.get('ligand_params', {})
+        ligand_params = config.get("ligand_params", {})
         # Extract atom type from parametrized ligand info (all ligands share the same type)
-        ligand_atom_type = 'gaff2'
+        ligand_atom_type = "gaff2"
         for _lig_info in ligand_params.values():
-            if isinstance(_lig_info, dict) and 'atom_type' in _lig_info:
-                ligand_atom_type = _lig_info['atom_type']
+            if isinstance(_lig_info, dict) and "atom_type" in _lig_info:
+                ligand_atom_type = _lig_info["atom_type"]
                 break
-        ligand_lines = build_tleap_ligand_lines(ligand_params, atom_type=ligand_atom_type)
+        ligand_lines = build_tleap_ligand_lines(
+            ligand_params, atom_type=ligand_atom_type
+        )
 
         # Generate tleap input content
         leap_content = f"""# Load force field for proteins {protein_ff}
@@ -1280,18 +1292,18 @@ savePDB system system.pdb
 # Exit
 quit
 """
-        
+
         return leap_content
 
     def _generate_bash_ligand_tleap_lines(self, config: Dict[str, Any]) -> str:
         """Generate tleap ligand parameter lines for the bash execution script."""
-        ligand_params = config.get('ligand_params', {})
+        ligand_params = config.get("ligand_params", {})
         if not ligand_params:
             return ""
         lines = ["# Load GAFF2 and ligand parameters", "source leaprc.gaff2"]
         for name, files in ligand_params.items():
-            frcmod = files.get('frcmod', '')
-            lib = files.get('lib', '')
+            frcmod = files.get("frcmod", "")
+            lib = files.get("lib", "")
             if frcmod:
                 lines.append(f"loadamberparams {frcmod}")
             if lib:
@@ -1305,7 +1317,7 @@ quit
         upper_lipids: List[str],
         lower_lipids: List[str],
         lipid_ratios: str = "",
-        **kwargs
+        **kwargs,
     ) -> Tuple[bool, str, Optional[Path]]:
         """
         Prepare system - Stage 1 for Propka workflow: Packing only.
@@ -1329,29 +1341,30 @@ quit
         """
         # Configure for stage 1: pack only, let packmol-memgen handle initial protonation
         stage1_config = {
-            **self.config, 
+            **self.config,
             **kwargs,
-            'pack_only': True,
-            'parametrize_only': False,
-            'parametrize': False,  # Disable parametrization for stage 1
-            'notprotonate': False,  # Let packmol-memgen handle initial protonation during packing
-            '_workflow_note': (
+            "pack_only": True,
+            "parametrize_only": False,
+            "parametrize": False,  # Disable parametrization for stage 1
+            "notprotonate": False,  # Let packmol-memgen handle initial protonation during packing
+            "_workflow_note": (
                 "Stage 1 of Propka workflow: Packing protein into membrane. "
                 "After this completes, modify residue names in the packed PDB "
                 "based on Propka results, then run Stage 2 parametrization."
-            )
+            ),
         }
 
         return self.prepare_system(
-            pdb_file, working_dir, upper_lipids, lower_lipids, 
-            lipid_ratios, **stage1_config
+            pdb_file,
+            working_dir,
+            upper_lipids,
+            lower_lipids,
+            lipid_ratios,
+            **stage1_config,
         )
 
     def prepare_system_stage2_for_propka(
-        self,
-        packed_pdb_file: str,
-        working_dir: str,
-        **kwargs
+        self, packed_pdb_file: str, working_dir: str, **kwargs
     ) -> Tuple[bool, str, Optional[Path]]:
         """
         Prepare system - Stage 2 for Propka workflow: Parametrization only.
@@ -1372,14 +1385,14 @@ quit
         stage2_config = {
             **self.config,
             **kwargs,
-            'pack_only': False,
-            'parametrize_only': True,
-            'parametrize': True,  # Enable parametrization for stage 2
-            'notprotonate': True,  # Skip protonation since residue names are already correct
-            '_workflow_note': (
+            "pack_only": False,
+            "parametrize_only": True,
+            "parametrize": True,  # Enable parametrization for stage 2
+            "notprotonate": True,  # Skip protonation since residue names are already correct
+            "_workflow_note": (
                 "Stage 2 of Propka workflow: Parametrizing system with "
                 "Propka-modified residue names using --notprotonate."
-            )
+            ),
         }
 
         # For stage 2, we don't need to specify lipids since the system is already packed
@@ -1391,7 +1404,7 @@ quit
         self,
         packed_pdb_file: str,
         propka_results: Dict[str, str],
-        output_file: Optional[str] = None
+        output_file: Optional[str] = None,
     ) -> Tuple[bool, str]:
         """
         Modify residue names in packed PDB file based on propka results.
@@ -1418,14 +1431,14 @@ quit
                 base_name = os.path.splitext(packed_pdb_file)[0]
                 output_file = f"{base_name}_propka.pdb"
 
-            with open(packed_pdb_file, 'r') as f:
+            with open(packed_pdb_file, "r") as f:
                 lines = f.readlines()
 
             modified_lines = []
             modifications_made = []
 
             for line in lines:
-                if line.startswith(('ATOM', 'HETATM')):
+                if line.startswith(("ATOM", "HETATM")):
                     # Parse PDB line
                     chain = line[21:22].strip()
                     res_num = line[22:26].strip()
@@ -1461,11 +1474,13 @@ quit
                     modified_lines.append(line)
 
             # Write modified file
-            with open(output_file, 'w') as f:
+            with open(output_file, "w") as f:
                 f.writelines(modified_lines)
 
             if modifications_made:
-                mod_summary = "; ".join([f"{rid}: {old}->{new}" for rid, old, new in modifications_made])
+                mod_summary = "; ".join(
+                    [f"{rid}: {old}->{new}" for rid, old, new in modifications_made]
+                )
                 message = (
                     f"Successfully modified {len(modifications_made)} residue types: {mod_summary}\n"
                     f"Output file: {output_file}\n"
@@ -1487,38 +1502,39 @@ quit
             logger.error(error_msg, exc_info=True)
             return False, error_msg
 
+
 def convert_to_namd(
-    top_file: str, 
-    crd_file: str, 
-    psf_output: str = 'system.psf', 
-    pdb_output: str = 'system.pdb'
+    top_file: str,
+    crd_file: str,
+    psf_output: str = "system.psf",
+    pdb_output: str = "system.pdb",
 ) -> None:
     """
     Convert Amber files to NAMD format using ParmEd.
-    
+
     Args:
         top_file: Amber topology file (.top)
-        crd_file: Amber coordinate file (.crd)  
+        crd_file: Amber coordinate file (.crd)
         psf_output: Output PSF file name
         pdb_output: Output PDB file name
-        
+
     Raises:
         BuilderError: If conversion fails
     """
     try:
         import parmed as pmd
-        
+
         logger.info(f"Converting {top_file} and {crd_file} to NAMD format")
-        
+
         # Load Amber files
         system = pmd.load_file(top_file, crd_file)
-        
+
         # Save in NAMD format
         system.save(psf_output, overwrite=True)
         system.save(pdb_output, overwrite=True)
-        
+
         logger.info(f"Files converted and saved as {psf_output} and {pdb_output}")
-        
+
     except ImportError:
         raise BuilderError(
             "ParmEd is required for NAMD conversion. "
@@ -1527,38 +1543,41 @@ def convert_to_namd(
     except Exception as e:
         raise BuilderError(f"Error converting to NAMD format: {e}")
 
+
 def convert_to_amber(
-    top_file: str, 
-    crd_file: str, 
-    prmtop_output: str = 'system.prmtop', 
-    inpcrd_output: str = 'system.inpcrd'
+    top_file: str,
+    crd_file: str,
+    prmtop_output: str = "system.prmtop",
+    inpcrd_output: str = "system.inpcrd",
 ) -> None:
     """
     Convert Amber top/crd files to prmtop/inpcrd format using ParmEd.
-    
+
     Args:
         top_file: Amber topology file (.top)
-        crd_file: Amber coordinate file (.crd)  
+        crd_file: Amber coordinate file (.crd)
         prmtop_output: Output parameter topology file name (.prmtop)
         inpcrd_output: Output restart file name (.inpcrd)
-        
+
     Raises:
         BuilderError: If conversion fails
     """
     try:
         import parmed as pmd
-        
-        logger.info(f"Converting {top_file} and {crd_file} to Amber prmtop/inpcrd format")
-        
+
+        logger.info(
+            f"Converting {top_file} and {crd_file} to Amber prmtop/inpcrd format"
+        )
+
         # Load Amber files
         system = pmd.load_file(top_file, crd_file)
-        
+
         # Save in Amber prmtop/inpcrd format
         system.save(prmtop_output, overwrite=True)
         system.save(inpcrd_output, overwrite=True)
-        
+
         logger.info(f"Files converted and saved as {prmtop_output} and {inpcrd_output}")
-        
+
     except ImportError:
         raise BuilderError(
             "ParmEd is required for Amber conversion. "

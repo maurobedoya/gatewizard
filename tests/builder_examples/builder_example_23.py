@@ -30,18 +30,18 @@ print("\nStep 2: Parametrizing ligands...")
 ligand_results = parametrize_all_ligands(
     pdb_file=pdb_file,
     output_dir=f"{working_dir}/ligand_params",
-    charges={'AAA': 0, 'BBB': 0},
-    charge_method='bcc',
-    atom_type='gaff2',    # GAFF2 atom types
+    charges={"AAA": 0, "BBB": 0},
+    charge_method="bcc",
+    atom_type="gaff2",  # GAFF2 atom types
 )
 
 print(f"  Parametrized: {list(ligand_results.keys())}")
 
 # Step 3: Configure builder with ligand parameters
 builder.set_configuration(
-    water_model='tip3p',
-    protein_ff='ff14SB',
-    lipid_ff='lipid21',
+    water_model="tip3p",
+    protein_ff="ff14SB",
+    lipid_ff="lipid21",
     preoriented=True,
     parametrize=True,
     salt_concentration=0.15,
@@ -57,9 +57,9 @@ print(f"  Ligands in config: {list(builder.config['ligand_params'].keys())}")
 success, message, job_dir = builder.prepare_system(
     pdb_file=pdb_file,
     working_dir=working_dir,
-    upper_lipids=['POPC'],
-    lower_lipids=['POPC'],
-    lipid_ratios='1.0//1.0',
+    upper_lipids=["POPC"],
+    lower_lipids=["POPC"],
+    lipid_ratios="1.0//1.0",
 )
 print(f"\nResult: {message}")
 

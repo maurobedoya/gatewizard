@@ -30,7 +30,7 @@ from gatewizard.tools.ligand_parametrization import (
 
 __all__ = [
     "MolecularViewer",
-    "ForceFieldManager", 
+    "ForceFieldManager",
     "SystemValidator",
     "detect_ligands",
     "extract_ligand_pdb",

@@ -11,7 +11,7 @@ success, message, job_dir = builder.prepare_system(
     lower_lipids=["POPC"],
     lipid_ratios="1//1",
     output_folder_name="packed_only",
-    parametrize=False  # Skip parametrization
+    parametrize=False,  # Skip parametrization
 )
 
 if success:

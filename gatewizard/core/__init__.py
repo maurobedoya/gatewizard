@@ -20,7 +20,7 @@ from gatewizard.core.file_manager import FileManager
 __all__ = [
     "run_propka",
     "extract_summary_section",
-    "parse_summary_section", 
+    "parse_summary_section",
     "modify_pdb_based_on_summary",
     "Builder",
     "JobMonitor",

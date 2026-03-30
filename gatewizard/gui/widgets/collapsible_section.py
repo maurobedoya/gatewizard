@@ -23,8 +23,14 @@ def _make_arrow_image(direction="right", size=12, color="white"):
 class CollapsibleSection(ctk.CTkFrame):
     """A section with a clickable header that expands/collapses its content."""
 
-    def __init__(self, parent, title: str, expanded: bool = True,
-                 fill_vertical: bool = False, **kwargs):
+    def __init__(
+        self,
+        parent,
+        title: str,
+        expanded: bool = True,
+        fill_vertical: bool = False,
+        **kwargs,
+    ):
         super().__init__(parent, fg_color="transparent", **kwargs)
 
         self._expanded = expanded
@@ -41,20 +47,22 @@ class CollapsibleSection(ctk.CTkFrame):
         self._img_right = _make_arrow_image("right")
 
         # Header row (clickable)
-        self._header = ctk.CTkFrame(self, fg_color="gray25",
-                                    corner_radius=4, height=28)
+        self._header = ctk.CTkFrame(self, fg_color="gray25", corner_radius=4, height=28)
         self._header.pack(fill="x", pady=(4, 0), padx=2)
         self._header.pack_propagate(False)
 
         self._arrow_label = ctk.CTkLabel(
-            self._header, text="",
+            self._header,
+            text="",
             image=self._img_down if expanded else self._img_right,
-            width=16, anchor="w")
+            width=16,
+            anchor="w",
+        )
         self._arrow_label.pack(side="left", padx=(6, 0))
 
         self._title_label = ctk.CTkLabel(
-            self._header, text=title,
-            font=("", 12, "bold"), anchor="w")
+            self._header, text=title, font=("", 12, "bold"), anchor="w"
+        )
         self._title_label.pack(side="left", padx=(2, 6))
 
         # Content frame

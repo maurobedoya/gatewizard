@@ -4,9 +4,7 @@ from gatewizard.utils.protein_capping import ProteinCapper
 # Step 1: Add ACE/NME caps
 capper = ProteinCapper()
 capped_file, residue_mapping = capper.remove_hydrogens_and_cap(
-    input_file="protein.pdb",
-    output_file="protein_capped.pdb",
-    target_dir="output"
+    input_file="protein.pdb", output_file="protein_capped.pdb", target_dir="output"
 )
 print(f"✓ Capped protein: {len(residue_mapping)} residues tracked")
 
@@ -24,7 +22,7 @@ stats = analyzer.apply_protonation_states(
     input_pdb=capped_file,
     output_pdb="output/protein_capped_ph7.pdb",
     ph=7.4,
-    residues=residues
+    residues=residues,
 )
 
 # Step 5: Apply disulfide bonds
@@ -32,17 +30,17 @@ num_bonds = analyzer.apply_disulfide_bonds(
     input_pdb="output/protein_capped_ph7.pdb",
     output_pdb="output/protein_capped_ph7_ss.pdb",
     disulfide_bonds=bonds,
-    auto_detect=False
+    auto_detect=False,
 )
 
 # Step 6: Run pdb4amber with automatic ACE/NME HETATM fix
 result = analyzer.run_pdb4amber_with_cap_fix(
     input_pdb="output/protein_capped_ph7_ss.pdb",
     output_pdb="output/protein_prepared.pdb",
-    fix_caps=True  # Automatically fix ACE/NME HETATM records
+    fix_caps=True,  # Automatically fix ACE/NME HETATM records
 )
 
 print(f"✓ pdb4amber completed: {result['output_file']}")
-if result['hetatm_fixed'] > 0:
+if result["hetatm_fixed"] > 0:
     print(f"✓ Fixed {result['hetatm_fixed']} HETATM records for ACE/NME caps")
 print(f"✓ Final structure ready: protein_prepared.pdb")

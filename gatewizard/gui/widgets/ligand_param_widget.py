@@ -23,9 +23,7 @@ except ImportError:
 
 from tkinter import messagebox
 
-from gatewizard.gui.constants import (
-    COLOR_SCHEME, FONTS, WIDGET_SIZES, LAYOUT
-)
+from gatewizard.gui.constants import COLOR_SCHEME, FONTS, WIDGET_SIZES, LAYOUT
 from gatewizard.tools.ligand_parametrization import (
     detect_ligands,
     extract_ligand_pdb,
@@ -82,7 +80,7 @@ class LigandParamWidget(ctk.CTkFrame):
         status_callback: Optional[Callable[[str], None]] = None,
         working_dir_callback: Optional[Callable[[], str]] = None,
     ):
-        super().__init__(parent, fg_color=COLOR_SCHEME['content_inside_bg'])
+        super().__init__(parent, fg_color=COLOR_SCHEME["content_inside_bg"])
 
         self.status_callback = status_callback
         self.working_dir_callback = working_dir_callback
@@ -108,27 +106,27 @@ class LigandParamWidget(ctk.CTkFrame):
         self.title_label = ctk.CTkLabel(
             self,
             text="Ligand Parametrization",
-            font=FONTS['heading'],
-            text_color=COLOR_SCHEME['text']
+            font=FONTS["heading"],
+            text_color=COLOR_SCHEME["text"],
         )
 
         # Description
         self.info_label = ctk.CTkLabel(
             self,
             text="Detect and parametrize non-standard residues (ligands) "
-                 "for membrane system building. Uses AMBER/GAFF2.",
-            font=FONTS['small'],
-            text_color=COLOR_SCHEME['inactive'],
+            "for membrane system building. Uses AMBER/GAFF2.",
+            font=FONTS["small"],
+            text_color=COLOR_SCHEME["inactive"],
             wraplength=600,
-            justify="left"
+            justify="left",
         )
 
         # Detect button
         self.detect_button = ctk.CTkButton(
             self,
             text="Detect Ligands from PDB",
-            width=WIDGET_SIZES['button_width'],
-            height=WIDGET_SIZES['button_height'],
+            width=WIDGET_SIZES["button_width"],
+            height=WIDGET_SIZES["button_height"],
             command=self._detect_ligands,
         )
 
@@ -136,8 +134,8 @@ class LigandParamWidget(ctk.CTkFrame):
         self.status_label = ctk.CTkLabel(
             self,
             text="No PDB file loaded",
-            font=FONTS['small'],
-            text_color=COLOR_SCHEME['inactive']
+            font=FONTS["small"],
+            text_color=COLOR_SCHEME["inactive"],
         )
 
         # Container for ligand cards (grid layout)
@@ -147,19 +145,15 @@ class LigandParamWidget(ctk.CTkFrame):
         self.global_frame = ctk.CTkFrame(self, fg_color="transparent")
 
         self.atom_type_label = ctk.CTkLabel(
-            self.global_frame,
-            text="Atom Type:",
-            font=FONTS['body']
+            self.global_frame, text="Atom Type:", font=FONTS["body"]
         )
 
-        atom_type_values = [
-            f"{k} - {v}" for k, v in ATOM_TYPES.items()
-        ]
+        atom_type_values = [f"{k} - {v}" for k, v in ATOM_TYPES.items()]
         self.atom_type_combo = ctk.CTkComboBox(
             self.global_frame,
             values=atom_type_values,
             width=140,
-            height=WIDGET_SIZES['combobox_height'],
+            height=WIDGET_SIZES["combobox_height"],
             command=self._on_combo_changed,
         )
         self.atom_type_combo.set(
@@ -167,31 +161,26 @@ class LigandParamWidget(ctk.CTkFrame):
         )
 
         self.charge_method_label = ctk.CTkLabel(
-            self.global_frame,
-            text="Charge Method:",
-            font=FONTS['body']
+            self.global_frame, text="Charge Method:", font=FONTS["body"]
         )
 
-        charge_method_values = [
-            f"{k} - {v}" for k, v in CHARGE_METHODS.items()
-        ]
+        charge_method_values = [f"{k} - {v}" for k, v in CHARGE_METHODS.items()]
         self.charge_method_combo = ctk.CTkComboBox(
             self.global_frame,
             values=charge_method_values,
             width=220,
-            height=WIDGET_SIZES['combobox_height'],
+            height=WIDGET_SIZES["combobox_height"],
             command=self._on_combo_changed,
         )
         self.charge_method_combo.set(
-            f"{DEFAULT_CHARGE_METHOD} - "
-            f"{CHARGE_METHODS[DEFAULT_CHARGE_METHOD]}"
+            f"{DEFAULT_CHARGE_METHOD} - " f"{CHARGE_METHODS[DEFAULT_CHARGE_METHOD]}"
         )
 
         # Warning label for non-recommended combos
         self.combo_warning_label = ctk.CTkLabel(
             self,
             text="",
-            font=FONTS['small'],
+            font=FONTS["small"],
             text_color="#e8a838",
             wraplength=600,
             justify="left",
@@ -202,15 +191,13 @@ class LigandParamWidget(ctk.CTkFrame):
         self.sqm_label = ctk.CTkLabel(
             self.sqm_frame,
             text="SQM Keywords:",
-            font=FONTS['body'],
+            font=FONTS["body"],
         )
         self.sqm_entry = ctk.CTkEntry(
             self.sqm_frame,
             width=420,
-            height=WIDGET_SIZES['combobox_height'],
-            placeholder_text=(
-                "e.g. maxcyc=0, scfconv=1.d-6, ndiis_attempts=700"
-            ),
+            height=WIDGET_SIZES["combobox_height"],
+            placeholder_text=("e.g. maxcyc=0, scfconv=1.d-6, ndiis_attempts=700"),
         )
         self.sqm_help_label = ctk.CTkLabel(
             self,
@@ -219,8 +206,8 @@ class LigandParamWidget(ctk.CTkFrame):
                 "-ek flag. Useful for SCF convergence issues with large "
                 "molecules."
             ),
-            font=FONTS['small'],
-            text_color=COLOR_SCHEME.get('muted_text', '#888888'),
+            font=FONTS["small"],
+            text_color=COLOR_SCHEME.get("muted_text", "#888888"),
             wraplength=600,
             justify="left",
         )
@@ -229,24 +216,21 @@ class LigandParamWidget(ctk.CTkFrame):
         self.parametrize_button = ctk.CTkButton(
             self,
             text="Parametrize All Ligands",
-            width=WIDGET_SIZES['button_width'],
-            height=WIDGET_SIZES['button_height'],
+            width=WIDGET_SIZES["button_width"],
+            height=WIDGET_SIZES["button_height"],
             command=self._parametrize_all,
             state="disabled",
         )
 
         # Progress label
         self.progress_label = ctk.CTkLabel(
-            self,
-            text="",
-            font=FONTS['small'],
-            text_color=COLOR_SCHEME['text']
+            self, text="", font=FONTS["small"], text_color=COLOR_SCHEME["text"]
         )
 
     def _setup_layout(self):
         """Layout all widgets."""
-        pad_m = LAYOUT['padding_medium']
-        pad_s = LAYOUT['padding_small']
+        pad_m = LAYOUT["padding_medium"]
+        pad_s = LAYOUT["padding_small"]
 
         self.title_label.pack(anchor="w", padx=pad_m, pady=(pad_m, pad_s))
         self.info_label.pack(anchor="w", padx=pad_m, pady=(0, pad_s))
@@ -281,15 +265,14 @@ class LigandParamWidget(ctk.CTkFrame):
             self.current_pdb_file = pdb_file
             self.status_label.configure(
                 text=f"PDB loaded: {Path(pdb_file).name}",
-                text_color=COLOR_SCHEME['text']
+                text_color=COLOR_SCHEME["text"],
             )
             # Auto-detect on file change
             self._detect_ligands()
         else:
             self.current_pdb_file = None
             self.status_label.configure(
-                text="No PDB file loaded",
-                text_color=COLOR_SCHEME['inactive']
+                text="No PDB file loaded", text_color=COLOR_SCHEME["inactive"]
             )
 
     def get_parametrized_ligands(self) -> Dict[str, Dict[str, str]]:
@@ -307,34 +290,32 @@ class LigandParamWidget(ctk.CTkFrame):
     def update_fonts(self, scaled_fonts):
         """Update fonts when scaling changes."""
         try:
-            if hasattr(self, 'title_label'):
+            if hasattr(self, "title_label"):
                 self.title_label.configure(
-                    font=scaled_fonts.get('heading', FONTS['heading'])
+                    font=scaled_fonts.get("heading", FONTS["heading"])
                 )
-            if hasattr(self, 'info_label'):
+            if hasattr(self, "info_label"):
                 self.info_label.configure(
-                    font=scaled_fonts.get('small', FONTS['small'])
+                    font=scaled_fonts.get("small", FONTS["small"])
                 )
-            if hasattr(self, 'status_label'):
+            if hasattr(self, "status_label"):
                 self.status_label.configure(
-                    font=scaled_fonts.get('small', FONTS['small'])
+                    font=scaled_fonts.get("small", FONTS["small"])
                 )
-            if hasattr(self, 'progress_label'):
+            if hasattr(self, "progress_label"):
                 self.progress_label.configure(
-                    font=scaled_fonts.get('small', FONTS['small'])
+                    font=scaled_fonts.get("small", FONTS["small"])
                 )
-            if hasattr(self, 'atom_type_label'):
+            if hasattr(self, "atom_type_label"):
                 self.atom_type_label.configure(
-                    font=scaled_fonts.get('small', FONTS['small'])
+                    font=scaled_fonts.get("small", FONTS["small"])
                 )
-            if hasattr(self, 'combo_warning_label'):
+            if hasattr(self, "combo_warning_label"):
                 self.combo_warning_label.configure(
-                    font=scaled_fonts.get('small', FONTS['small'])
+                    font=scaled_fonts.get("small", FONTS["small"])
                 )
         except Exception as e:
-            logger.warning(
-                f"Error updating fonts in LigandParamWidget: {e}"
-            )
+            logger.warning(f"Error updating fonts in LigandParamWidget: {e}")
 
     # ------------------------------------------------------------------
     # Detection
@@ -342,11 +323,8 @@ class LigandParamWidget(ctk.CTkFrame):
 
     def _detect_ligands(self):
         """Detect ligands in the current PDB file."""
-        if (not self.current_pdb_file
-                or not Path(self.current_pdb_file).exists()):
-            messagebox.showwarning(
-                "No PDB File", "Please select a PDB file first."
-            )
+        if not self.current_pdb_file or not Path(self.current_pdb_file).exists():
+            messagebox.showwarning("No PDB File", "Please select a PDB file first.")
             return
 
         try:
@@ -359,7 +337,7 @@ class LigandParamWidget(ctk.CTkFrame):
             if not self.detected_ligands:
                 self.status_label.configure(
                     text="No ligands detected in PDB file",
-                    text_color=COLOR_SCHEME['inactive']
+                    text_color=COLOR_SCHEME["inactive"],
                 )
                 self.parametrize_button.configure(state="disabled")
                 if self.status_callback:
@@ -368,7 +346,7 @@ class LigandParamWidget(ctk.CTkFrame):
 
             self.status_label.configure(
                 text=f"Found {len(self.detected_ligands)} ligand(s)",
-                text_color="#10B981"
+                text_color="#10B981",
             )
 
             # Compute adaptive image size
@@ -403,22 +381,19 @@ class LigandParamWidget(ctk.CTkFrame):
         except Exception as e:
             logger.error(f"Error detecting ligands: {e}", exc_info=True)
             self.status_label.configure(
-                text=f"Error: {str(e)[:80]}",
-                text_color="#EF4444"
+                text=f"Error: {str(e)[:80]}", text_color="#EF4444"
             )
 
     def _clear_ligand_widgets(self):
         """Remove all ligand card widgets."""
         for name, widgets in self.ligand_widgets.items():
-            if 'frame' in widgets:
-                widgets['frame'].destroy()
+            if "frame" in widgets:
+                widgets["frame"].destroy()
         self.ligand_widgets.clear()
         self._2d_images.clear()
         # Reset grid configuration
         for c in range(MAX_COLS):
-            self.ligands_container.grid_columnconfigure(
-                c, weight=0, uniform=""
-            )
+            self.ligands_container.grid_columnconfigure(c, weight=0, uniform="")
 
     # ------------------------------------------------------------------
     # Existing parametrization detection
@@ -451,11 +426,11 @@ class LigandParamWidget(ctk.CTkFrame):
             if frcmod.is_file() and lib.is_file() and tleap_log.is_file():
                 if self._tleap_log_ok(tleap_log):
                     found[ligand.name] = {
-                        'frcmod': str(frcmod),
-                        'lib': str(lib),
-                        'mol2': str(lig_dir / f"{ligand.name}.mol2"),
-                        'prmtop': str(lig_dir / f"{ligand.name}.prmtop"),
-                        'inpcrd': str(lig_dir / f"{ligand.name}.inpcrd"),
+                        "frcmod": str(frcmod),
+                        "lib": str(lib),
+                        "mol2": str(lig_dir / f"{ligand.name}.mol2"),
+                        "prmtop": str(lig_dir / f"{ligand.name}.prmtop"),
+                        "inpcrd": str(lig_dir / f"{ligand.name}.inpcrd"),
                     }
                 else:
                     missing.append(ligand.name)
@@ -468,12 +443,9 @@ class LigandParamWidget(ctk.CTkFrame):
         # Update card status labels for found ligands
         for name in found:
             w = self.ligand_widgets.get(name, {})
-            sl = w.get('status_label')
+            sl = w.get("status_label")
             if sl:
-                sl.configure(
-                    text="Previous run found",
-                    text_color="#60A5FA"  # blue
-                )
+                sl.configure(text="Previous run found", text_color="#60A5FA")  # blue
             # Hide per-ligand button for already-parametrized ligands
             self._show_retry_button(name, show=False)
 
@@ -482,10 +454,12 @@ class LigandParamWidget(ctk.CTkFrame):
             names_ok = ", ".join(found.keys())
             names_miss = ", ".join(missing)
             self.progress_label.configure(
-                text=(f"Found existing results for: {names_ok}. "
-                      f"Missing: {names_miss}. "
-                      f"Use per-ligand buttons or "
-                      f"'Re-parametrize All' to re-run everything.")
+                text=(
+                    f"Found existing results for: {names_ok}. "
+                    f"Missing: {names_miss}. "
+                    f"Use per-ligand buttons or "
+                    f"'Re-parametrize All' to re-run everything."
+                )
             )
             # Pre-populate found ligands so they are reused
             self.parametrized_ligands.update(found)
@@ -500,26 +474,22 @@ class LigandParamWidget(ctk.CTkFrame):
         for name in found:
             self._switch_to_final_view(name)
         self.parametrize_button.configure(
-            state="normal",
-            text="Re-parametrize All Ligands",
-            fg_color="#10B981"
+            state="normal", text="Re-parametrize All Ligands", fg_color="#10B981"
         )
 
         names_str = ", ".join(found.keys())
         self.progress_label.configure(
-            text=(f"All ligand(s) already parametrized ({names_str}). "
-                  f"Ready to build. Click 'Re-parametrize All Ligands' "
-                  f"to overwrite.")
+            text=(
+                f"All ligand(s) already parametrized ({names_str}). "
+                f"Ready to build. Click 'Re-parametrize All Ligands' "
+                f"to overwrite."
+            )
         )
 
         if self.status_callback:
-            self.status_callback(
-                f"Loaded existing ligand parametrization: {names_str}"
-            )
+            self.status_callback(f"Loaded existing ligand parametrization: {names_str}")
 
-        logger.info(
-            f"Loaded existing parametrization for: {names_str}"
-        )
+        logger.info(f"Loaded existing parametrization for: {names_str}")
 
     @staticmethod
     def _tleap_log_ok(log_path: Path) -> bool:
@@ -530,11 +500,9 @@ class LigandParamWidget(ctk.CTkFrame):
         Only the Errors count matters; warnings/notes are acceptable.
         """
         try:
-            text = log_path.read_text(errors='replace')
+            text = log_path.read_text(errors="replace")
             # Match "Exiting LEaP: Errors = <N>"
-            m = re.search(
-                r'Exiting LEaP:\s*Errors\s*=\s*(\d+)', text
-            )
+            m = re.search(r"Exiting LEaP:\s*Errors\s*=\s*(\d+)", text)
             if m:
                 return int(m.group(1)) == 0
             return False
@@ -545,13 +513,11 @@ class LigandParamWidget(ctk.CTkFrame):
     # Card creation (horizontal grid)
     # ------------------------------------------------------------------
 
-    def _create_ligand_card(
-        self, ligand: LigandInfo, row: int, col: int
-    ):
+    def _create_ligand_card(self, ligand: LigandInfo, row: int, col: int):
         """Create a compact card for a single ligand placed in a grid cell."""
         card = ctk.CTkFrame(
             self.ligands_container,
-            fg_color=COLOR_SCHEME['canvas'],
+            fg_color=COLOR_SCHEME["canvas"],
             corner_radius=8,
         )
         card.grid(row=row, column=col, padx=4, pady=4, sticky="nsew")
@@ -561,18 +527,15 @@ class LigandParamWidget(ctk.CTkFrame):
         header.pack(fill="x", padx=8, pady=(6, 2))
 
         name_label = ctk.CTkLabel(
-            header,
-            text=ligand.name,
-            font=FONTS['heading'],
-            text_color="#60A5FA"
+            header, text=ligand.name, font=FONTS["heading"], text_color="#60A5FA"
         )
         name_label.pack(side="left")
 
         status_label = ctk.CTkLabel(
             header,
             text="Not parametrized",
-            font=FONTS['small'],
-            text_color=COLOR_SCHEME['inactive']
+            font=FONTS["small"],
+            text_color=COLOR_SCHEME["inactive"],
         )
         status_label.pack(side="right", padx=4)
 
@@ -582,20 +545,17 @@ class LigandParamWidget(ctk.CTkFrame):
             f"Chain {ligand.chain}  |  Res {ligand.res_id}"
         )
         info_label = ctk.CTkLabel(
-            card,
-            text=info_text,
-            font=FONTS['small'],
-            text_color=COLOR_SCHEME['text']
+            card, text=info_text, font=FONTS["small"], text_color=COLOR_SCHEME["text"]
         )
         info_label.pack(anchor="w", padx=10, pady=(0, 4))
 
         # ---- 2D structure image (CTkLabel with CTkImage) ----
-        iw, ih = getattr(self, '_current_img_size', _DEFAULT_SIZE)
+        iw, ih = getattr(self, "_current_img_size", _DEFAULT_SIZE)
         image_label = ctk.CTkLabel(
             card,
             text="Generating 2D structure...",
-            font=FONTS['small'],
-            text_color=COLOR_SCHEME['inactive'],
+            font=FONTS["small"],
+            text_color=COLOR_SCHEME["inactive"],
             width=iw,
             height=ih,
             fg_color="#1C1C1C",
@@ -609,15 +569,13 @@ class LigandParamWidget(ctk.CTkFrame):
         view_toggle = ctk.CTkSegmentedButton(
             card,
             values=["Initial", "Final"],
-            font=FONTS['small'],
+            font=FONTS["small"],
             height=22,
             corner_radius=4,
-            fg_color=COLOR_SCHEME['canvas'],
-            unselected_color=COLOR_SCHEME['canvas'],
+            fg_color=COLOR_SCHEME["canvas"],
+            unselected_color=COLOR_SCHEME["canvas"],
             unselected_hover_color="#3A3A3A",
-            command=lambda val, n=ligand.name: self._on_view_toggle(
-                n, val
-            ),
+            command=lambda val, n=ligand.name: self._on_view_toggle(n, val),
         )
         view_toggle.set("Initial")
         view_toggle.pack(padx=8, pady=(0, 4))
@@ -626,37 +584,31 @@ class LigandParamWidget(ctk.CTkFrame):
         ctrl_frame = ctk.CTkFrame(card, fg_color="transparent")
         ctrl_frame.pack(fill="x", padx=8, pady=(4, 2))
 
-        charge_lbl = ctk.CTkLabel(
-            ctrl_frame, text="Charge:", font=FONTS['small']
-        )
+        charge_lbl = ctk.CTkLabel(ctrl_frame, text="Charge:", font=FONTS["small"])
         charge_lbl.pack(side="left", padx=(0, 2))
 
         charge_entry = ctk.CTkEntry(
-            ctrl_frame, width=50, height=WIDGET_SIZES['entry_height']
+            ctrl_frame, width=50, height=WIDGET_SIZES["entry_height"]
         )
         charge_entry.insert(0, "0")
         charge_entry.pack(side="left", padx=(0, 10))
 
-        mult_lbl = ctk.CTkLabel(
-            ctrl_frame, text="Mult:", font=FONTS['small']
-        )
+        mult_lbl = ctk.CTkLabel(ctrl_frame, text="Mult:", font=FONTS["small"])
         mult_lbl.pack(side="left", padx=(0, 2))
 
         mult_entry = ctk.CTkEntry(
-            ctrl_frame, width=50, height=WIDGET_SIZES['entry_height']
+            ctrl_frame, width=50, height=WIDGET_SIZES["entry_height"]
         )
         mult_entry.insert(0, "1")
         mult_entry.pack(side="left")
 
         # ---- Element summary ----
-        elem_text = "  ".join(
-            f"{e}: {c}" for e, c in sorted(ligand.elements.items())
-        )
+        elem_text = "  ".join(f"{e}: {c}" for e, c in sorted(ligand.elements.items()))
         elem_label = ctk.CTkLabel(
             card,
             text=f"Elements: {elem_text}",
-            font=FONTS['small'],
-            text_color=COLOR_SCHEME['inactive']
+            font=FONTS["small"],
+            text_color=COLOR_SCHEME["inactive"],
         )
         elem_label.pack(anchor="w", padx=10, pady=(2, 2))
 
@@ -664,7 +616,7 @@ class LigandParamWidget(ctk.CTkFrame):
         retry_button = ctk.CTkButton(
             card,
             text=f"Parametrize {ligand.name}",
-            font=FONTS['small'],
+            font=FONTS["small"],
             height=24,
             fg_color="#3B82F6",
             hover_color="#2563EB",
@@ -676,14 +628,14 @@ class LigandParamWidget(ctk.CTkFrame):
 
         # Store references
         self.ligand_widgets[ligand.name] = {
-            'frame': card,
-            'charge_entry': charge_entry,
-            'multiplicity_entry': mult_entry,
-            'status_label': status_label,
-            'image_label': image_label,
-            'retry_button': retry_button,
-            'view_toggle': view_toggle,
-            'ligand': ligand,
+            "frame": card,
+            "charge_entry": charge_entry,
+            "multiplicity_entry": mult_entry,
+            "status_label": status_label,
+            "image_label": image_label,
+            "retry_button": retry_button,
+            "view_toggle": view_toggle,
+            "ligand": ligand,
         }
 
     # ------------------------------------------------------------------
@@ -692,18 +644,20 @@ class LigandParamWidget(ctk.CTkFrame):
 
     def _generate_2d_image_async(self, ligand: LigandInfo, image_label):
         """Generate 2D image in a background thread and display it."""
+
         def _generate():
             try:
                 import tempfile
-                with tempfile.NamedTemporaryFile(
-                    suffix='.png', delete=False
-                ) as tmp:
+
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
                     tmp_path = tmp.name
 
-                iw, ih = getattr(self, '_current_img_size', _DEFAULT_SIZE)
+                iw, ih = getattr(self, "_current_img_size", _DEFAULT_SIZE)
                 result = get_ligand_2d_image_from_pdb_lines(
-                    ligand.pdb_lines, tmp_path,
-                    width=iw * 2, height=ih * 2,
+                    ligand.pdb_lines,
+                    tmp_path,
+                    width=iw * 2,
+                    height=ih * 2,
                     remove_nonpolar_h=True,
                 )
 
@@ -712,26 +666,20 @@ class LigandParamWidget(ctk.CTkFrame):
                         0,
                         lambda p=tmp_path: self._display_image(
                             image_label, p, ligand.name
-                        )
+                        ),
                     )
                 else:
                     image_label.after(
                         0,
                         lambda: image_label.configure(
-                            text="2D structure\nnot available",
-                            image=None
-                        )
+                            text="2D structure\nnot available", image=None
+                        ),
                     )
             except Exception as e:
-                logger.warning(
-                    f"Error generating 2D image for {ligand.name}: {e}"
-                )
+                logger.warning(f"Error generating 2D image for {ligand.name}: {e}")
                 try:
                     image_label.after(
-                        0,
-                        lambda: image_label.configure(
-                            text="2D error", image=None
-                        )
+                        0, lambda: image_label.configure(text="2D error", image=None)
                     )
                 except Exception:
                     pass
@@ -739,29 +687,23 @@ class LigandParamWidget(ctk.CTkFrame):
         thread = threading.Thread(target=_generate, daemon=True)
         thread.start()
 
-    def _display_image(
-        self, image_label, image_path: str, ligand_name: str
-    ):
+    def _display_image(self, image_label, image_path: str, ligand_name: str):
         """Display a 2D image on a CTkLabel (main-thread only)."""
         try:
-            iw, ih = getattr(self, '_current_img_size', _DEFAULT_SIZE)
+            iw, ih = getattr(self, "_current_img_size", _DEFAULT_SIZE)
             img = PILImage.open(image_path)
             img = img.resize((iw, ih), PILImage.LANCZOS)
-            ctk_img = ctk.CTkImage(
-                dark_image=img, light_image=img,
-                size=(iw, ih)
-            )
+            ctk_img = ctk.CTkImage(dark_image=img, light_image=img, size=(iw, ih))
             image_label.configure(image=ctk_img, text="")
             # Keep reference to prevent garbage collection
             self._2d_images[ligand_name] = ctk_img
         except Exception as e:
             logger.warning(f"Error displaying 2D image: {e}")
-            image_label.configure(
-                text="2D structure\nnot available", image=None
-            )
+            image_label.configure(text="2D structure\nnot available", image=None)
         finally:
             try:
                 import os
+
                 os.unlink(image_path)
             except Exception:
                 pass
@@ -769,49 +711,45 @@ class LigandParamWidget(ctk.CTkFrame):
     def _on_view_toggle(self, ligand_name: str, value: str):
         """Handle Initial / Final 2D view toggle."""
         w = self.ligand_widgets.get(ligand_name, {})
-        image_label = w.get('image_label')
+        image_label = w.get("image_label")
         if not image_label:
             return
 
         if value == "Initial":
             # Show the initial PDB-based image
-            ligand = w.get('ligand')
+            ligand = w.get("ligand")
             if ligand:
                 self._generate_2d_image_async(ligand, image_label)
         elif value == "Final":
             # Show the final mol2-based image (correct bond orders)
             files = self.parametrized_ligands.get(ligand_name)
-            if not files or not files.get('mol2'):
-                image_label.configure(
-                    text="Not yet parametrized", image=None
-                )
+            if not files or not files.get("mol2"):
+                image_label.configure(text="Not yet parametrized", image=None)
                 return
-            mol2_path = files['mol2']
+            mol2_path = files["mol2"]
             if not Path(mol2_path).exists():
-                image_label.configure(
-                    text="mol2 file not found", image=None
-                )
+                image_label.configure(text="mol2 file not found", image=None)
                 return
-            self._generate_final_2d_image_async(
-                ligand_name, mol2_path, image_label
-            )
+            self._generate_final_2d_image_async(ligand_name, mol2_path, image_label)
 
     def _generate_final_2d_image_async(
         self, ligand_name: str, mol2_path: str, image_label
     ):
         """Generate 2D image from a mol2 file (has correct bond orders)."""
+
         def _generate():
             try:
                 import tempfile
-                with tempfile.NamedTemporaryFile(
-                    suffix='.png', delete=False
-                ) as tmp:
+
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
                     tmp_path = tmp.name
 
-                iw, ih = getattr(self, '_current_img_size', _DEFAULT_SIZE)
+                iw, ih = getattr(self, "_current_img_size", _DEFAULT_SIZE)
                 result = get_ligand_2d_image(
-                    mol2_path, tmp_path,
-                    width=iw * 2, height=ih * 2,
+                    mol2_path,
+                    tmp_path,
+                    width=iw * 2,
+                    height=ih * 2,
                     remove_nonpolar_h=True,
                 )
 
@@ -820,20 +758,17 @@ class LigandParamWidget(ctk.CTkFrame):
                         0,
                         lambda p=tmp_path: self._display_image(
                             image_label, p, ligand_name
-                        )
+                        ),
                     )
                 else:
                     image_label.after(
                         0,
                         lambda: image_label.configure(
-                            text="2D structure\nnot available",
-                            image=None
-                        )
+                            text="2D structure\nnot available", image=None
+                        ),
                     )
             except Exception as e:
-                logger.warning(
-                    f"Error generating final 2D for {ligand_name}: {e}"
-                )
+                logger.warning(f"Error generating final 2D for {ligand_name}: {e}")
 
         thread = threading.Thread(target=_generate, daemon=True)
         thread.start()
@@ -841,7 +776,7 @@ class LigandParamWidget(ctk.CTkFrame):
     def _switch_to_final_view(self, ligand_name: str):
         """Switch toggle to 'Final' and refresh the 2D image."""
         w = self.ligand_widgets.get(ligand_name, {})
-        toggle = w.get('view_toggle')
+        toggle = w.get("view_toggle")
         if toggle:
             toggle.set("Final")
         self._on_view_toggle(ligand_name, "Final")
@@ -860,9 +795,7 @@ class LigandParamWidget(ctk.CTkFrame):
 
         def _on_mousewheel(event):
             try:
-                scroll_canvas.yview_scroll(
-                    int(-1 * (event.delta / 120)), "units"
-                )
+                scroll_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
             except Exception:
                 pass
             return "break"
@@ -895,9 +828,9 @@ class LigandParamWidget(ctk.CTkFrame):
         parent = self.master
         while parent:
             if isinstance(parent, ctk.CTkScrollableFrame):
-                if hasattr(parent, '_parent_canvas'):
+                if hasattr(parent, "_parent_canvas"):
                     return parent._parent_canvas
-            parent = getattr(parent, 'master', None)
+            parent = getattr(parent, "master", None)
         return None
 
     # ------------------------------------------------------------------
@@ -929,7 +862,7 @@ class LigandParamWidget(ctk.CTkFrame):
         if (at, cm) in NON_RECOMMENDED_COMBOS:
             self.combo_warning_label.configure(
                 text=f"Warning: {at}/{cm} is not recommended. "
-                     f"Use gaff/bcc or gaff2/abcg2 instead (AMBER manual)."
+                f"Use gaff/bcc or gaff2/abcg2 instead (AMBER manual)."
             )
         else:
             self.combo_warning_label.configure(text="")
@@ -941,7 +874,7 @@ class LigandParamWidget(ctk.CTkFrame):
     def _show_retry_button(self, ligand_name: str, show: bool = True):
         """Show or hide the per-ligand button."""
         w = self.ligand_widgets.get(ligand_name, {})
-        btn = w.get('retry_button')
+        btn = w.get("retry_button")
         if not btn:
             return
         if show:
@@ -965,7 +898,7 @@ class LigandParamWidget(ctk.CTkFrame):
     def _show_retry_button_failed(self, ligand_name: str):
         """Show per-ligand button in failed/retry style."""
         w = self.ligand_widgets.get(ligand_name, {})
-        btn = w.get('retry_button')
+        btn = w.get("retry_button")
         if not btn:
             return
         btn.configure(
@@ -979,9 +912,7 @@ class LigandParamWidget(ctk.CTkFrame):
     def _parametrize_single(self, ligand_name: str):
         """Parametrize (or retry) a single ligand."""
         if self._parametrizing:
-            messagebox.showinfo(
-                "In Progress", "Parametrization is already running."
-            )
+            messagebox.showinfo("In Progress", "Parametrization is already running.")
             return
 
         # Find the ligand info
@@ -1019,29 +950,25 @@ class LigandParamWidget(ctk.CTkFrame):
 
         w = self.ligand_widgets.get(ligand_name, {})
         try:
-            charge = int(w['charge_entry'].get())
+            charge = int(w["charge_entry"].get())
         except (KeyError, ValueError):
             charge = 0
         try:
-            multiplicity = int(w['multiplicity_entry'].get())
+            multiplicity = int(w["multiplicity_entry"].get())
         except (KeyError, ValueError):
             multiplicity = 1
 
         self._parametrizing = True
         # Hide retry button while running
         self._show_retry_button(ligand_name, show=False)
-        sl = w.get('status_label')
+        sl = w.get("status_label")
         if sl:
             sl.configure(text="Running...", text_color="#F59E0B")
-        self.progress_label.configure(
-            text=f"Parametrizing {ligand_name}..."
-        )
+        self.progress_label.configure(text=f"Parametrizing {ligand_name}...")
 
         def _run():
             try:
-                lig_dir = str(
-                    Path(working_dir) / "ligand_params" / ligand_name
-                )
+                lig_dir = str(Path(working_dir) / "ligand_params" / ligand_name)
                 lig_pdb = extract_ligand_pdb(
                     self.current_pdb_file, ligand_name, lig_dir
                 )
@@ -1058,56 +985,49 @@ class LigandParamWidget(ctk.CTkFrame):
                 self.parametrized_ligands[ligand_name] = files
 
                 if sl:
-                    sl.after(0, lambda s=sl: s.configure(
-                        text="Completed", text_color="#10B981"
-                    ))
-                # Hide the per-ligand button after success
-                self.after(
-                    0,
-                    lambda: self._show_retry_button(
-                        ligand_name, show=False
+                    sl.after(
+                        0,
+                        lambda s=sl: s.configure(
+                            text="Completed", text_color="#10B981"
+                        ),
                     )
-                )
+                # Hide the per-ligand button after success
+                self.after(0, lambda: self._show_retry_button(ligand_name, show=False))
                 # Auto-switch to "Final" 2D view
-                self.after(
-                    0,
-                    lambda n=ligand_name: self._switch_to_final_view(n)
-                )
+                self.after(0, lambda n=ligand_name: self._switch_to_final_view(n))
 
                 # Check if all ligands are now parametrized
                 all_done = all(
-                    l.name in self.parametrized_ligands
-                    for l in self.detected_ligands
+                    l.name in self.parametrized_ligands for l in self.detected_ligands
                 )
                 if all_done:
                     total = len(self.detected_ligands)
                     self.progress_label.after(
                         0,
                         lambda: self.progress_label.configure(
-                            text=f"All {total} ligand(s) parametrized "
-                                 f"successfully"
-                        )
+                            text=f"All {total} ligand(s) parametrized " f"successfully"
+                        ),
                     )
                     self.parametrize_button.after(
                         0,
                         lambda: self.parametrize_button.configure(
                             state="normal",
                             text="Re-parametrize All Ligands",
-                            fg_color="#10B981"
-                        )
+                            fg_color="#10B981",
+                        ),
                     )
                 else:
                     done = sum(
-                        1 for l in self.detected_ligands
+                        1
+                        for l in self.detected_ligands
                         if l.name in self.parametrized_ligands
                     )
                     total = len(self.detected_ligands)
                     self.progress_label.after(
                         0,
                         lambda: self.progress_label.configure(
-                            text=f"{ligand_name} completed "
-                                 f"({done}/{total} done)"
-                        )
+                            text=f"{ligand_name} completed " f"({done}/{total} done)"
+                        ),
                     )
 
                 if self.status_callback:
@@ -1118,29 +1038,20 @@ class LigandParamWidget(ctk.CTkFrame):
             except (LigandParametrizationError, Exception) as e:
                 err_msg = str(e)
                 logger.error(
-                    f"Parametrization error for {ligand_name}: {err_msg}",
-                    exc_info=True
+                    f"Parametrization error for {ligand_name}: {err_msg}", exc_info=True
                 )
                 if sl:
-                    sl.after(0, lambda s=sl: s.configure(
-                        text="Failed", text_color="#EF4444"
-                    ))
-                self.after(
-                    0,
-                    lambda: self._show_retry_button_failed(ligand_name)
-                )
+                    sl.after(
+                        0, lambda s=sl: s.configure(text="Failed", text_color="#EF4444")
+                    )
+                self.after(0, lambda: self._show_retry_button_failed(ligand_name))
 
                 sync_hint = ""
                 if self._is_cloud_sync_error(err_msg):
-                    sync_hint = (
-                        " -- Pause cloud sync and retry."
-                    )
-                display_msg = f"Error ({ligand_name}): " \
-                              f"{err_msg[:80]}{sync_hint}"
+                    sync_hint = " -- Pause cloud sync and retry."
+                display_msg = f"Error ({ligand_name}): " f"{err_msg[:80]}{sync_hint}"
                 self.progress_label.after(
-                    0,
-                    lambda m=display_msg:
-                        self.progress_label.configure(text=m)
+                    0, lambda m=display_msg: self.progress_label.configure(text=m)
                 )
             finally:
                 self._parametrizing = False
@@ -1151,9 +1062,7 @@ class LigandParamWidget(ctk.CTkFrame):
     def _parametrize_all(self):
         """Parametrize all detected ligands."""
         if self._parametrizing:
-            messagebox.showinfo(
-                "In Progress", "Parametrization is already running."
-            )
+            messagebox.showinfo("In Progress", "Parametrization is already running.")
             return
 
         if not self.detected_ligands:
@@ -1189,13 +1098,11 @@ class LigandParamWidget(ctk.CTkFrame):
         for ligand in self.detected_ligands:
             w = self.ligand_widgets.get(ligand.name, {})
             try:
-                charges[ligand.name] = int(w['charge_entry'].get())
+                charges[ligand.name] = int(w["charge_entry"].get())
             except (KeyError, ValueError):
                 charges[ligand.name] = 0
             try:
-                multiplicities[ligand.name] = int(
-                    w['multiplicity_entry'].get()
-                )
+                multiplicities[ligand.name] = int(w["multiplicity_entry"].get())
             except (KeyError, ValueError):
                 multiplicities[ligand.name] = 1
 
@@ -1204,9 +1111,7 @@ class LigandParamWidget(ctk.CTkFrame):
             self._show_retry_button(ligand.name, show=False)
 
         self._parametrizing = True
-        self.parametrize_button.configure(
-            state="disabled", text="Parametrizing..."
-        )
+        self.parametrize_button.configure(state="disabled", text="Parametrizing...")
         self.progress_label.configure(text="Starting parametrization...")
 
         # Background thread
@@ -1219,24 +1124,24 @@ class LigandParamWidget(ctk.CTkFrame):
                 # Progress
                 self.progress_label.after(
                     0,
-                    lambda n=ligand.name, idx=i, t=total:
-                        self.progress_label.configure(
-                            text=f"Parametrizing {n} ({idx}/{t})..."
-                        )
+                    lambda n=ligand.name, idx=i, t=total: self.progress_label.configure(
+                        text=f"Parametrizing {n} ({idx}/{t})..."
+                    ),
                 )
 
                 # Status -> Running
                 w = self.ligand_widgets.get(ligand.name, {})
-                sl = w.get('status_label')
+                sl = w.get("status_label")
                 if sl:
-                    sl.after(0, lambda s=sl: s.configure(
-                        text="Running...", text_color="#F59E0B"
-                    ))
+                    sl.after(
+                        0,
+                        lambda s=sl: s.configure(
+                            text="Running...", text_color="#F59E0B"
+                        ),
+                    )
 
                 try:
-                    lig_dir = str(
-                        Path(working_dir) / "ligand_params" / ligand.name
-                    )
+                    lig_dir = str(Path(working_dir) / "ligand_params" / ligand.name)
 
                     lig_pdb = extract_ligand_pdb(
                         self.current_pdb_file, ligand.name, lig_dir
@@ -1256,41 +1161,38 @@ class LigandParamWidget(ctk.CTkFrame):
                     results[ligand.name] = files
 
                     if sl:
-                        sl.after(0, lambda s=sl: s.configure(
-                            text="Completed", text_color="#10B981"
-                        ))
+                        sl.after(
+                            0,
+                            lambda s=sl: s.configure(
+                                text="Completed", text_color="#10B981"
+                            ),
+                        )
                     # Hide per-ligand button on success
                     _ok_name = ligand.name
                     self.after(
-                        0,
-                        lambda n=_ok_name: self._show_retry_button(
-                            n, show=False
-                        )
+                        0, lambda n=_ok_name: self._show_retry_button(n, show=False)
                     )
                     # Auto-switch to "Final" 2D view
-                    self.after(
-                        0,
-                        lambda n=_ok_name: self._switch_to_final_view(n)
-                    )
+                    self.after(0, lambda n=_ok_name: self._switch_to_final_view(n))
 
                 except (LigandParametrizationError, Exception) as e:
                     err_msg = str(e)
                     logger.error(
-                        f"Parametrization error for {ligand.name}: "
-                        f"{err_msg}", exc_info=True
+                        f"Parametrization error for {ligand.name}: " f"{err_msg}",
+                        exc_info=True,
                     )
                     failed.append(ligand.name)
 
                     if sl:
-                        sl.after(0, lambda s=sl: s.configure(
-                            text="Failed", text_color="#EF4444"
-                        ))
+                        sl.after(
+                            0,
+                            lambda s=sl: s.configure(
+                                text="Failed", text_color="#EF4444"
+                            ),
+                        )
                     # Show amber retry button for the failed ligand
                     _name = ligand.name
-                    self.after(
-                        0,
-                        lambda n=_name: self._show_retry_button_failed(n)
-                    )
+                    self.after(0, lambda n=_name: self._show_retry_button_failed(n))
 
             # Store partial (or full) results
             self.parametrized_ligands.update(results)
@@ -1300,22 +1202,20 @@ class LigandParamWidget(ctk.CTkFrame):
                 self.progress_label.after(
                     0,
                     lambda: self.progress_label.configure(
-                        text=(f"All {total} ligand(s) parametrized "
-                              f"successfully")
-                    )
+                        text=(f"All {total} ligand(s) parametrized " f"successfully")
+                    ),
                 )
                 self.parametrize_button.after(
                     0,
                     lambda: self.parametrize_button.configure(
                         state="normal",
                         text="Re-parametrize All Ligands",
-                        fg_color="#10B981"
-                    )
+                        fg_color="#10B981",
+                    ),
                 )
                 if self.status_callback:
                     self.status_callback(
-                        f"Ligand parametrization complete: "
-                        f"{list(results.keys())}"
+                        f"Ligand parametrization complete: " f"{list(results.keys())}"
                     )
             else:
                 # Some failed
@@ -1328,18 +1228,14 @@ class LigandParamWidget(ctk.CTkFrame):
                     f"'Re-parametrize All' to re-run everything."
                 )
                 self.progress_label.after(
-                    0,
-                    lambda m=summary:
-                        self.progress_label.configure(text=m)
+                    0, lambda m=summary: self.progress_label.configure(text=m)
                 )
                 btn_color = "#10B981" if ok_count > 0 else "#EF4444"
                 self.parametrize_button.after(
                     0,
                     lambda c=btn_color: self.parametrize_button.configure(
-                        state="normal",
-                        text="Re-parametrize All Ligands",
-                        fg_color=c
-                    )
+                        state="normal", text="Re-parametrize All Ligands", fg_color=c
+                    ),
                 )
 
                 # Detect cloud-sync permission errors from last failure
@@ -1373,20 +1269,28 @@ class LigandParamWidget(ctk.CTkFrame):
         msg = error_msg.lower()
         # Permission denied indicators
         perm_keywords = [
-            'permission denied',
-            'errno 13',
-            '[errno 13]',
-            'access is denied',
-            'winerror 5',
-            'winerror 32',      # sharing violation
-            'being used by another process',
+            "permission denied",
+            "errno 13",
+            "[errno 13]",
+            "access is denied",
+            "winerror 5",
+            "winerror 32",  # sharing violation
+            "being used by another process",
         ]
         if not any(kw in msg for kw in perm_keywords):
             return False
         # Cloud-sync path hints
         cloud_hints = [
-            'dropbox', 'onedrive', 'google drive', 'googledrive',
-            'icloud', 'box sync', 'mega', 'pcloud', 'syncthing',
-            'nextcloud', 'seafile',
+            "dropbox",
+            "onedrive",
+            "google drive",
+            "googledrive",
+            "icloud",
+            "box sync",
+            "mega",
+            "pcloud",
+            "syncthing",
+            "nextcloud",
+            "seafile",
         ]
         return any(h in msg for h in cloud_hints)

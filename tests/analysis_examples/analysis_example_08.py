@@ -14,7 +14,7 @@ trajectory_files = [
     data_dir / "step2_equilibration.dcd",
     data_dir / "step3_equilibration.dcd",
     data_dir / "step4_equilibration.dcd",
-    data_dir / "step5_equilibration.dcd",  
+    data_dir / "step5_equilibration.dcd",
     data_dir / "step6_equilibration.dcd",
     data_dir / "step7_production.dcd",
 ]
@@ -30,14 +30,14 @@ analyzer = TrajectoryAnalyzer(
         "step4_equilibration.dcd": 0.1,  # 100 ps
         "step5_equilibration.dcd": 0.1,  # 100 ps
         "step6_equilibration.dcd": 0.1,  # 100 ps
-        "step7_production.dcd": 0.1      # 100 ps
-    }
+        "step7_production.dcd": 0.1,  # 100 ps
+    },
 )
 # Calculate and plot distances between selections
 analyzer.plot_distances(
     selections={
         "gate_distance": ("resid 1 and name C", "resid 28 and name C"),
-        "domain_distance": ("resid 1-2 and name C", "resid 9-10 and name C")
+        "domain_distance": ("resid 1-2 and name C", "resid 9-10 and name C"),
     },
     bg_color="white",
     fig_bg_color="white",

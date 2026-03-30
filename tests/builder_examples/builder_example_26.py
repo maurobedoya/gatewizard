@@ -41,8 +41,8 @@ for at, cm in sorted(NON_RECOMMENDED_COMBOS):
     print(f"  {at} + {cm}  ✗")
 
 # ── Check a pairing before parametrizing ─────────────────────────────
-atom_type = 'gaff2'
-charge_method = 'abcg2'
+atom_type = "gaff2"
+charge_method = "abcg2"
 
 if (atom_type, charge_method) in RECOMMENDED_COMBOS:
     print(f"\n{atom_type}/{charge_method} is a recommended pairing.")
@@ -58,9 +58,9 @@ output_dir = "./systems/ligand_params_gaff2_abcg2"
 results = parametrize_all_ligands(
     pdb_file=pdb_file,
     output_dir=output_dir,
-    charges={'AAA': 0, 'BBB': 0},
-    charge_method='abcg2',   # ABCG2 charges
-    atom_type='gaff2',       # GAFF2 atom types (recommended with abcg2)
+    charges={"AAA": 0, "BBB": 0},
+    charge_method="abcg2",  # ABCG2 charges
+    atom_type="gaff2",  # GAFF2 atom types (recommended with abcg2)
 )
 
 print(f"\nParametrized {len(results)} ligand(s) with gaff2/abcg2:")
@@ -68,8 +68,8 @@ for name, files in results.items():
     print(f"  {name}: {files.get('frcmod', 'N/A')}")
 
 # ── tleap lines reflect the chosen atom type ─────────────────────────
-tleap_gaff2 = build_tleap_ligand_lines(results, atom_type='gaff2')
+tleap_gaff2 = build_tleap_ligand_lines(results, atom_type="gaff2")
 print(f"\ntleap lines (GAFF2):\n{tleap_gaff2}")
 
-tleap_gaff = build_tleap_ligand_lines(results, atom_type='gaff')
+tleap_gaff = build_tleap_ligand_lines(results, atom_type="gaff")
 print(f"\ntleap lines (GAFF):\n{tleap_gaff}")

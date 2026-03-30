@@ -15,16 +15,18 @@ for ph in [5.0, 6.0, 7.0, 7.4, 8.0, 9.0]:
         input_pdb="protein.pdb",
         output_pdb=f"output/protein_ph{ph:.1f}.pdb",
         ph=ph,
-        residues=residues
+        residues=residues,
     )
-    
+
     # Apply disulfide bonds
     analyzer.apply_disulfide_bonds(
         input_pdb=f"output/protein_ph{ph:.1f}.pdb",
         output_pdb=f"output/protein_ph{ph:.1f}_ss.pdb",
         disulfide_bonds=bonds,
-        auto_detect=False
+        auto_detect=False,
     )
-    
-    print(f"pH {ph:.1f}: {stats['residue_changes']} residues modified, "
-          f"{len(bonds)} S-S bonds")
+
+    print(
+        f"pH {ph:.1f}: {stats['residue_changes']} residues modified, "
+        f"{len(bonds)} S-S bonds"
+    )

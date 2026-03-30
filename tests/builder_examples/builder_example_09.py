@@ -9,7 +9,7 @@ builder.set_configuration(
     lipid_ff="lipid21",
     salt_concentration=0.15,
     cation="K+",
-    anion="Cl-"
+    anion="Cl-",
 )
 
 # Prepare system with 100% POPC (symmetric)
@@ -19,7 +19,7 @@ success, message, job_dir = builder.prepare_system(
     upper_lipids=["POPC"],
     lower_lipids=["POPC"],
     lipid_ratios="1//1",  # 100% POPC both leaflets
-    output_folder_name="popc_membrane"
+    output_folder_name="popc_membrane",
 )
 
 if success:

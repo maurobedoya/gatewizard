@@ -14,7 +14,7 @@ ATOM      6  CA  ALA A  12       8.000   1.000   3.000  1.00  0.00           C
 END
 """
 
-with tempfile.NamedTemporaryFile(suffix='.pdb', mode='w', delete=False) as f:
+with tempfile.NamedTemporaryFile(suffix=".pdb", mode="w", delete=False) as f:
     f.write(pdb_content)
     tmp_path = f.name
 
@@ -22,9 +22,9 @@ try:
     viewer.load_structure(tmp_path)
 
     # Renumber residues 10-12 to start at 1
-    count = viewer.renumber_residues('A', 10, 12, new_start=1)
+    count = viewer.renumber_residues("A", 10, 12, new_start=1)
     print(f"Renumbered {count} atoms")
-    residues = viewer.get_residues('A')
+    residues = viewer.get_residues("A")
     for r in residues:
         print(f"  {r['name']} {r['seq_id']}")
 finally:

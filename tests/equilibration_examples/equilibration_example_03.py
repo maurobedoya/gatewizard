@@ -9,10 +9,10 @@ if system_files:
     print("Detected files:")
     for key, path in system_files.items():
         print(f"  {key}: {Path(path).name}")
-    
+
     # Now run setup with auto-detection
-    #result = manager.setup_namd_equilibration(
+    # result = manager.setup_namd_equilibration(
     #    stage_params_list=stages
-    #)
+    # )
 else:
     print("Required files not found - please check working directory")

@@ -7,6 +7,7 @@ including the main application window, frames, and widgets.
 
 try:
     from gatewizard.gui.app import ProteinViewerApp
+
     GUI_AVAILABLE = True
 except ImportError:
     ProteinViewerApp = None

@@ -14,7 +14,7 @@ trajectory_files = [
     data_dir / "step2_equilibration.dcd",
     data_dir / "step3_equilibration.dcd",
     data_dir / "step4_equilibration.dcd",
-    data_dir / "step5_equilibration.dcd",  
+    data_dir / "step5_equilibration.dcd",
     data_dir / "step6_equilibration.dcd",
     data_dir / "step7_production.dcd",
 ]
@@ -26,12 +26,12 @@ analyzer = TrajectoryAnalyzer(
     file_times={
         "step1_equilibration.dcd": 0.1,  # 100 ps
         "step2_equilibration.dcd": 0.1,  # 100 ps
-        "step3_equilibration.dcd": 0.1,   # 100 ps
+        "step3_equilibration.dcd": 0.1,  # 100 ps
         "step4_equilibration.dcd": 0.1,  # 100 ps
         "step5_equilibration.dcd": 0.1,  # 100 ps
         "step6_equilibration.dcd": 0.1,  # 100 ps
-        "step7_production.dcd": 0.1      # 100 ps
-    }
+        "step7_production.dcd": 0.1,  # 100 ps
+    },
 )
 # Calculate and plot radius of gyration of a selection
 analyzer.plot_radius_of_gyration(

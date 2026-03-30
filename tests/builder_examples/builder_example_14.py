@@ -12,7 +12,7 @@ success, message, job_dir = builder.prepare_system(
     output_folder_name="high_salt",
     salt_concentration=2.0,  # 2000 mM (high salt)
     cation="Na+",
-    anion="Cl-"
+    anion="Cl-",
 )
 
 if success:

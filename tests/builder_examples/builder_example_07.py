@@ -10,7 +10,7 @@ valid, msg = builder.validate_system_inputs(
     lipid_ratios="7:3//7:3",
     water_model="tip3p",
     protein_ff="ff14SB",
-    lipid_ff="lipid21"
+    lipid_ff="lipid21",
 )
 
 if valid:

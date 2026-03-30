@@ -18,7 +18,7 @@ ATOM     10  CA  ALA B   1      12.000   2.000   3.000  1.00  0.00           C
 END
 """
 
-with tempfile.NamedTemporaryFile(suffix='.pdb', mode='w', delete=False) as f:
+with tempfile.NamedTemporaryFile(suffix=".pdb", mode="w", delete=False) as f:
     f.write(pdb_content)
     tmp_path = f.name
 
@@ -27,7 +27,7 @@ try:
     chains = viewer.get_chains()
     print(f"Chains: {chains}")
 
-    residues = viewer.get_residues(chain_id='A')
+    residues = viewer.get_residues(chain_id="A")
     print(f"Chain A residues: {len(residues)}")
     for r in residues:
         print(f"  {r['name']} {r['seq_id']} ({r['n_atoms']} atoms, SS: {r['ss']})")

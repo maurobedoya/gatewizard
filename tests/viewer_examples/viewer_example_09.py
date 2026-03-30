@@ -13,17 +13,17 @@ HETATM    5  O   HOH A 100      20.000  20.000  20.000  1.00  0.00           O
 END
 """
 
-with tempfile.NamedTemporaryFile(suffix='.pdb', mode='w', delete=False) as f:
+with tempfile.NamedTemporaryFile(suffix=".pdb", mode="w", delete=False) as f:
     f.write(pdb_content)
     tmp_path = f.name
 
-out_path = tmp_path + '_out.pdb'
+out_path = tmp_path + "_out.pdb"
 
 try:
     viewer.load_structure(tmp_path)
 
     # Delete water atoms
-    water_idx = viewer.select_by_criteria('Water')
+    water_idx = viewer.select_by_criteria("Water")
     print(f"Deleting {len(water_idx)} water atoms")
     removed = viewer.delete_atoms(water_idx)
     print(f"Removed {removed} atoms")

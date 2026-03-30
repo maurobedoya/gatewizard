@@ -17,16 +17,18 @@ stats = analyzer.apply_protonation_states(
     input_pdb="protein.pdb",
     output_pdb="output/protein_ph7.pdb",
     ph=7.4,
-    residues=residues
+    residues=residues,
 )
-print(f"✓ Protonation: {stats['residue_changes']} residues, "
-      f"{stats['record_changes']} PDB records changed")
+print(
+    f"✓ Protonation: {stats['residue_changes']} residues, "
+    f"{stats['record_changes']} PDB records changed"
+)
 
 # Step 4: Apply disulfide bonds
 num_bonds = analyzer.apply_disulfide_bonds(
     input_pdb="output/protein_ph7.pdb",
     output_pdb="output/protein_ph7_ss.pdb",
     disulfide_bonds=bonds,
-    auto_detect=False
+    auto_detect=False,
 )
 print(f"✓ Applied {num_bonds} disulfide bonds (CYS → CYX)")

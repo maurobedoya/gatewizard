@@ -23,7 +23,7 @@ ATOM     10  CA  GLY B   1       7.000   4.200   0.300  1.00  0.00           C
 END
 """
 
-with tempfile.NamedTemporaryFile(suffix='.pdb', mode='w', delete=False) as f:
+with tempfile.NamedTemporaryFile(suffix=".pdb", mode="w", delete=False) as f:
     f.write(pdb_content)
     tmp_path = f.name
 
@@ -33,45 +33,51 @@ try:
 
     # Primary: chain A backbone → align to Z-axis
     # Secondary: chain B atoms → align to X-axis
-    chainA = [i for i, a in enumerate(atoms) if a.chain_id == 'A']
-    chainB = [i for i, a in enumerate(atoms) if a.chain_id == 'B']
+    chainA = [i for i, a in enumerate(atoms) if a.chain_id == "A"]
+    chainB = [i for i, a in enumerate(atoms) if a.chain_id == "B"]
 
     print("Before alignment:")
     coordsA = np.array([atoms[i].coord for i in chainA])
     coordsB = np.array([atoms[i].coord for i in chainB])
     spansA = coordsA.max(axis=0) - coordsA.min(axis=0)
     print(f"  Chain A spans: X={spansA[0]:.1f}, Y={spansA[1]:.1f}, Z={spansA[2]:.1f}")
-    print(f"  Chain B centroid: ({coordsB.mean(0)[0]:.1f}, "
-          f"{coordsB.mean(0)[1]:.1f}, {coordsB.mean(0)[2]:.1f})")
+    print(
+        f"  Chain B centroid: ({coordsB.mean(0)[0]:.1f}, "
+        f"{coordsB.mean(0)[1]:.1f}, {coordsB.mean(0)[2]:.1f})"
+    )
 
     # Align with primary + secondary axes
     n = viewer.align_to_axis(
         primary_indices=chainA,
-        target_axis='z',
+        target_axis="z",
         secondary_indices=chainB,
-        secondary_axis='x',
+        secondary_axis="x",
     )
 
     print(f"\nAligned {n} atoms (primary → Z, secondary → X):")
     coordsA2 = np.array([atoms[i].coord for i in chainA])
     coordsB2 = np.array([atoms[i].coord for i in chainB])
     spansA2 = coordsA2.max(axis=0) - coordsA2.min(axis=0)
-    print(f"  Chain A spans: X={spansA2[0]:.2f}, Y={spansA2[1]:.2f}, Z={spansA2[2]:.2f}")
-    print(f"  Chain B centroid: ({coordsB2.mean(0)[0]:.2f}, "
-          f"{coordsB2.mean(0)[1]:.2f}, {coordsB2.mean(0)[2]:.2f})")
+    print(
+        f"  Chain A spans: X={spansA2[0]:.2f}, Y={spansA2[1]:.2f}, Z={spansA2[2]:.2f}"
+    )
+    print(
+        f"  Chain B centroid: ({coordsB2.mean(0)[0]:.2f}, "
+        f"{coordsB2.mean(0)[1]:.2f}, {coordsB2.mean(0)[2]:.2f})"
+    )
     print(f"  Chain A now mostly along Z (Z span >> X, Y).")
     print(f"  Chain B centroid now has largest offset along X.")
 
     # --- Align only chain A, keep chain B fixed ---
     viewer.load_structure(tmp_path)
     atoms = viewer.structure.atoms
-    chainA = [i for i, a in enumerate(atoms) if a.chain_id == 'A']
-    chainB_fixed = [i for i, a in enumerate(atoms) if a.chain_id == 'B']
+    chainA = [i for i, a in enumerate(atoms) if a.chain_id == "A"]
+    chainB_fixed = [i for i, a in enumerate(atoms) if a.chain_id == "B"]
     coordsB_before = np.array([atoms[i].coord.copy() for i in chainB_fixed])
 
     n = viewer.align_to_axis(
         primary_indices=chainA,
-        target_axis='z',
+        target_axis="z",
         apply_to=chainA,  # only move chain A
     )
     coordsB_after = np.array([atoms[i].coord for i in chainB_fixed])

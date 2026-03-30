@@ -19,10 +19,10 @@ HETATM   11  C2  LIG B   1      31.000  30.000  30.000  1.00  0.00           C
 END
 """
 
-with tempfile.NamedTemporaryFile(suffix='.pdb', mode='w', delete=False) as f:
+with tempfile.NamedTemporaryFile(suffix=".pdb", mode="w", delete=False) as f:
     f.write(pdb_content)
     tmp_path = f.name
-out_path = tmp_path + '_edited.pdb'
+out_path = tmp_path + "_edited.pdb"
 
 try:
     # 1. Load
@@ -36,11 +36,11 @@ try:
         print(f"  Detected: {s.name} ({len(s.atom_indices)} atoms)")
 
     # 3. Edit: rename chain A -> X, renumber residues
-    viewer.rename_chain('A', 'X')
-    viewer.renumber_residues('X', 50, 51, new_start=1)
+    viewer.rename_chain("A", "X")
+    viewer.renumber_residues("X", 50, 51, new_start=1)
 
     # 4. Delete water
-    water = viewer.select_by_criteria('Water')
+    water = viewer.select_by_criteria("Water")
     viewer.delete_atoms(water)
 
     # 5. Save
@@ -51,7 +51,7 @@ try:
     viewer2 = MolecularViewer()
     info2 = viewer2.load_structure(out_path)
     print(f"Verified: {info2['n_atoms']} atoms, chains: {viewer2.get_chains()}")
-    residues = viewer2.get_residues('X')
+    residues = viewer2.get_residues("X")
     for r in residues:
         print(f"  {r['name']} {r['seq_id']}")
 finally:

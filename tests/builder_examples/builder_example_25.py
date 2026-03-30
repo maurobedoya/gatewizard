@@ -34,7 +34,7 @@ ligand_results = parametrize_all_ligands(
     output_dir=f"{working_dir}/ligand_params",
     charges={"AAA": 0, "BBB": 0},
     charge_method="bcc",
-    atom_type="gaff2",    # GAFF2 atom types
+    atom_type="gaff2",  # GAFF2 atom types
 )
 print(f"  Parametrized: {list(ligand_results.keys())}")
 
@@ -68,10 +68,10 @@ success_a, message_a, job_dir_a = builder.prepare_system(
     lower_lipids=["POPC"],
     lipid_ratios="1//1",
     output_folder_name="membrane_2MVJ_wait",
-    wait=True,                # ← block until done or error
-    wait_timeout=10,          # short timeout for demo (use 3600+ for real runs)
-    wait_poll_interval=2,     # check every 2 s
-    wait_verbose=True,        # print elapsed time
+    wait=True,  # ← block until done or error
+    wait_timeout=10,  # short timeout for demo (use 3600+ for real runs)
+    wait_poll_interval=2,  # check every 2 s
+    wait_verbose=True,  # print elapsed time
 )
 print(f"Result : {success_a}")
 print(f"Message: {message_a}")
@@ -95,7 +95,7 @@ if success_b and job_dir_b is not None:
     completed, wait_msg = builder.wait_for_completion(
         job_dir_b,
         poll_interval=2,
-        timeout=10,          # short timeout for demo
+        timeout=10,  # short timeout for demo
         verbose=True,
     )
     print(f"Completed: {completed}")

@@ -11,5 +11,5 @@ builder.set_configuration(
     cation="Na+",
     anion="Cl-",
     dist_wat=20.0,  # Larger water layer
-    preoriented=True
+    preoriented=True,
 )

@@ -31,10 +31,16 @@ import importlib.util
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from gatewizard.core.viewer import (
-    MolecularViewer, ProteinStructure, Atom, Residue, Selection,
-    parse_pdb, ViewerError, AA_NAMES, BACKBONE_NAMES,
+    MolecularViewer,
+    ProteinStructure,
+    Atom,
+    Residue,
+    Selection,
+    parse_pdb,
+    ViewerError,
+    AA_NAMES,
+    BACKBONE_NAMES,
 )
-
 
 MINI_PDB = """\
 HEADER    TEST PROTEIN
@@ -71,6 +77,7 @@ def viewer(mini_pdb):
 # SECTION 1: CORE VIEWER API TESTS
 # ============================================================================
 
+
 class TestMolecularViewer:
     """Test the MolecularViewer class core functionality."""
 
@@ -81,10 +88,10 @@ class TestMolecularViewer:
     def test_load_structure(self, mini_pdb):
         v = MolecularViewer()
         info = v.load_structure(mini_pdb)
-        assert info['n_atoms'] == 11
-        assert info['n_residues'] > 0
-        assert info['n_chains'] > 0
-        assert info['n_bonds'] >= 0
+        assert info["n_atoms"] == 11
+        assert info["n_residues"] > 0
+        assert info["n_chains"] > 0
+        assert info["n_bonds"] >= 0
 
     def test_load_nonexistent(self):
         v = MolecularViewer()
@@ -93,15 +100,15 @@ class TestMolecularViewer:
 
     def test_get_chains(self, viewer):
         chains = viewer.get_chains()
-        assert 'A' in chains
-        assert 'B' in chains
+        assert "A" in chains
+        assert "B" in chains
 
     def test_get_residues(self, viewer):
-        residues_a = viewer.get_residues(chain_id='A')
+        residues_a = viewer.get_residues(chain_id="A")
         assert len(residues_a) >= 2
-        names = [r['name'] for r in residues_a]
-        assert 'ALA' in names
-        assert 'GLY' in names
+        names = [r["name"] for r in residues_a]
+        assert "ALA" in names
+        assert "GLY" in names
 
     def test_get_residues_all(self, viewer):
         all_res = viewer.get_residues()
@@ -112,72 +119,72 @@ class TestMolecularViewer:
         assert isinstance(ss, dict)
 
     def test_select_by_criteria_all(self, viewer):
-        idx = viewer.select_by_criteria('All')
+        idx = viewer.select_by_criteria("All")
         assert len(idx) == 11
 
     def test_select_by_criteria_protein(self, viewer):
-        idx = viewer.select_by_criteria('Protein')
+        idx = viewer.select_by_criteria("Protein")
         for i in idx:
             assert viewer.structure.atoms[i].res_name in AA_NAMES
 
     def test_select_by_criteria_backbone(self, viewer):
-        idx = viewer.select_by_criteria('Backbone')
+        idx = viewer.select_by_criteria("Backbone")
         for i in idx:
             a = viewer.structure.atoms[i]
             assert a.res_name in AA_NAMES
             assert a.name in BACKBONE_NAMES
 
     def test_select_by_criteria_water(self, viewer):
-        idx = viewer.select_by_criteria('Water')
+        idx = viewer.select_by_criteria("Water")
         assert len(idx) >= 1
         for i in idx:
-            assert viewer.structure.atoms[i].res_name in ('HOH', 'WAT', 'TIP')
+            assert viewer.structure.atoms[i].res_name in ("HOH", "WAT", "TIP")
 
     def test_select_by_criteria_ligand(self, viewer):
-        idx = viewer.select_by_criteria('Ligand')
+        idx = viewer.select_by_criteria("Ligand")
         assert len(idx) >= 1
 
     def test_select_by_criteria_chain(self, viewer):
-        idx = viewer.select_by_criteria('Chain...', 'A')
+        idx = viewer.select_by_criteria("Chain...", "A")
         for i in idx:
-            assert viewer.structure.atoms[i].chain_id == 'A'
+            assert viewer.structure.atoms[i].chain_id == "A"
 
     def test_select_by_criteria_range(self, viewer):
-        idx = viewer.select_by_criteria('Residue range...', 'A:1-2')
+        idx = viewer.select_by_criteria("Residue range...", "A:1-2")
         for i in idx:
             a = viewer.structure.atoms[i]
-            assert a.chain_id == 'A'
+            assert a.chain_id == "A"
             assert 1 <= a.res_id <= 2
 
     def test_auto_detect_molecules(self, viewer):
         sels = viewer.auto_detect_molecules()
         assert len(sels) >= 1
         names = [s.name for s in sels]
-        assert 'Protein' in names
+        assert "Protein" in names
 
     def test_rename_chain(self, viewer):
-        count = viewer.rename_chain('A', 'X')
+        count = viewer.rename_chain("A", "X")
         assert count > 0
         chains = viewer.get_chains()
-        assert 'X' in chains
-        assert 'A' not in chains
+        assert "X" in chains
+        assert "A" not in chains
 
     def test_rename_residues(self, viewer):
-        count = viewer.rename_residues('A', 1, 1, 'MET')
+        count = viewer.rename_residues("A", 1, 1, "MET")
         assert count > 0
-        res = viewer.get_residues('A')
-        met = [r for r in res if r['name'] == 'MET']
+        res = viewer.get_residues("A")
+        met = [r for r in res if r["name"] == "MET"]
         assert len(met) > 0
 
     def test_renumber_residues(self, viewer):
-        count = viewer.renumber_residues('A', 1, 2, new_start=100)
+        count = viewer.renumber_residues("A", 1, 2, new_start=100)
         assert count > 0
-        res = viewer.get_residues('A')
-        seq_ids = [r['seq_id'] for r in res]
+        res = viewer.get_residues("A")
+        seq_ids = [r["seq_id"] for r in res]
         assert 100 in seq_ids
 
     def test_delete_atoms(self, viewer):
-        water = viewer.select_by_criteria('Water')
+        water = viewer.select_by_criteria("Water")
         n_before = len(viewer.structure.atoms)
         removed = viewer.delete_atoms(water)
         assert removed == len(water)
@@ -199,21 +206,23 @@ class TestMolecularViewer:
 # SECTION 2: DATA MODEL TESTS
 # ============================================================================
 
+
 class TestDataModel:
     """Test data model classes."""
 
     def test_atom_creation(self):
         import numpy as np
-        a = Atom(1, 'CA', 'C', (1.0, 2.0, 3.0), 'ALA', 1, 'A')
-        assert a.name == 'CA'
-        assert a.element == 'C'
+
+        a = Atom(1, "CA", "C", (1.0, 2.0, 3.0), "ALA", 1, "A")
+        assert a.name == "CA"
+        assert a.element == "C"
         assert np.allclose(a.coord, (1.0, 2.0, 3.0))
 
     def test_residue_creation(self):
-        r = Residue('ALA', 1, 'A')
-        assert r.name == 'ALA'
+        r = Residue("ALA", 1, "A")
+        assert r.name == "ALA"
         assert r.seq_id == 1
-        a = Atom(1, 'CA', 'C', (1.0, 2.0, 3.0), 'ALA', 1, 'A')
+        a = Atom(1, "CA", "C", (1.0, 2.0, 3.0), "ALA", 1, "A")
         r.add_atom(a)
         assert len(r.atoms) == 1
 
@@ -228,7 +237,7 @@ class TestDataModel:
         assert s.name == "Test"
         assert len(s.atom_indices) == 3
         assert s.visible is True
-        assert s.representation == 'ball_stick'
+        assert s.representation == "ball_stick"
 
     def test_parse_pdb(self, mini_pdb):
         struct = parse_pdb(mini_pdb)
@@ -253,6 +262,7 @@ class TestDataModel:
 # SECTION 3: MDAnalysis SELECTION TESTS
 # ============================================================================
 
+
 class TestMDASelection:
     """Test MDAnalysis expression resolution used by the Visualize frame."""
 
@@ -263,70 +273,79 @@ class TestMDASelection:
     def test_resolve_mda_import(self):
         """_resolve_mda_expression is importable."""
         from gatewizard.gui.frames.visualize import _resolve_mda_expression
+
         assert callable(_resolve_mda_expression)
 
     def test_resolve_mda_empty_expression(self, structure):
         """Empty expression returns empty list."""
         from gatewizard.gui.frames.visualize import _resolve_mda_expression
-        assert _resolve_mda_expression(structure, '') == []
+
+        assert _resolve_mda_expression(structure, "") == []
 
     @pytest.mark.skipif(
-        not importlib.util.find_spec("MDAnalysis"),
-        reason="MDAnalysis not installed")
+        not importlib.util.find_spec("MDAnalysis"), reason="MDAnalysis not installed"
+    )
     def test_resolve_mda_all(self, structure):
         """'all' selects all atoms."""
         from gatewizard.gui.frames.visualize import _resolve_mda_expression
-        indices = _resolve_mda_expression(structure, 'all')
+
+        indices = _resolve_mda_expression(structure, "all")
         assert len(indices) == len(structure.atoms)
 
     @pytest.mark.skipif(
-        not importlib.util.find_spec("MDAnalysis"),
-        reason="MDAnalysis not installed")
+        not importlib.util.find_spec("MDAnalysis"), reason="MDAnalysis not installed"
+    )
     def test_resolve_mda_protein(self, structure):
         """'protein' selects protein atoms."""
         from gatewizard.gui.frames.visualize import _resolve_mda_expression
-        indices = _resolve_mda_expression(structure, 'protein')
+
+        indices = _resolve_mda_expression(structure, "protein")
         assert len(indices) > 0
         for i in indices:
             assert structure.atoms[i].res_name in AA_NAMES
 
     @pytest.mark.skipif(
-        not importlib.util.find_spec("MDAnalysis"),
-        reason="MDAnalysis not installed")
+        not importlib.util.find_spec("MDAnalysis"), reason="MDAnalysis not installed"
+    )
     def test_resolve_mda_name_ca(self, structure):
         """'name CA' selects alpha carbons."""
         from gatewizard.gui.frames.visualize import _resolve_mda_expression
-        indices = _resolve_mda_expression(structure, 'name CA')
+
+        indices = _resolve_mda_expression(structure, "name CA")
         assert len(indices) > 0
         for i in indices:
-            assert structure.atoms[i].name == 'CA'
+            assert structure.atoms[i].name == "CA"
 
     @pytest.mark.skipif(
-        not importlib.util.find_spec("MDAnalysis"),
-        reason="MDAnalysis not installed")
+        not importlib.util.find_spec("MDAnalysis"), reason="MDAnalysis not installed"
+    )
     def test_resolve_mda_water(self, structure):
         """'resname HOH' selects water."""
         from gatewizard.gui.frames.visualize import _resolve_mda_expression
-        indices = _resolve_mda_expression(structure, 'resname HOH')
+
+        indices = _resolve_mda_expression(structure, "resname HOH")
         assert len(indices) >= 1
         for i in indices:
-            assert structure.atoms[i].res_name == 'HOH'
+            assert structure.atoms[i].res_name == "HOH"
 
     def test_show_selection_help_importable(self):
         """_show_selection_help is importable."""
         from gatewizard.gui.frames.visualize import _show_selection_help
+
         assert callable(_show_selection_help)
 
     def test_selection_criteria_includes_mda(self):
         """SELECTION_CRITERIA contains MDAnalysis option."""
         from gatewizard.gui.frames.visualize import SELECTION_CRITERIA
-        assert 'MDAnalysis expression...' in SELECTION_CRITERIA
+
+        assert "MDAnalysis expression..." in SELECTION_CRITERIA
 
     def test_resolve_sel_criteria_mda(self, structure):
         """_resolve_sel_criteria handles MDAnalysis expression (fallback)."""
         from gatewizard.gui.frames.visualize import _resolve_mda_expression
+
         # Without MDAnalysis installed, should return [] or a list
-        result = _resolve_mda_expression(structure, 'invalid^^^', parent=None)
+        result = _resolve_mda_expression(structure, "invalid^^^", parent=None)
         # Either MDAnalysis is not installed (returns []) or parsing fails ([])
         assert isinstance(result, list)
 
@@ -334,6 +353,7 @@ class TestMDASelection:
 # ============================================================================
 # SECTION 4: EXAMPLE TESTS
 # ============================================================================
+
 
 class TestViewerExamples:
     """Test viewer examples from viewer_examples directory."""
@@ -367,8 +387,7 @@ class TestViewerExamples:
             example_num = example_file.stem.split("_")[-1]
 
             spec = importlib.util.spec_from_file_location(
-                f"viewer_example_{example_num}",
-                example_file
+                f"viewer_example_{example_num}", example_file
             )
 
             if spec is None or spec.loader is None:
@@ -387,8 +406,10 @@ class TestViewerExamples:
                 print(f"  Example {example_num} failed: {error_msg}")
                 failed_examples.append((example_num, error_msg))
 
-        print(f"\nSummary: {len(passed_examples)} passed, "
-              f"{len(failed_examples)} failed")
+        print(
+            f"\nSummary: {len(passed_examples)} passed, "
+            f"{len(failed_examples)} failed"
+        )
 
         if failed_examples:
             for num, error in failed_examples:
@@ -405,8 +426,7 @@ class TestViewerExamples:
             pytest.skip(f"Example {example_num} not found")
 
         spec = importlib.util.spec_from_file_location(
-            f"viewer_example_{example_num}",
-            example_file
+            f"viewer_example_{example_num}", example_file
         )
 
         if spec is None or spec.loader is None:
@@ -417,8 +437,7 @@ class TestViewerExamples:
         try:
             spec.loader.exec_module(module)
         except Exception as e:
-            pytest.fail(
-                f"Example {example_num} failed: {type(e).__name__}: {str(e)}")
+            pytest.fail(f"Example {example_num} failed: {type(e).__name__}: {str(e)}")
 
 
 # ============================================================================
@@ -454,8 +473,7 @@ if __name__ == "__main__":
         print(f"{'=' * 60}")
 
         spec = importlib.util.spec_from_file_location(
-            f"viewer_example_{example_num}",
-            example_file
+            f"viewer_example_{example_num}", example_file
         )
 
         if spec is None or spec.loader is None:
@@ -473,8 +491,10 @@ if __name__ == "__main__":
             failed.append(example_num)
 
     print(f"\n{'=' * 60}")
-    print(f"Results: {len(passed)} passed, {len(failed)} failed "
-          f"out of {len(example_files)}")
+    print(
+        f"Results: {len(passed)} passed, {len(failed)} failed "
+        f"out of {len(example_files)}"
+    )
     print(f"{'=' * 60}")
 
     if failed:

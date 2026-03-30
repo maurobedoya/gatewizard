@@ -12,7 +12,7 @@ from gatewizard.gui.frames.analysis import AnalysisFrame
 
 __all__ = [
     "VisualizeFrame",
-    "PreparationFrame", 
+    "PreparationFrame",
     "BuilderFrame",
     "EquilibrationFrame",
     "AnalysisFrame",

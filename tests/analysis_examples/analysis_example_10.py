@@ -25,9 +25,9 @@ analyzer = TrajectoryAnalyzer(
     file_times={
         "step1_equilibration.dcd": 0.1,  # 100 ps
         "step2_equilibration.dcd": 0.1,  # 100 ps
-        "step3_equilibration.dcd": 0.1,   # 100 ps
+        "step3_equilibration.dcd": 0.1,  # 100 ps
         "step4_equilibration.dcd": 0.1,  # 100 ps
-    }
+    },
 )
 
 # RMSD plot with full dark theme customization
@@ -37,12 +37,12 @@ analyzer.plot_rmsd(
     align=True,
     distance_units="Å",
     time_units="ps",
-    line_color="#00d9ff",        # Bright cyan
+    line_color="#00d9ff",  # Bright cyan
     line_width=2.0,
     line_style="-",
-    bg_color="#1a1a2e",          # Dark blue-black
-    fig_bg_color="#16213e",      # Darker border
-    text_color="#eee",           # Light gray
+    bg_color="#1a1a2e",  # Dark blue-black
+    fig_bg_color="#16213e",  # Darker border
+    text_color="#eee",  # Light gray
     show_grid=True,
     xlim=None,
     ylim=None,
@@ -67,7 +67,7 @@ analyzer.plot_rmsd(
     save="dark_theme_rmsd_example_10.png",
     show=False,
     figsize=(12, 7),
-    dpi=300
+    dpi=300,
 )
 
 print(f"Dark theme RMSD plot saved: dark_theme_rmsd_example_10.png")
@@ -81,30 +81,30 @@ analyzer.plot_rmsd(
     align=True,
     distance_units="Å",
     time_units="ps",
-    line_color="#7fff00",        # Chartreuse
+    line_color="#7fff00",  # Chartreuse
     line_width=1.8,
     line_style="-",
-    bg_color="#0d1117",          # GitHub dark
+    bg_color="#0d1117",  # GitHub dark
     fig_bg_color="#010409",
     text_color="#c9d1d9",
     show_grid=True,
     title="Dark Theme RMSD - With Threshold and Reference Lines",
     xlabel="Time (ps)",
     ylabel="RMSD (Å)",
-    highlight_threshold=0.25,     # Highlight regions > 0.25 Å
-    highlight_color="#ff6b6b",   # Red highlight
+    highlight_threshold=0.25,  # Highlight regions > 0.25 Å
+    highlight_color="#ff6b6b",  # Red highlight
     highlight_alpha=0.5,
     show_convergence=True,
     convergence_color="#ffd700",  # Gold
     convergence_style="-.",
     convergence_width=1.5,
-    hlines=[0.1, 0.2, 0.25],      # Horizontal reference lines
+    hlines=[0.1, 0.2, 0.25],  # Horizontal reference lines
     hline_colors=["#4ecdc4", "#95e1d3", "#ff6b6b"],  # Teal to red gradient
     hline_styles=[":", ":", ":"],
     hline_widths=[1.0, 1.0, 1.0],
     save="dark_theme_rmsd_with_lines_example_10.png",
     figsize=(12, 7),
-    dpi=300
+    dpi=300,
 )
 
 print(f"Dark theme RMSD with lines saved: dark_theme_rmsd_with_lines_example_10.png")
@@ -118,18 +118,18 @@ analyzer.plot_rmsd(
     align=True,
     distance_units="Å",
     time_units="ps",
-    line_color="#ffffff",        # Pure white line
+    line_color="#ffffff",  # Pure white line
     line_width=1.5,
     line_style="-",
-    bg_color="#000000",          # Pure black
+    bg_color="#000000",  # Pure black
     fig_bg_color="#000000",
     text_color="#ffffff",
-    show_grid=False,             # No grid for minimal look
-    title="",                    # No title
-    show_convergence=False,      # No convergence line
+    show_grid=False,  # No grid for minimal look
+    title="",  # No title
+    show_convergence=False,  # No convergence line
     save="dark_theme_rmsd_minimal_example_10.png",
     figsize=(10, 6),
-    dpi=300
+    dpi=300,
 )
 
 print(f"Dark theme RMSD minimal saved: dark_theme_rmsd_minimal_example_10.png")

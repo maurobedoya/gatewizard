@@ -25,6 +25,7 @@ from gatewizard.core.viewer import MolecularViewer
 # GUI imports (optional, only if GUI dependencies are available)
 try:
     from gatewizard.gui.app import ProteinViewerApp
+
     GUI_AVAILABLE = True
 except ImportError:
     GUI_AVAILABLE = False
@@ -36,7 +37,7 @@ __all__ = [
     "__email__",
     "__license__",
     "run_propka",
-    "extract_summary_section", 
+    "extract_summary_section",
     "parse_summary_section",
     "modify_pdb_based_on_summary",
     "Builder",

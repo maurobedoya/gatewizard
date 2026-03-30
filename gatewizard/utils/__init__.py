@@ -27,7 +27,7 @@ from gatewizard.utils.optional_deps import (
 
 __all__ = [
     "setup_logger",
-    "get_logger", 
+    "get_logger",
     "Config",
     "load_config",
     "save_config",

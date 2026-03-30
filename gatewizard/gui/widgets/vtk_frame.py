@@ -18,17 +18,23 @@ import numpy as np
 
 try:
     from vtkmodules.vtkRenderingCore import (
-        vtkRenderer, vtkRenderWindow, vtkActor,
+        vtkRenderer,
+        vtkRenderWindow,
+        vtkActor,
         vtkWindowToImageFilter,
     )
-    from vtkmodules.vtkRenderingOpenGL2 import vtkOpenGLRenderer  # noqa: force GL backend
+    from vtkmodules.vtkRenderingOpenGL2 import (
+        vtkOpenGLRenderer,
+    )  # noqa: force GL backend
     from vtkmodules.util.numpy_support import vtk_to_numpy
+
     VTK_AVAILABLE = True
 except ImportError:
     VTK_AVAILABLE = False
 
 try:
     from PIL import Image, ImageTk
+
     PIL_AVAILABLE = True
 except ImportError:
     PIL_AVAILABLE = False
@@ -38,7 +44,7 @@ class VTKFrame(tk.Frame):
     """Renders a VTK scene offscreen and blits it to a tkinter Canvas."""
 
     def __init__(self, master, width: int = 900, height: int = 700, **kw):
-        super().__init__(master, bg='#212121', **kw)
+        super().__init__(master, bg="#212121", **kw)
         self._vw = width
         self._vh = height
 
@@ -73,7 +79,7 @@ class VTKFrame(tk.Frame):
         self.render_window.AddRenderer(self._axes_renderer)
         self.render_window.AddRenderer(self._label_renderer)
         self._axes_actor = None  # vtkAxesActor when visible
-        self._axes_mode = None   # None, 'corner', 'center', 'origin'
+        self._axes_mode = None  # None, 'corner', 'center', 'origin'
 
         self.w2i = vtkWindowToImageFilter()
         self.w2i.SetInput(self.render_window)
@@ -85,8 +91,9 @@ class VTKFrame(tk.Frame):
 
         self.fog_density: float = 0.0
 
-        self.canvas = tk.Canvas(self, width=width, height=height,
-                                bg='#212121', highlightthickness=0)
+        self.canvas = tk.Canvas(
+            self, width=width, height=height, bg="#212121", highlightthickness=0
+        )
         self.canvas.pack(fill="both", expand=True)
 
         self._last_x = 0
@@ -123,9 +130,9 @@ class VTKFrame(tk.Frame):
     def clear_actors(self):
         self.renderer.RemoveAllViewProps()
         # Re-add persistent overlays (axes in center/origin, ref-lines)
-        if self._axes_mode in ('center', 'origin') and self._axes_actor:
+        if self._axes_mode in ("center", "origin") and self._axes_actor:
             self.renderer.AddActor(self._axes_actor)
-        for a in getattr(self, '_ref_line_actors', []):
+        for a in getattr(self, "_ref_line_actors", []):
             self.renderer.AddActor(a)
 
     def lock_camera(self):
@@ -152,7 +159,7 @@ class VTKFrame(tk.Frame):
 
         # Clean up old actor
         if self._axes_actor:
-            if self._axes_mode == 'corner':
+            if self._axes_mode == "corner":
                 self._axes_renderer.RemoveActor(self._axes_actor)
             else:
                 self.renderer.RemoveActor(self._axes_actor)
@@ -164,13 +171,15 @@ class VTKFrame(tk.Frame):
         ax = vtkAxesActor()
         ax.SetShaftTypeToCylinder()
         ax.SetTipTypeToCone()
-        ax.SetConeResolution(50)       # smooth cone tips
-        ax.SetCylinderResolution(20)   # smooth cylinder shafts
+        ax.SetConeResolution(50)  # smooth cone tips
+        ax.SetCylinderResolution(20)  # smooth cylinder shafts
 
         def _configure_labels(ax, font_size):
-            for getter in (ax.GetXAxisCaptionActor2D,
-                           ax.GetYAxisCaptionActor2D,
-                           ax.GetZAxisCaptionActor2D):
+            for getter in (
+                ax.GetXAxisCaptionActor2D,
+                ax.GetYAxisCaptionActor2D,
+                ax.GetZAxisCaptionActor2D,
+            ):
                 cap = getter()
                 tp = cap.GetCaptionTextProperty()
                 tp.SetFontSize(font_size)
@@ -180,7 +189,7 @@ class VTKFrame(tk.Frame):
                 # Fixed screen-size text, not scaled by distance
                 cap.SetVisibility(1)
 
-        if mode == 'corner':
+        if mode == "corner":
             ax.SetTotalLength(1.5, 1.5, 1.5)
             ax.SetCylinderRadius(0.08)
             ax.SetConeRadius(0.40)
@@ -189,24 +198,27 @@ class VTKFrame(tk.Frame):
             self._axes_renderer.RemoveAllViewProps()
             self._axes_renderer.AddActor(ax)
             self._sync_axes_camera()
-        elif mode in ('center', 'origin'):
+        elif mode in ("center", "origin"):
             length = 8.0
             ax.SetTotalLength(length, length, length)
             ax.SetCylinderRadius(0.05)
             ax.SetConeRadius(0.40)
             ax.SetNormalizedLabelPosition(1.25, 1.25, 1.25)
             _configure_labels(ax, 10)
-            for getter in (ax.GetXAxisCaptionActor2D,
-                           ax.GetYAxisCaptionActor2D,
-                           ax.GetZAxisCaptionActor2D):
+            for getter in (
+                ax.GetXAxisCaptionActor2D,
+                ax.GetYAxisCaptionActor2D,
+                ax.GetZAxisCaptionActor2D,
+            ):
                 cap = getter()
                 cap.LeaderOff()
                 cap.SetAttachmentPoint(0, 0, 0)
                 cap.GetTextActor().SetTextScaleModeToNone()
             # Position via transform so the whole actor (shafts + labels) moves
             from vtkmodules.vtkCommonTransforms import vtkTransform
+
             t = vtkTransform()
-            if mode == 'center' and center is not None:
+            if mode == "center" and center is not None:
                 t.Translate(*center)
             else:
                 t.Translate(0, 0, 0)
@@ -217,7 +229,7 @@ class VTKFrame(tk.Frame):
 
     def _sync_axes_camera(self):
         """Copy main camera orientation to corner-axes camera."""
-        if self._axes_mode != 'corner' or not self._axes_actor:
+        if self._axes_mode != "corner" or not self._axes_actor:
             return
         main_cam = self.renderer.GetActiveCamera()
         ax_cam = self._axes_renderer.GetActiveCamera()
@@ -242,7 +254,7 @@ class VTKFrame(tk.Frame):
         from vtkmodules.vtkRenderingCore import vtkActor, vtkPolyDataMapper
 
         # Remove existing
-        if hasattr(self, '_ref_line_actors'):
+        if hasattr(self, "_ref_line_actors"):
             for a in self._ref_line_actors:
                 self.renderer.RemoveActor(a)
         self._ref_line_actors = []
@@ -300,7 +312,7 @@ class VTKFrame(tk.Frame):
         if need_fog:
             arr = self._apply_fog(arr, dims)
 
-        img = Image.fromarray(arr, 'RGB')
+        img = Image.fromarray(arr, "RGB")
         self._photo = ImageTk.PhotoImage(img)
         self.canvas.delete("all")
         self.canvas.create_image(0, 0, anchor="nw", image=self._photo)
@@ -342,13 +354,13 @@ class VTKFrame(tk.Frame):
         scalars = vtk_img.GetPointData().GetScalars()
         if transparent:
             arr = vtk_to_numpy(scalars).reshape(dims[1], dims[0], 4)
-            img = Image.fromarray(np.flipud(arr), 'RGBA')
+            img = Image.fromarray(np.flipud(arr), "RGBA")
             self.render_window.SetAlphaBitPlanes(0)
             self.renderer.SetBackgroundAlpha(1.0)
             self.renderer.SetBackground(*old_bg)
         else:
             arr = vtk_to_numpy(scalars).reshape(dims[1], dims[0], 3)
-            img = Image.fromarray(np.flipud(arr), 'RGB')
+            img = Image.fromarray(np.flipud(arr), "RGB")
         self.render_window.SetSize(*old_size)
         self.render()
         return img
@@ -364,8 +376,7 @@ class VTKFrame(tk.Frame):
         z_arr = vtk_to_numpy(z_scalars).reshape(dims[1], dims[0])
         z_arr = np.flipud(z_arr)
         bg = self.renderer.GetBackground()
-        bg_rgb = np.array([bg[0] * 255, bg[1] * 255, bg[2] * 255],
-                          dtype=np.float32)
+        bg_rgb = np.array([bg[0] * 255, bg[1] * 255, bg[2] * 255], dtype=np.float32)
         obj_mask = z_arr < 0.999
         if not np.any(obj_mask):
             return arr
@@ -406,7 +417,7 @@ class VTKFrame(tk.Frame):
         """Right-click without drag → context menu callback."""
         if self._drag_started:
             return
-        if hasattr(self, '_right_click_callback') and self._right_click_callback:
+        if hasattr(self, "_right_click_callback") and self._right_click_callback:
             self._right_click_callback(event.x, event.y, event)
 
     def _on_rotate(self, event):

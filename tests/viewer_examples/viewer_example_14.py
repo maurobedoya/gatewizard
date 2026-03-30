@@ -23,7 +23,7 @@ ATOM     12  O   ALA A   3      12.500   0.800   0.200  1.00  0.00           O
 END
 """
 
-with tempfile.NamedTemporaryFile(suffix='.pdb', mode='w', delete=False) as f:
+with tempfile.NamedTemporaryFile(suffix=".pdb", mode="w", delete=False) as f:
     f.write(pdb_content)
     tmp_path = f.name
 
@@ -42,7 +42,7 @@ try:
 
     # --- Align all atoms to Z-axis ---
     all_idx = list(range(len(atoms)))
-    n = viewer.align_to_axis(all_idx, target_axis='z')
+    n = viewer.align_to_axis(all_idx, target_axis="z")
     coords_after = np.array([a.coord for a in atoms])
     spans_after = coords_after.max(axis=0) - coords_after.min(axis=0)
     print(f"\nAligned {n} atoms to Z-axis (axis spans):")
@@ -53,8 +53,8 @@ try:
 
     # --- Align using only backbone CA atoms, transform all ---
     viewer.load_structure(tmp_path)
-    ca_idx = [i for i, a in enumerate(viewer.structure.atoms) if a.name == 'CA']
-    n = viewer.align_to_axis(ca_idx, target_axis='y')
+    ca_idx = [i for i, a in enumerate(viewer.structure.atoms) if a.name == "CA"]
+    n = viewer.align_to_axis(ca_idx, target_axis="y")
     coords_ca = np.array([a.coord for a in viewer.structure.atoms])
     spans_ca = coords_ca.max(axis=0) - coords_ca.min(axis=0)
     print(f"\nAligned CA atoms to Y-axis, transformed all {n} atoms:")

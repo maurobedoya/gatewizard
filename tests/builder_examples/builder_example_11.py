@@ -14,7 +14,7 @@ builder.set_configuration(
     # POPS is anionic (-1 charge), so 50% POPS in lower leaflet adds significant
     # negative charge requiring more cations for neutralization.
     salt_concentration=0.5,  # Increased from default 0.15 M due to anionic lipids
-    dist_wat=20.0  # Thicker water layer
+    dist_wat=20.0,  # Thicker water layer
 )
 
 # Upper leaflet: 70% POPC + 30% cholesterol
@@ -25,7 +25,7 @@ success, message, job_dir = builder.prepare_system(
     upper_lipids=["POPC", "CHL1"],
     lower_lipids=["POPE", "POPS"],
     lipid_ratios="7:3//5:5",  # Ratios normalized automatically
-    output_folder_name="asymmetric_membrane"
+    output_folder_name="asymmetric_membrane",
 )
 
 if success:

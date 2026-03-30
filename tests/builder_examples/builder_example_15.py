@@ -11,7 +11,7 @@ success, message, job_dir = builder.prepare_system(
     lipid_ratios="1//1",
     output_folder_name="no_salt",
     salt_concentration=0.0,  # Only neutralize, no extra salt
-    add_salt=True  # Still add ions for neutralization
+    add_salt=True,  # Still add ions for neutralization
 )
 
 if success:

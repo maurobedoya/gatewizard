@@ -12,6 +12,7 @@ from gatewizard.gui.widgets.collapsible_section import CollapsibleSection
 
 try:
     from gatewizard.gui.widgets.vtk_frame import VTKFrame
+
     VTK_AVAILABLE = True
 except ImportError:
     VTK_AVAILABLE = False
@@ -20,7 +21,7 @@ except ImportError:
 __all__ = [
     "StageTabsContainer",
     "LeafletFrame",
-    "SearchableComboBox", 
+    "SearchableComboBox",
     "ProgressTracker",
     "CollapsibleSection",
     "VTKFrame",

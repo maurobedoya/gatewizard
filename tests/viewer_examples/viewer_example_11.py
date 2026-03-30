@@ -91,7 +91,7 @@ ATOM    156  O   LEU A  20      -5.879   4.265 -10.593  1.00  1.00           O
 END
 """
 
-with tempfile.NamedTemporaryFile(suffix='.pdb', mode='w', delete=False) as f:
+with tempfile.NamedTemporaryFile(suffix=".pdb", mode="w", delete=False) as f:
     f.write(pdb_content)
     tmp_path = f.name
 
@@ -103,25 +103,25 @@ try:
     print(f"  {viewer.get_secondary_structure_summary()}")
 
     # Reassign using the heuristic method
-    ss = viewer.assign_secondary_structure('heuristic')
+    ss = viewer.assign_secondary_structure("heuristic")
     print(f"SS after heuristic: {ss}")
 
     # Reassign from PDB HELIX/SHEET records (none in this file)
     try:
-        ss = viewer.assign_secondary_structure('pdb_records')
+        ss = viewer.assign_secondary_structure("pdb_records")
         print(f"SS after pdb_records: {ss}")
     except ViewerError as e:
         print(f"pdb_records: {e}")
 
     # Try psique (may not be installed)
     try:
-        ss = viewer.assign_secondary_structure('psique')
+        ss = viewer.assign_secondary_structure("psique")
         print(f"SS after psique: {ss}")
     except ViewerError as e:
         print(f"psique not available: {e}")
 
     # Auto method (same priority as load)
-    ss = viewer.assign_secondary_structure('auto')
+    ss = viewer.assign_secondary_structure("auto")
     print(f"SS after auto: {ss}")
 finally:
     os.unlink(tmp_path)

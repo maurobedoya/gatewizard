@@ -15,22 +15,32 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from vtkmodules.vtkRenderingCore import (
-    vtkActor, vtkPolyDataMapper, vtkProperty
-)
+from vtkmodules.vtkRenderingCore import vtkActor, vtkPolyDataMapper, vtkProperty
 from vtkmodules.vtkFiltersSources import vtkSphereSource
 from vtkmodules.vtkFiltersCore import (
-    vtkAppendPolyData, vtkGlyph3D, vtkTubeFilter, vtkPolyDataNormals
+    vtkAppendPolyData,
+    vtkGlyph3D,
+    vtkTubeFilter,
+    vtkPolyDataNormals,
 )
 from vtkmodules.vtkCommonCore import (
-    vtkPoints, vtkFloatArray, vtkUnsignedCharArray, vtkIdList
+    vtkPoints,
+    vtkFloatArray,
+    vtkUnsignedCharArray,
+    vtkIdList,
 )
 from vtkmodules.vtkCommonDataModel import vtkPolyData, vtkCellArray, vtkLine
 
 from gatewizard.core.viewer import (
-    VDW_RADII, COVALENT_RADII, ELEMENT_COLORS, SS_COLORS,
-    CHAIN_PALETTE, HELIX_SS_TYPES, ProteinStructure,
-    RESIDUE_NATURE, RESIDUE_NATURE_COLORS,
+    VDW_RADII,
+    COVALENT_RADII,
+    ELEMENT_COLORS,
+    SS_COLORS,
+    CHAIN_PALETTE,
+    HELIX_SS_TYPES,
+    ProteinStructure,
+    RESIDUE_NATURE,
+    RESIDUE_NATURE_COLORS,
 )
 
 # Quality presets: (sphere_theta, sphere_phi, tube_sides, smooth_factor)
@@ -41,14 +51,14 @@ QUALITY_PRESETS = {
     4: (24, 24, 12, 6),
     5: (48, 48, 32, 16),
 }
-QUALITY_LABELS = ['Low', 'Medium-Low', 'Medium', 'High', 'Ultra']
+QUALITY_LABELS = ["Low", "Medium-Low", "Medium", "High", "Ultra"]
 
 MATERIAL_PRESETS = {
-    'Default': (0.1, 0.7, 0.3, 20.0),
-    'Shiny': (0.05, 0.6, 0.8, 40.0),
-    'Matte': (0.2, 0.8, 0.05, 1.0),
-    'Metallic': (0.15, 0.45, 0.7, 60.0),
-    'Plastic': (0.1, 0.6, 0.5, 30.0),
+    "Default": (0.1, 0.7, 0.3, 20.0),
+    "Shiny": (0.05, 0.6, 0.8, 40.0),
+    "Matte": (0.2, 0.8, 0.05, 1.0),
+    "Metallic": (0.15, 0.45, 0.7, 60.0),
+    "Plastic": (0.1, 0.6, 0.5, 30.0),
 }
 
 
@@ -56,50 +66,65 @@ MATERIAL_PRESETS = {
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _rgb_f(rgb):
     return (rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0)
 
 
-def _atom_color(atom, scheme='element', carbon_color=None, ss_map=None):
-    if carbon_color and atom.element == 'C':
+def _atom_color(atom, scheme="element", carbon_color=None, ss_map=None):
+    if carbon_color and atom.element == "C":
         return carbon_color
-    if scheme == 'element':
-        return ELEMENT_COLORS.get(atom.element, ELEMENT_COLORS['DEFAULT'])
-    if scheme == 'chain':
-        idx = list('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789').index(atom.chain_id) \
-            if atom.chain_id in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789' else 0
+    if scheme == "element":
+        return ELEMENT_COLORS.get(atom.element, ELEMENT_COLORS["DEFAULT"])
+    if scheme == "chain":
+        idx = (
+            list("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789").index(atom.chain_id)
+            if atom.chain_id in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+            else 0
+        )
         return CHAIN_PALETTE[idx % len(CHAIN_PALETTE)]
-    if scheme == 'residue_nature':
-        cat = RESIDUE_NATURE.get(atom.res_name, 'other')
+    if scheme == "residue_nature":
+        cat = RESIDUE_NATURE.get(atom.res_name, "other")
         return RESIDUE_NATURE_COLORS[cat]
-    if scheme == 'ss':
+    if scheme == "ss":
         if ss_map:
-            ss = ss_map.get((atom.chain_id, atom.res_id), 'C')
-            return SS_COLORS.get(ss, SS_COLORS['DEFAULT'])
-        return ELEMENT_COLORS.get(atom.element, ELEMENT_COLORS['DEFAULT'])
-    return ELEMENT_COLORS.get(atom.element, ELEMENT_COLORS['DEFAULT'])
+            ss = ss_map.get((atom.chain_id, atom.res_id), "C")
+            return SS_COLORS.get(ss, SS_COLORS["DEFAULT"])
+        return ELEMENT_COLORS.get(atom.element, ELEMENT_COLORS["DEFAULT"])
+    return ELEMENT_COLORS.get(atom.element, ELEMENT_COLORS["DEFAULT"])
 
 
-def _res_color(res, scheme='ss', ss_colors=None):
+def _res_color(res, scheme="ss", ss_colors=None):
     colors = ss_colors if ss_colors else SS_COLORS
-    if scheme == 'ss':
-        return colors.get(res.ss, colors.get('DEFAULT', SS_COLORS['DEFAULT']))
-    if scheme == 'chain':
-        idx = list('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789').index(res.chain_id) \
-            if res.chain_id in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789' else 0
+    if scheme == "ss":
+        return colors.get(res.ss, colors.get("DEFAULT", SS_COLORS["DEFAULT"]))
+    if scheme == "chain":
+        idx = (
+            list("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789").index(res.chain_id)
+            if res.chain_id in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+            else 0
+        )
         return CHAIN_PALETTE[idx % len(CHAIN_PALETTE)]
-    if scheme == 'residue_nature':
-        cat = RESIDUE_NATURE.get(res.name, 'other')
+    if scheme == "residue_nature":
+        cat = RESIDUE_NATURE.get(res.name, "other")
         return RESIDUE_NATURE_COLORS[cat]
-    return colors.get(res.ss, colors.get('DEFAULT', SS_COLORS['DEFAULT']))
+    return colors.get(res.ss, colors.get("DEFAULT", SS_COLORS["DEFAULT"]))
 
 
 # ---------------------------------------------------------------------------
 # VDW / Spacefill
 # ---------------------------------------------------------------------------
 
-def make_vdw_actor(atoms, color_scheme='element', uniform_color=None,
-                   scale=1.0, carbon_color=None, quality=3, ss_map=None):
+
+def make_vdw_actor(
+    atoms,
+    color_scheme="element",
+    uniform_color=None,
+    scale=1.0,
+    carbon_color=None,
+    quality=3,
+    ss_map=None,
+):
     if not atoms:
         return None
     qp = QUALITY_PRESETS.get(quality, QUALITY_PRESETS[3])
@@ -111,9 +136,13 @@ def make_vdw_actor(atoms, color_scheme='element', uniform_color=None,
     radii.SetName("Radii")
     for a in atoms:
         points.InsertNextPoint(*a.coord)
-        r = VDW_RADII.get(a.element, VDW_RADII['DEFAULT']) * scale
+        r = VDW_RADII.get(a.element, VDW_RADII["DEFAULT"]) * scale
         radii.InsertNextValue(r)
-        c = uniform_color if uniform_color else _atom_color(a, color_scheme, carbon_color, ss_map=ss_map)
+        c = (
+            uniform_color
+            if uniform_color
+            else _atom_color(a, color_scheme, carbon_color, ss_map=ss_map)
+        )
         colors.InsertNextTuple3(*c)
     pd = vtkPolyData()
     pd.SetPoints(points)
@@ -143,8 +172,17 @@ def make_vdw_actor(atoms, color_scheme='element', uniform_color=None,
 # Sticks (bonds as tubes)
 # ---------------------------------------------------------------------------
 
-def _make_sticks(atoms, bonds, color_scheme='element', uniform_color=None,
-                 radius=0.15, carbon_color=None, quality=3, ss_map=None):
+
+def _make_sticks(
+    atoms,
+    bonds,
+    color_scheme="element",
+    uniform_color=None,
+    radius=0.15,
+    carbon_color=None,
+    quality=3,
+    ss_map=None,
+):
     if not bonds:
         return None
     points = vtkPoints()
@@ -159,15 +197,39 @@ def _make_sticks(atoms, bonds, color_scheme='element', uniform_color=None,
             continue
         a1, a2 = atoms[ai], atoms[aj]
         mid = (a1.coord + a2.coord) / 2.0
-        c1 = uniform_color if uniform_color else _atom_color(a1, color_scheme, carbon_color, ss_map=ss_map)
-        c2 = uniform_color if uniform_color else _atom_color(a2, color_scheme, carbon_color, ss_map=ss_map)
-        p1 = pt_idx; points.InsertNextPoint(*a1.coord); colors.InsertNextTuple3(*c1); pt_idx += 1
-        p2 = pt_idx; points.InsertNextPoint(*mid);      colors.InsertNextTuple3(*c1); pt_idx += 1
-        ln = vtkLine(); ln.GetPointIds().SetId(0, p1); ln.GetPointIds().SetId(1, p2)
+        c1 = (
+            uniform_color
+            if uniform_color
+            else _atom_color(a1, color_scheme, carbon_color, ss_map=ss_map)
+        )
+        c2 = (
+            uniform_color
+            if uniform_color
+            else _atom_color(a2, color_scheme, carbon_color, ss_map=ss_map)
+        )
+        p1 = pt_idx
+        points.InsertNextPoint(*a1.coord)
+        colors.InsertNextTuple3(*c1)
+        pt_idx += 1
+        p2 = pt_idx
+        points.InsertNextPoint(*mid)
+        colors.InsertNextTuple3(*c1)
+        pt_idx += 1
+        ln = vtkLine()
+        ln.GetPointIds().SetId(0, p1)
+        ln.GetPointIds().SetId(1, p2)
         lines.InsertNextCell(ln)
-        p3 = pt_idx; points.InsertNextPoint(*mid);       colors.InsertNextTuple3(*c2); pt_idx += 1
-        p4 = pt_idx; points.InsertNextPoint(*a2.coord);  colors.InsertNextTuple3(*c2); pt_idx += 1
-        ln2 = vtkLine(); ln2.GetPointIds().SetId(0, p3); ln2.GetPointIds().SetId(1, p4)
+        p3 = pt_idx
+        points.InsertNextPoint(*mid)
+        colors.InsertNextTuple3(*c2)
+        pt_idx += 1
+        p4 = pt_idx
+        points.InsertNextPoint(*a2.coord)
+        colors.InsertNextTuple3(*c2)
+        pt_idx += 1
+        ln2 = vtkLine()
+        ln2.GetPointIds().SetId(0, p3)
+        ln2.GetPointIds().SetId(1, p4)
         lines.InsertNextCell(ln2)
     pd = vtkPolyData()
     pd.SetPoints(points)
@@ -192,19 +254,40 @@ def _make_sticks(atoms, bonds, color_scheme='element', uniform_color=None,
 # Ball & Stick
 # ---------------------------------------------------------------------------
 
-def make_ball_stick_actor(atoms, bonds, color_scheme='element',
-                          uniform_color=None, ball_scale=0.3,
-                          stick_radius=0.15, carbon_color=None, quality=3,
-                          ss_map=None):
+
+def make_ball_stick_actor(
+    atoms,
+    bonds,
+    color_scheme="element",
+    uniform_color=None,
+    ball_scale=0.3,
+    stick_radius=0.15,
+    carbon_color=None,
+    quality=3,
+    ss_map=None,
+):
     actors = []
-    ba = make_vdw_actor(atoms, color_scheme, uniform_color,
-                        scale=ball_scale, carbon_color=carbon_color, quality=quality,
-                        ss_map=ss_map)
+    ba = make_vdw_actor(
+        atoms,
+        color_scheme,
+        uniform_color,
+        scale=ball_scale,
+        carbon_color=carbon_color,
+        quality=quality,
+        ss_map=ss_map,
+    )
     if ba:
         actors.append(ba)
-    sa = _make_sticks(atoms, bonds, color_scheme, uniform_color,
-                      stick_radius, carbon_color=carbon_color, quality=quality,
-                      ss_map=ss_map)
+    sa = _make_sticks(
+        atoms,
+        bonds,
+        color_scheme,
+        uniform_color,
+        stick_radius,
+        carbon_color=carbon_color,
+        quality=quality,
+        ss_map=ss_map,
+    )
     if sa:
         actors.append(sa)
     return actors
@@ -214,13 +297,28 @@ def make_ball_stick_actor(atoms, bonds, color_scheme='element',
 # Sticks only
 # ---------------------------------------------------------------------------
 
-def make_stick_actor(atoms, bonds, color_scheme='element',
-                     uniform_color=None, radius=0.2, carbon_color=None, quality=3,
-                     ss_map=None):
+
+def make_stick_actor(
+    atoms,
+    bonds,
+    color_scheme="element",
+    uniform_color=None,
+    radius=0.2,
+    carbon_color=None,
+    quality=3,
+    ss_map=None,
+):
     actors = []
-    sa = _make_sticks(atoms, bonds, color_scheme, uniform_color,
-                      radius, carbon_color=carbon_color, quality=quality,
-                      ss_map=ss_map)
+    sa = _make_sticks(
+        atoms,
+        bonds,
+        color_scheme,
+        uniform_color,
+        radius,
+        carbon_color=carbon_color,
+        quality=quality,
+        ss_map=ss_map,
+    )
     if sa:
         actors.append(sa)
     return actors
@@ -230,9 +328,18 @@ def make_stick_actor(atoms, bonds, color_scheme='element',
 # Cartoon
 # ---------------------------------------------------------------------------
 
-def make_cartoon_actor(structure, chains=None, color_scheme='ss', uniform_color=None,
-                       helix_w=2.0, sheet_w=2.5, coil_w=0.5, quality=3,
-                       ss_colors=None):
+
+def make_cartoon_actor(
+    structure,
+    chains=None,
+    color_scheme="ss",
+    uniform_color=None,
+    helix_w=2.0,
+    sheet_w=2.5,
+    coil_w=0.5,
+    quality=3,
+    ss_colors=None,
+):
     """Cartoon: continuous flat ribbon per chain, width/color by SS."""
     actors = []
     chain_ids = chains or list(structure.chains.keys())
@@ -252,7 +359,9 @@ def make_cartoon_actor(structure, chains=None, color_scheme='ss', uniform_color=
         if nr < 2:
             continue
         chain_normals = _compute_ribbon_normals(ca_all, o_all)
-        sm_pts, sm_nms = _smooth_coords_and_normals(ca_all, chain_normals, smooth_factor)
+        sm_pts, sm_nms = _smooth_coords_and_normals(
+            ca_all, chain_normals, smooth_factor
+        )
         n_sm = len(sm_pts)
         ss_per_pt, res_per_pt = [], []
         for ri in range(nr):
@@ -276,13 +385,16 @@ def make_cartoon_actor(structure, chains=None, color_scheme='ss', uniform_color=
         for i in range(n_sm):
             ss = ss_per_pt[i]
             if ss in HELIX_SS_TYPES:
-                widths[i] = hw; thicknesses[i] = half_thick
-            elif ss == 'E':
-                widths[i] = sw; thicknesses[i] = half_thick
+                widths[i] = hw
+                thicknesses[i] = half_thick
+            elif ss == "E":
+                widths[i] = sw
+                thicknesses[i] = half_thick
             else:
-                widths[i] = cw; thicknesses[i] = cw
+                widths[i] = cw
+                thicknesses[i] = cw
         for s_s, s_e, ss in segments:
-            if ss != 'E':
+            if ss != "E":
                 continue
             seg_len = s_e - s_s + 1
             arrow_start = s_s + max(1, int(seg_len * 0.70))
@@ -310,10 +422,17 @@ def make_cartoon_actor(structure, chains=None, color_scheme='ss', uniform_color=
             if uniform_color:
                 colors_list.append(uniform_color)
             else:
-                colors_list.append(_res_color(valid_res[ri], color_scheme, ss_colors=ss_colors))
+                colors_list.append(
+                    _res_color(valid_res[ri], color_scheme, ss_colors=ss_colors)
+                )
         pd = _build_colored_ribbon_pd(
-            sm_pts, sm_nms, widths.tolist(), colors_list,
-            half_thickness=thicknesses.tolist(), cs_sides=cs_sides)
+            sm_pts,
+            sm_nms,
+            widths.tolist(),
+            colors_list,
+            half_thickness=thicknesses.tolist(),
+            cs_sides=cs_sides,
+        )
         if pd:
             actors.append(_colored_ribbon_actor(pd))
     return actors
@@ -323,9 +442,18 @@ def make_cartoon_actor(structure, chains=None, color_scheme='ss', uniform_color=
 # Tube SS
 # ---------------------------------------------------------------------------
 
-def make_tube_ss_actor(structure, chains=None, color_scheme='ss', uniform_color=None,
-                       helix_w=2.0, sheet_w=2.5, coil_w=0.5, quality=3,
-                       ss_colors=None):
+
+def make_tube_ss_actor(
+    structure,
+    chains=None,
+    color_scheme="ss",
+    uniform_color=None,
+    helix_w=2.0,
+    sheet_w=2.5,
+    coil_w=0.5,
+    quality=3,
+    ss_colors=None,
+):
     """One continuous tube per chain varying radius/color by SS type."""
     actors = []
     chain_ids = chains or list(structure.chains.keys())
@@ -362,13 +490,13 @@ def make_tube_ss_actor(structure, chains=None, color_scheme='ss', uniform_color=
             ss = ss_per_pt[i]
             if ss in HELIX_SS_TYPES:
                 radii[i] = helix_w * 0.35
-            elif ss == 'E':
+            elif ss == "E":
                 radii[i] = sheet_w * 0.30
             else:
                 radii[i] = coil_w * 0.4
         arrow_r = sheet_w * 0.50
         for s_s, s_e, ss in segments:
-            if ss != 'E':
+            if ss != "E":
                 continue
             seg_len = s_e - s_s + 1
             arrow_start = s_s + max(1, int(seg_len * 0.70))
@@ -393,8 +521,12 @@ def make_tube_ss_actor(structure, chains=None, color_scheme='ss', uniform_color=
             if uniform_color:
                 colors_list.append(uniform_color)
             else:
-                colors_list.append(_res_color(valid_res[ri], color_scheme, ss_colors=ss_colors))
-        a = _make_colored_tube_actor(sm_pts, radii.tolist(), colors_list, tube_sides=tube_sides)
+                colors_list.append(
+                    _res_color(valid_res[ri], color_scheme, ss_colors=ss_colors)
+                )
+        a = _make_colored_tube_actor(
+            sm_pts, radii.tolist(), colors_list, tube_sides=tube_sides
+        )
         if a:
             actors.append(a)
     return actors
@@ -404,8 +536,15 @@ def make_tube_ss_actor(structure, chains=None, color_scheme='ss', uniform_color=
 # Backbone
 # ---------------------------------------------------------------------------
 
-def make_backbone_actor(structure, chains=None, color_scheme='chain',
-                        uniform_color=None, radius=0.3, quality=3):
+
+def make_backbone_actor(
+    structure,
+    chains=None,
+    color_scheme="chain",
+    uniform_color=None,
+    radius=0.3,
+    quality=3,
+):
     actors = []
     chain_ids = chains or list(structure.chains.keys())
     qp = QUALITY_PRESETS.get(quality, QUALITY_PRESETS[3])
@@ -420,29 +559,28 @@ def make_backbone_actor(structure, chains=None, color_scheme='chain',
             a = _make_tube_actor(ca, radius, cf, tube_sides=qp[2])
             if a:
                 actors.append(a)
-        elif color_scheme in ('ss', 'residue_nature'):
+        elif color_scheme in ("ss", "residue_nature"):
             # Per-residue colored segments
             colors_list = []
             for r in valid_res:
-                if color_scheme == 'ss':
-                    colors_list.append(
-                        SS_COLORS.get(r.ss, SS_COLORS['DEFAULT']))
+                if color_scheme == "ss":
+                    colors_list.append(SS_COLORS.get(r.ss, SS_COLORS["DEFAULT"]))
                 else:
-                    cat = RESIDUE_NATURE.get(r.name, 'other')
+                    cat = RESIDUE_NATURE.get(r.name, "other")
                     colors_list.append(RESIDUE_NATURE_COLORS[cat])
             a = _make_colored_tube_actor(
-                ca, [radius] * len(ca), colors_list,
-                tube_sides=qp[2])
+                ca, [radius] * len(ca), colors_list, tube_sides=qp[2]
+            )
             if a:
                 actors.append(a)
-        elif color_scheme == 'chain':
+        elif color_scheme == "chain":
             cf = _rgb_f(CHAIN_PALETTE[idx % len(CHAIN_PALETTE)])
             a = _make_tube_actor(ca, radius, cf, tube_sides=qp[2])
             if a:
                 actors.append(a)
-        elif color_scheme == 'element':
+        elif color_scheme == "element":
             # Use CA element color (mostly gray)
-            cf = _rgb_f(ELEMENT_COLORS.get('C', ELEMENT_COLORS['DEFAULT']))
+            cf = _rgb_f(ELEMENT_COLORS.get("C", ELEMENT_COLORS["DEFAULT"]))
             a = _make_tube_actor(ca, radius, cf, tube_sides=qp[2])
             if a:
                 actors.append(a)
@@ -458,10 +596,18 @@ def make_backbone_actor(structure, chains=None, color_scheme='chain',
 # Surface
 # ---------------------------------------------------------------------------
 
-def make_surface_actor(atoms, color=(200, 200, 255), opacity=0.5,
-                       resolution=64, radius=0.12,
-                       color_scheme=None, uniform_color=None,
-                       carbon_color=None, ss_map=None):
+
+def make_surface_actor(
+    atoms,
+    color=(200, 200, 255),
+    opacity=0.5,
+    resolution=64,
+    radius=0.12,
+    color_scheme=None,
+    uniform_color=None,
+    carbon_color=None,
+    ss_map=None,
+):
     try:
         from vtkmodules.vtkFiltersCore import vtkContourFilter
         from vtkmodules.vtkImagingHybrid import vtkGaussianSplatter
@@ -488,7 +634,7 @@ def make_surface_actor(atoms, color=(200, 200, 255), opacity=0.5,
     contour.SetValue(0, 0.01)
     contour.Update()
     surf_pd = contour.GetOutput()
-    use_scheme = color_scheme and color_scheme != 'uniform'
+    use_scheme = color_scheme and color_scheme != "uniform"
     if use_scheme and surf_pd.GetNumberOfPoints() > 0:
         # Color surface vertices by nearest atom
         coords = np.array([a.coord for a in atoms])
@@ -500,8 +646,7 @@ def make_surface_actor(atoms, color=(200, 200, 255), opacity=0.5,
             vp = np.array(surf_pd.GetPoint(vi))
             dists = np.sum((coords - vp) ** 2, axis=1)
             nearest = atoms[int(np.argmin(dists))]
-            c = _atom_color(nearest, color_scheme, carbon_color,
-                            ss_map=ss_map)
+            c = _atom_color(nearest, color_scheme, carbon_color, ss_map=ss_map)
             vert_colors.InsertNextTuple3(*c)
         surf_pd.GetPointData().SetScalars(vert_colors)
     mapper = vtkPolyDataMapper()
@@ -525,6 +670,7 @@ def make_surface_actor(atoms, color=(200, 200, 255), opacity=0.5,
 # Geometry helpers
 # ---------------------------------------------------------------------------
 
+
 def _smooth_coords(coords, factor=3):
     pts = np.array(coords)
     if len(pts) < 3:
@@ -537,9 +683,14 @@ def _smooth_coords(coords, factor=3):
         p3 = pts[min(i + 2, len(pts) - 1)]
         for t_idx in range(factor):
             t = t_idx / factor
-            tt = t * t; ttt = tt * t
-            q = 0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * tt
-                        + (-p0 + 3 * p1 - 3 * p2 + p3) * ttt)
+            tt = t * t
+            ttt = tt * t
+            q = 0.5 * (
+                (2 * p1)
+                + (-p0 + p2) * t
+                + (2 * p0 - 5 * p1 + 4 * p2 - p3) * tt
+                + (-p0 + 3 * p1 - 3 * p2 + p3) * ttt
+            )
             result.append(q)
     result.append(pts[-1])
     return result
@@ -590,11 +741,19 @@ def _compute_ribbon_normals(ca_coords, o_coords):
         if o_coords[i] is not None:
             co = np.asarray(o_coords[i]) - np.asarray(ca_coords[i])
         else:
-            co = np.array([1.0, 0.0, 0.0]) if abs(t[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+            co = (
+                np.array([1.0, 0.0, 0.0])
+                if abs(t[0]) < 0.9
+                else np.array([0.0, 1.0, 0.0])
+            )
         co = co - np.dot(co, t) * t
         cl = np.linalg.norm(co)
         if cl < 1e-6:
-            co = np.array([1.0, 0.0, 0.0]) if abs(t[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+            co = (
+                np.array([1.0, 0.0, 0.0])
+                if abs(t[0]) < 0.9
+                else np.array([0.0, 1.0, 0.0])
+            )
             co = co - np.dot(co, t) * t
             cl = np.linalg.norm(co)
         normals.append(co / (cl + 1e-12))
@@ -619,14 +778,21 @@ def _smooth_coords_and_normals(coords, normals, factor=3):
         n3 = nms[min(i + 2, len(nms) - 1)]
         for t_idx in range(factor):
             t = t_idx / factor
-            tt = t * t; ttt = tt * t
-            q = 0.5 * ((2 * p1) + (-p0 + p2) * t
-                        + (2 * p0 - 5 * p1 + 4 * p2 - p3) * tt
-                        + (-p0 + 3 * p1 - 3 * p2 + p3) * ttt)
+            tt = t * t
+            ttt = tt * t
+            q = 0.5 * (
+                (2 * p1)
+                + (-p0 + p2) * t
+                + (2 * p0 - 5 * p1 + 4 * p2 - p3) * tt
+                + (-p0 + 3 * p1 - 3 * p2 + p3) * ttt
+            )
             r_pts.append(q)
-            nm = 0.5 * ((2 * n1) + (-n0 + n2) * t
-                        + (2 * n0 - 5 * n1 + 4 * n2 - n3) * tt
-                        + (-n0 + 3 * n1 - 3 * n2 + n3) * ttt)
+            nm = 0.5 * (
+                (2 * n1)
+                + (-n0 + n2) * t
+                + (2 * n0 - 5 * n1 + 4 * n2 - n3) * tt
+                + (-n0 + 3 * n1 - 3 * n2 + n3) * ttt
+            )
             nm_len = np.linalg.norm(nm)
             r_nms.append(nm / (nm_len + 1e-12))
     r_pts.append(pts[-1])
@@ -634,8 +800,9 @@ def _smooth_coords_and_normals(coords, normals, factor=3):
     return r_pts, r_nms
 
 
-def _build_colored_ribbon_pd(points, normals, widths, colors,
-                              half_thickness=0.15, cs_sides=10):
+def _build_colored_ribbon_pd(
+    points, normals, widths, colors, half_thickness=0.15, cs_sides=10
+):
     n = len(points)
     if n < 2:
         return None

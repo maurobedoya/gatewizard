@@ -18,7 +18,7 @@ ATOM      8  O   GLY A   2       6.500   2.000   3.000  1.00  0.00           O
 END
 """
 
-with tempfile.NamedTemporaryFile(suffix='.pdb', mode='w', delete=False) as f:
+with tempfile.NamedTemporaryFile(suffix=".pdb", mode="w", delete=False) as f:
     f.write(pdb_content)
     tmp_path = f.name
 

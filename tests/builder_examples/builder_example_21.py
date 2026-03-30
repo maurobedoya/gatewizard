@@ -12,15 +12,15 @@ from gatewizard.tools.ligand_parametrization import (
 
 # Simulated parametrization results (paths to .frcmod and .lib files)
 ligand_files = {
-    'AAA': {
-        'frcmod': 'ligand_params/AAA/AAA.frcmod',
-        'lib': 'ligand_params/AAA/AAA.lib',
-        'mol2': 'ligand_params/AAA/AAA.mol2',
+    "AAA": {
+        "frcmod": "ligand_params/AAA/AAA.frcmod",
+        "lib": "ligand_params/AAA/AAA.lib",
+        "mol2": "ligand_params/AAA/AAA.mol2",
     },
-    'BBB': {
-        'frcmod': 'ligand_params/BBB/BBB.frcmod',
-        'lib': 'ligand_params/BBB/BBB.lib',
-        'mol2': 'ligand_params/BBB/BBB.mol2',
+    "BBB": {
+        "frcmod": "ligand_params/BBB/BBB.frcmod",
+        "lib": "ligand_params/BBB/BBB.lib",
+        "mol2": "ligand_params/BBB/BBB.mol2",
     },
 }
 
@@ -40,6 +40,6 @@ print("tleap input lines:")
 print(tleap_lines)
 
 # With GAFF atom types instead of GAFF2
-tleap_lines_gaff = build_tleap_ligand_lines(ligand_files, atom_type='gaff')
+tleap_lines_gaff = build_tleap_ligand_lines(ligand_files, atom_type="gaff")
 print("\ntleap input lines (GAFF):")
 print(tleap_lines_gaff)

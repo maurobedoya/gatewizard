@@ -81,7 +81,10 @@ selections = {name: sel for name, (sel, _) in selections_with_forces.items()}
 
 output_file2 = output_dir / "step1_via_high_level.pdb"
 manager.generate_restraints_file(
-    system_pdb, constraints, output_file2, stage_name="Eq1 (high-level)",
+    system_pdb,
+    constraints,
+    output_file2,
+    stage_name="Eq1 (high-level)",
     selections=selections,
 )
 print(f"✓ High-level restraints PDB written: {output_file2}")

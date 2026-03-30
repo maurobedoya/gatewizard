@@ -32,21 +32,30 @@ def _make_dropdown_arrow(direction="down", size=12, color="white"):
     lw = max(1, round(size / 5))  # stroke width matching CTk native style
     m = 2
     if direction == "up":
-        draw.line([(m, size - m - 1), (size // 2, m + 1), (size - m, size - m - 1)],
-                  fill=color, width=lw, joint="curve")
+        draw.line(
+            [(m, size - m - 1), (size // 2, m + 1), (size - m, size - m - 1)],
+            fill=color,
+            width=lw,
+            joint="curve",
+        )
     else:  # down
-        draw.line([(m, m + 1), (size // 2, size - m - 1), (size - m, m + 1)],
-                  fill=color, width=lw, joint="curve")
+        draw.line(
+            [(m, m + 1), (size // 2, size - m - 1), (size - m, m + 1)],
+            fill=color,
+            width=lw,
+            joint="curve",
+        )
     return ctk.CTkImage(light_image=img, dark_image=img, size=(size, size))
+
 
 class SearchableComboBox(ctk.CTkFrame):
     """
     A searchable combobox widget with filtering capabilities.
-    
+
     This widget combines an entry field with a dropdown list that
     filters options as the user types.
     """
-    
+
     def __init__(
         self,
         parent,
@@ -55,11 +64,11 @@ class SearchableComboBox(ctk.CTkFrame):
         width: int = 150,
         height: int = 30,
         placeholder_text: str = "Search...",
-        **kwargs
+        **kwargs,
     ):
         """
         Initialize the searchable combobox.
-        
+
         Args:
             parent: Parent widget
             values: List of selectable values
@@ -70,23 +79,23 @@ class SearchableComboBox(ctk.CTkFrame):
             **kwargs: Additional keyword arguments
         """
         super().__init__(parent, fg_color="transparent", **kwargs)
-        
+
         self.values = values or []
         self.filtered_values = self.values.copy()
         self.command = command
         self.placeholder_text = placeholder_text
         self.current_value = ""
         self.dropdown_visible = False
-        
+
         # Track user interaction to prevent unwanted dropdown opening
         self.last_user_interaction = 0
         self.focus_from_click = False
-        
+
         # Create widgets
         self._create_widgets(width, height)
         self._setup_layout()
         self._setup_bindings()
-    
+
     def cleanup_callbacks(self):
         """Cancel all scheduled callbacks to prevent errors during shutdown."""
         try:
@@ -96,7 +105,7 @@ class SearchableComboBox(ctk.CTkFrame):
             logger.debug(f"Cleaned up callbacks for {type(self).__name__}")
         except Exception as e:
             logger.debug(f"Error cleaning up callbacks in {type(self).__name__}: {e}")
-    
+
     def _create_widgets(self, width: int, height: int):
         """Create the combobox widgets."""
         self._combo_width = width
@@ -108,9 +117,9 @@ class SearchableComboBox(ctk.CTkFrame):
             placeholder_text=self.placeholder_text,
             width=width - 30,
             height=height,
-            font=FONTS['body']
+            font=FONTS["body"],
         )
-        
+
         # Dropdown button – PIL-drawn arrow (renders on all systems)
         self._img_arrow_down = _make_dropdown_arrow("down")
         self._img_arrow_up = _make_dropdown_arrow("up")
@@ -120,24 +129,24 @@ class SearchableComboBox(ctk.CTkFrame):
             image=self._img_arrow_down,
             width=25,
             height=height,
-            command=self._toggle_dropdown
+            command=self._toggle_dropdown,
         )
-        
+
         # Floating dropdown window (Toplevel) — does not affect parent layout
         self._dropdown_win = None
         self.dropdown_frame = None
         self.listbox_frame = None
-        
+
         self.option_buttons = []
-    
+
     def _setup_layout(self):
         """Setup the layout of widgets."""
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=0)
-        
+
         self.entry.grid(row=0, column=0, sticky="ew")
         self.dropdown_button.grid(row=0, column=1, padx=(2, 0))
-    
+
     def _setup_bindings(self):
         """Setup event bindings."""
         # Entry field events
@@ -146,7 +155,7 @@ class SearchableComboBox(ctk.CTkFrame):
         self.entry.bind("<Return>", self._on_return_pressed)
         self.entry.bind("<Escape>", self._hide_dropdown)
         self.entry.bind("<Down>", self._on_down_arrow)
-        
+
         # Track user clicks to distinguish from focus restoration
         self.entry.bind("<Button-1>", self._on_entry_click)
 
@@ -179,20 +188,19 @@ class SearchableComboBox(ctk.CTkFrame):
             self._hide_dropdown()
         except Exception:
             self._hide_dropdown()
-    
+
     def _on_text_changed(self, event=None):
         """Handle text change in entry field."""
         search_text = self.entry.get().lower()
-        
+
         # Filter values based on search text
         if search_text:
             self.filtered_values = [
-                value for value in self.values
-                if search_text in value.lower()
+                value for value in self.values if search_text in value.lower()
             ]
         else:
             self.filtered_values = self.values.copy()
-        
+
         # Show dropdown first (creates the listbox), then update options
         if self.filtered_values:
             if not self.dropdown_visible:
@@ -201,7 +209,7 @@ class SearchableComboBox(ctk.CTkFrame):
                 self._update_dropdown_options()
         else:
             self._hide_dropdown()
-    
+
     def _on_down_arrow(self, event=None):
         """Handle down arrow key press to show dropdown."""
         if not self.dropdown_visible:
@@ -211,25 +219,29 @@ class SearchableComboBox(ctk.CTkFrame):
     def _on_entry_click(self, event=None):
         """Handle entry field click."""
         import time
+
         self.last_user_interaction = time.time()
         self.focus_from_click = True
 
     def _on_entry_focus_in(self, event=None):
         """Handle entry field focus in."""
         import time
+
         current_time = time.time()
-        
+
         # Only show dropdown if:
         # 1. It's not already visible, AND
         # 2. This focus event is from a recent user click (within 500ms)
-        if (not self.dropdown_visible and 
-            self.focus_from_click and 
-            (current_time - self.last_user_interaction) < 0.5):
+        if (
+            not self.dropdown_visible
+            and self.focus_from_click
+            and (current_time - self.last_user_interaction) < 0.5
+        ):
             self._show_dropdown()
-        
+
         # Reset the click flag after processing
         self.focus_from_click = False
-    
+
     def _on_return_pressed(self, event=None):
         """Handle Return key press."""
         if self.filtered_values:
@@ -238,14 +250,14 @@ class SearchableComboBox(ctk.CTkFrame):
         else:
             # Use current entry text
             self._select_option(self.entry.get())
-    
+
     def _toggle_dropdown(self):
         """Toggle dropdown visibility."""
         if self.dropdown_visible:
             self._hide_dropdown()
         else:
             self._show_dropdown()
-    
+
     def _show_dropdown(self):
         """Show the dropdown as a floating Toplevel positioned below the entry."""
         if self.dropdown_visible:
@@ -270,15 +282,15 @@ class SearchableComboBox(ctk.CTkFrame):
         win.withdraw()  # hide until positioned
         win.overrideredirect(True)
         win.geometry(f"{w}x200+{x}+{y}")
-        win.configure(bg=COLOR_SCHEME.get('background', '#2b2b2b'))
+        win.configure(bg=COLOR_SCHEME.get("background", "#2b2b2b"))
 
         self._dropdown_win = win
 
         self.dropdown_frame = ctk.CTkFrame(
             win,
-            fg_color=COLOR_SCHEME['background'],
+            fg_color=COLOR_SCHEME["background"],
             border_width=1,
-            border_color=COLOR_SCHEME['inactive'],
+            border_color=COLOR_SCHEME["inactive"],
         )
         self.dropdown_frame.pack(fill="both", expand=True)
 
@@ -297,7 +309,7 @@ class SearchableComboBox(ctk.CTkFrame):
 
         self.dropdown_visible = True
         self.dropdown_button.configure(image=self._img_arrow_up)
-    
+
     def _hide_dropdown(self, event=None):
         """Hide the floating dropdown."""
         if not self.dropdown_visible:
@@ -313,7 +325,7 @@ class SearchableComboBox(ctk.CTkFrame):
             self.option_buttons.clear()
         self.dropdown_visible = False
         self.dropdown_button.configure(image=self._img_arrow_down)
-    
+
     def _update_dropdown_options(self):
         """Update the options in the dropdown list."""
         if self.listbox_frame is None:
@@ -330,16 +342,16 @@ class SearchableComboBox(ctk.CTkFrame):
                 self.listbox_frame,
                 text=value,
                 height=25,
-                font=FONTS['body'],
+                font=FONTS["body"],
                 fg_color="transparent",
-                text_color=COLOR_SCHEME['text'],
-                hover_color=COLOR_SCHEME['highlight'],
+                text_color=COLOR_SCHEME["text"],
+                hover_color=COLOR_SCHEME["highlight"],
                 anchor="w",
-                command=lambda v=value: self._select_option_with_focus(v)
+                command=lambda v=value: self._select_option_with_focus(v),
             )
             button.pack(fill="x", pady=1)
             self.option_buttons.append(button)
-    
+
     def _select_option(self, value: str):
         """Select an option and update the entry field."""
         self.current_value = value
@@ -367,45 +379,45 @@ class SearchableComboBox(ctk.CTkFrame):
     def get(self) -> str:
         """Get the current value."""
         return self.entry.get()
-    
+
     def set(self, value: str):
         """Set the current value."""
         self.current_value = value
         self.entry.delete(0, "end")
         self.entry.insert(0, value)
-    
+
     def configure(self, require_redraw=True, **kwargs):
         """Configure widget properties."""
         # Handle our custom configuration options first
         custom_handled = False
-        
-        if 'values' in kwargs:
-            self.values = kwargs.pop('values')
+
+        if "values" in kwargs:
+            self.values = kwargs.pop("values")
             self.filtered_values = self.values.copy()
             self._update_dropdown_options()
             custom_handled = True
-        
-        if 'command' in kwargs:
-            self.command = kwargs.pop('command')
+
+        if "command" in kwargs:
+            self.command = kwargs.pop("command")
             custom_handled = True
-        
-        if 'state' in kwargs:
-            state = kwargs.pop('state')
+
+        if "state" in kwargs:
+            state = kwargs.pop("state")
             self.entry.configure(state=state)
             self.dropdown_button.configure(state=state)
             custom_handled = True
-        
+
         # If we handled custom attributes and there are no remaining kwargs, return early
         if custom_handled and not kwargs:
             return
-        
+
         # Otherwise, delegate to parent
         return super().configure(require_redraw, **kwargs)
-    
+
     def focus(self):
         """Set focus to the entry field."""
         self.entry.focus()
-    
+
     def focus_set(self):
         """Set focus to the entry field."""
         self.entry.focus_set()
@@ -414,15 +426,17 @@ class SearchableComboBox(ctk.CTkFrame):
         """Update fonts for the combobox components."""
         try:
             # Entry and dropdown button
-            self.entry.configure(font=scaled_fonts.get('body', FONTS['body']))
+            self.entry.configure(font=scaled_fonts.get("body", FONTS["body"]))
             try:
-                self.dropdown_button.configure(font=scaled_fonts.get('small', FONTS['small']))
+                self.dropdown_button.configure(
+                    font=scaled_fonts.get("small", FONTS["small"])
+                )
             except Exception:
                 pass
             # Option buttons in dropdown
-            for btn in getattr(self, 'option_buttons', []) or []:
+            for btn in getattr(self, "option_buttons", []) or []:
                 try:
-                    btn.configure(font=scaled_fonts.get('body', FONTS['body']))
+                    btn.configure(font=scaled_fonts.get("body", FONTS["body"]))
                 except Exception:
                     pass
         except Exception as e:
