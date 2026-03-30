@@ -7,9 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Use official PSIQUE Python module instead of bundled binary and wrappers.
+
 ## [1.0.26] - 2026-03-29
 
 ### Added
+
 - **Initial/Final 2D structure toggle** on each ligand card: view the PDB-derived structure (Initial) or the parametrized mol2 structure with correct bond orders (Final)
 - Auto-switch to Final view after successful parametrization or when cached results are detected
 - GAFF→SYBYL atom type conversion for loading antechamber mol2 files into RDKit (`_GAFF_TO_SYBYL` mapping, `_load_gaff_mol2()`, `_mol2_has_gaff_types()`)
@@ -26,12 +31,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New equilibration example 08 demonstrating MDAnalysis selection features
 
 ### Changed
+
 - Default SS assignment order is now PSIQUE → PDB records → heuristic (was PDB → PSIQUE → heuristic)
 - SearchableComboBox dropdown is now a floating overlay instead of an inline child (no longer expands the parent section)
 - SearchableComboBox arrows changed from filled triangles to V-shape chevrons matching native CTk style
 - Removed complex `_infer_bond_orders()` logic; 2D ligand images now use simple PDB loading for Initial view
 
 ### Fixed
+
 - Removed DrawEngine monkey-patch; `circle_shapes` drawing method already renders V-shape arrows natively
 - Replaced Unicode sort arrows (▲/▼) in Preparation frame with PIL-drawn images
 - GAFF atom types (`ca`, `c3`, `os`, etc.) in antechamber mol2 files no longer cause RDKit `Element not found` errors
@@ -39,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.25] - 2026-03-25
 
 ### Added
+
 - **Transform Structure** dialog in the Visualize frame with three tabs: Rotate, Translate, and Align
   - Rotate: rotate selected or all atoms around X/Y/Z axis by arbitrary angle, with selectable pivot (selection centroid or origin)
   - Translate: translate atoms by displacement vector (X, Y, Z in Å), plus Center at Origin button
@@ -54,6 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Coordinate Transformations section in API docs (`docs/api/viewer.md`) with Examples 12–15
 
 ### Fixed
+
 - Secondary structure now updates correctly after all coordinate transformations (was stale because `Residue.ca_coord` / `o_coord` became detached after atom coord reassignment)
 - `build_bonds()` now calls `refresh_residue_coords()` automatically so tube_ss, cartoon, and backbone representations reflect coordinate changes
 - Auto-detect first selection (e.g. Protein) now shows delete (X) button — changed guard from `idx > 0` to `sel.name != "All"`
@@ -62,6 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.24] - 2026-03-21
 
 ### Fixed
+
 - `psique` executable now auto-sets executable permission on first use (pip strips execute bits from package data files)
 - Improved psique error messages: distinguish "not found" from "no SS results for small structures"
 - Updated viewer example 11 with real protein coordinates (2MVJ residues 1-20) for proper psique testing
@@ -70,11 +80,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.23] - 2026-03-21
 
 ### Fixed
+
 - Version bump to fix tag/release mismatch from v1.0.21/v1.0.22
 
 ## [1.0.20] - 2026-03-21
 
 ### Added
+
 - VTK-based 3D molecular viewer replacing the old matplotlib Visualize frame
 - New `gatewizard.core.viewer` module with `MolecularViewer` API for programmatic structure loading, inspection, selection, editing, and saving
 - MDAnalysis-based PDB parsing (replaces BioPython dependency)
@@ -96,6 +108,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - API documentation in `docs/api/viewer.md`
 
 ### Changed
+
 - Moved `psique` executable from `utils/` to `tools/` (with TODO for future pip import)
 - Blocking `wait=True` option in `Builder.prepare_system()` so scripts can run multiple systems sequentially
 - New `Builder.wait_for_completion(job_dir)` method for waiting on an already-launched job
@@ -110,16 +123,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - API documentation for all ligand parametrization functions and classes in `docs/api/builder.md`
 
 ### Changed
+
 - Builder `_build_command()` now appends ligand parameter flags when ligands are present
 - Builder `_create_tleap_input()` loads GAFF2 and ligand .frcmod/.lib files before `loadPDB`
 - Builder bash execution script includes ligand parameter loading in tleap section
 - Updated `gatewizard.tools.__init__` exports with all ligand parametrization public API
 
 ### Fixed
+
 - Fixed Pillow deprecation warning: replaced `Image.getdata()` with `get_flattened_data()` (Pillow >=12 compat)
 - Test suite now auto-cleans `./systems/` output directories after example execution
 
 ### Fixed (repo)
+
 - Resolved Git lock file issue blocking commits in GitHub Desktop
 - Added `psique` executable to version control (previously untracked)
 
@@ -128,19 +144,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.19] - 2026-02-12
 
 ### Fixed
+
 - Fixed equilibration bug where bilayer PDB with CRYST1 record was not being copied to output directory
 - Fixed NAMDEquilibrationManager initialization to use correct directory (output_dir where files are copied)
-- Box dimensions now correctly read from bilayer_*_lipid.pdb file for NAMD equilibration configurations
+- Box dimensions now correctly read from bilayer\_\*\_lipid.pdb file for NAMD equilibration configurations
 
 ## [1.0.18] - 2026-02-12
 
 ### Fixed
+
 - Fixed missing equilibration templates in package distribution by correcting MANIFEST.in
 - Equilibration NAMD template files (.inp) are now properly included when installing the package
 
 ## [1.0.17] - 2026-01-21
 
 ### Fixed
+
 - Corrected water model availability: replaced non-existent `tip4p` with `tip4pd` (TIP4P-D)
 - Fixed leaprc file mappings for all water models (tip4pd, tip4pew, opc3, spceb, fb3)
 - Each water model now correctly maps to its specific leaprc file
@@ -148,6 +167,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.16] - 2026-01-21
 
 ### Changed
+
 - Replaced Unicode icons with basic ASCII symbols for better terminal compatibility
 - Warning icon (⚠️) replaced with "WARNING:" text
 - Bullet points (•) replaced with dashes (-)
@@ -157,6 +177,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.15] - 2026-01-21
 
 ### Changed
+
 - Force field validation now shows warnings instead of blocking preparation for unvalidated combinations
 - Updated force field compatibility matrix based on literature validation references
 - Added comprehensive validation references ([1-6]) to force field module with DOI links
@@ -165,97 +186,118 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated recommendations: membrane (TIP3P+ff14SB+lipid21), latest (OPC+ff19SB+lipid21)
 
 ### Fixed
+
 - Force field combinations now properly categorized as validated, recommended, or unvalidated
 - Users can now test experimental force field combinations at their own risk with clear warnings
 
 ## [1.0.14] - 2026-01-15
+
 ### Changed
+
 - Documentation update
 
 ## [1.0.13] - 2026-01-15
 
 ### Added
+
 - Zenodo link creation
 
 ### Fixed
+
 - PyPI badged was fixed
 
 ## [1.0.12] - 2026-01-14
 
 ### Fixed
+
 - Fixed PyPI publishing workflow by removing duplicate publish job
 - Corrected workflow configuration to properly trigger PyPI upload on release
 
 ## [1.0.11] - 2026
 
 ### Fixed
+
 - Automatic release creation to GitHub and PyPI from tags
 
 ## [1.0.10] - 2026
 
 ### Fixed
-- Automatic release creation from tags testing
 
+- Automatic release creation from tags testing
 
 ## [1.0.9] - 2026
 
 ### Fixed
-- Automatic release creation from tags testing
 
+- Automatic release creation from tags testing
 
 ## [1.0.8] - 2026
 
 ### Fixed
+
 - Automatic release creation from tags
 
 ## [1.0.7] - 2026
 
 ### Added
+
 - Automatic release creation from tags
 - CHANGELOG.md file to track project changes
 - It was switched to PyPI Trusted Publishing
 
 ### Changed
+
 - Updated test documentation to clarify pytest installation requirement
 
 ### Fixed
-- NPAT equilibration protocol was updated to match the NPgT 
+
+- NPAT equilibration protocol was updated to match the NPgT
 
 ### Removed
+
 - GateWizard version from the main GUI
 
 ## [1.0.6] - 2025
 
 ### Added
+
 - CHANGELOG.md file to track project changes
 - It was switched to PyPI Trusted Publishing
 
 ### Changed
+
 - Updated test documentation to clarify pytest installation requirement
 
 ### Fixed
-- NPAT equilibration protocol was updated to match the NPgT 
+
+- NPAT equilibration protocol was updated to match the NPgT
 
 ### Removed
+
 - GateWizard version from the main GUI
 
 ## [1.0.5] - 2025
 
 ### Added
+
 - CHANGELOG.md file to track project changes
 
 ### Changed
+
 - Updated test documentation to clarify pytest installation requirement
 
 ### Fixed
-- NPAT equilibration protocol was updated to match the NPgT 
+
+- NPAT equilibration protocol was updated to match the NPgT
 
 ### Removed
+
 - GateWizard version from the main GUI
 
 ## [1.0.4] - 2025
 
 ### Added
+
 - Initial release of GateWizard
 - Modern GUI built with CustomTkinter
 - Protein structure preparation and cleaning

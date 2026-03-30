@@ -882,7 +882,6 @@ class VisualizeFrame(ctk.CTkFrame):
         from gatewizard.core.viewer import (
             _assign_ss_psique,
             _read_ss_from_pdb_records,
-            _PSIQUE_NOT_FOUND,
         )
 
         if self.structure is None:
@@ -902,13 +901,6 @@ class VisualizeFrame(ctk.CTkFrame):
                 if not filepath:
                     filepath = self._write_temp_pdb()
                 ss_map = _assign_ss_psique(filepath)
-                if ss_map is _PSIQUE_NOT_FOUND:
-                    self._ss_method_label.configure(
-                        text="PSIQUE not found – falling back to PDB records"
-                    )
-                    self._ss_method_var.set("PDB")
-                    self._on_ss_method_changed("PDB")
-                    return
                 if ss_map is None:
                     self._ss_method_label.configure(
                         text="PSIQUE produced no SS – falling back to PDB records"

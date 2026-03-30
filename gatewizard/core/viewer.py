@@ -7,7 +7,7 @@ Molecular viewer and structure editor using MDAnalysis.
 
 Provides a programmatic API for loading, inspecting, selecting, editing,
 and saving molecular structures.  Secondary structure is assigned via
-PDB HELIX/SHEET records, the psique external tool, or a CA-angle heuristic.
+PDB HELIX/SHEET records, the psique program, or a CA-angle heuristic.
 """
 
 import os
@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+import psique
 
 from gatewizard.utils.logger import get_logger
 
@@ -672,60 +673,21 @@ def _read_ss_from_pdb_records(filepath: str) -> Optional[Dict]:
     return ss_map if found else None
 
 
-def _get_psique_path() -> Optional[str]:
-    """Locate the psique executable.
-
-    Currently shipped as ``gatewizard/tools/psique``.
-    # TODO: Once psique is available via pip, import instead of running executable.
-    """
-    # Bundled location
-    bundled = Path(__file__).resolve().parent.parent / "tools" / "psique"
-    if bundled.is_file():
-        # Ensure executable permission (pip strips it from package data)
-        if not os.access(str(bundled), os.X_OK):
-            bundled.chmod(bundled.stat().st_mode | 0o111)
-        return str(bundled)
-    # Fall back to PATH
-    return shutil.which("psique")
-
-
-_PSIQUE_NOT_FOUND = "not_found"
-
-
 def _assign_ss_psique(filepath: str) -> Optional[Dict]:
-    """Run psique on PDB, parse HELIX/SHEET from output.
+    """Run PSIQUE on PDB.
 
     Returns
     -------
     dict or None
-        SS mapping, or ``None`` if psique produced no SS records.
-
-    Raises
-    ------
-    _PSIQUE_NOT_FOUND sentinel is returned (as string) when psique is missing.
+        SS mapping, or ``None`` if PSIQUE produced no SS records.
     """
-    psique_path = _get_psique_path()
-    if not psique_path:
-        return _PSIQUE_NOT_FOUND
     try:
-        result = subprocess.run(
-            [psique_path, "--format", "pdb", filepath],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if result.returncode != 0:
-            return None
-        if not result.stdout.strip():
-            return None
-        fd, tmp = tempfile.mkstemp(suffix=".pdb")
-        try:
-            with os.fdopen(fd, "w") as f:
-                f.write(result.stdout)
-            return _read_ss_from_pdb_records(tmp)
-        finally:
-            os.unlink(tmp)
-    except Exception:
+        ss_map = {}
+        for ss in psique.assign(filepath):
+            for i in range(ss.start.number, ss.end.number + 1):
+                ss_map[(ss.start.chain, i)] = ss.kind.value
+        return ss_map
+    except RuntimeError:
         return None
 
 
@@ -733,13 +695,13 @@ def _assign_secondary_structure(
     struct: ProteinStructure, filepath: Optional[str] = None
 ):
     """Assign SS using best available method:
-    1) psique external tool
+    1) PSIQUE external tool
     2) PDB HELIX/SHEET records
     3) CA-angle heuristic (fallback)
     """
     if filepath:
         ss_map = _assign_ss_psique(filepath)
-        if ss_map and ss_map is not _PSIQUE_NOT_FOUND:
+        if ss_map:
             for r in struct.residues:
                 r.ss = ss_map.get((r.chain_id, r.seq_id), "C")
             return
@@ -1114,10 +1076,9 @@ class MolecularViewer:
         method : str
             Assignment method. One of:
 
-            - ``'auto'`` – psique → PDB HELIX/SHEET records → heuristic
+            - ``'auto'`` – PSIQUE → PDB HELIX/SHEET records → heuristic
               (default, same as initial load).
-            - ``'psique'`` – Use the psique tool (raises ``ViewerError``
-              if psique is not available).
+            - ``'psique'`` – Use the PSIQUE program.
             - ``'heuristic'`` – CA-angle heuristic (always available).
             - ``'pdb_records'`` – Only read HELIX/SHEET from the PDB file
               (raises ``ViewerError`` if none found).
@@ -1138,16 +1099,11 @@ class MolecularViewer:
             _assign_secondary_structure(self.structure, filepath=self._filepath)
         elif method == "psique":
             if not self._filepath:
-                raise ViewerError("No PDB file path – cannot run psique")
+                raise ViewerError("No PDB file path – cannot run PSIQUE")
             ss_map = _assign_ss_psique(self._filepath)
-            if ss_map is _PSIQUE_NOT_FOUND:
-                raise ViewerError(
-                    "psique executable not found. "
-                    "Ensure the psique executable is installed."
-                )
             if ss_map is None:
                 raise ViewerError(
-                    "psique produced no secondary structure assignments "
+                    "PSIQUE produced no secondary structure assignments "
                     "for this structure (too few residues?)."
                 )
             for r in self.structure.residues:

@@ -14,3 +14,4 @@ dependencies:
   - pip
   - pip:
     - customtkinter>=5.0.0
+      - psique>=1.2.1

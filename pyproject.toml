@@ -37,6 +37,7 @@ dependencies = [
     "Pillow>=9.0.0",
     "rdkit>=2023.3.1",
     "vtk>=9.0.0",
+    "psique>=1.2.1",
 ]
 
 [project.optional-dependencies]
