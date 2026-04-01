@@ -11,6 +11,8 @@ and modify PDB files based on predicted pKa values and desired pH conditions.
 
 import subprocess
 import os
+import tempfile
+import shutil
 from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
 
@@ -99,8 +101,20 @@ class PreparationManager:
             output_directory = pdb_path.parent
             expected_output_file = pdb_path.with_suffix(".pka")
 
+        # Create a propka-safe copy of the PDB by stripping OXT atoms.
+        # Propka 3.5.1 has a bug in CtermGroup.setup_atoms() where OXT atoms
+        # cause a ValueError in the C-terminal carboxyl group detection.
+        # OXT atoms are not needed for pKa prediction.
+        propka_pdb = None
+        try:
+            propka_pdb = self._prepare_pdb_for_propka(pdb_path, output_directory)
+        except Exception as e:
+            logger.warning(f"Could not prepare PDB for propka, using original: {e}")
+
+        pdb_for_propka = propka_pdb if propka_pdb else str(pdb_path)
+
         # Build command to execute Propka with absolute path
-        command = [f"propka{self.propka_version}", str(pdb_path)]  # Use absolute path
+        command = [f"propka{self.propka_version}", pdb_for_propka]
 
         try:
             # Execute the command in the target output directory
@@ -115,6 +129,12 @@ class PreparationManager:
 
             logger.info("Propka executed successfully")
             logger.debug(f"Propka output: {result.stdout}")
+
+            # If we used a temp PDB, propka wrote <temp_name>.pka — rename it
+            if propka_pdb:
+                temp_pka = Path(propka_pdb).with_suffix(".pka")
+                if temp_pka.exists() and not expected_output_file.exists():
+                    shutil.move(str(temp_pka), str(expected_output_file))
 
             # Verify output file was created
             if not expected_output_file.exists():
@@ -141,6 +161,45 @@ class PreparationManager:
             error_msg = f"Unexpected error occurred: {e}"
             logger.error(error_msg)
             raise PreparationError(error_msg)
+
+        finally:
+            # Clean up the temporary propka-safe PDB
+            if propka_pdb and os.path.isfile(propka_pdb):
+                try:
+                    os.remove(propka_pdb)
+                except OSError:
+                    pass
+
+    @staticmethod
+    def _prepare_pdb_for_propka(pdb_path: Path, output_dir: Path) -> str:
+        """Create a propka-safe copy of a PDB file by stripping OXT atoms.
+
+        Propka 3.5.1 has a bug in CtermGroup.setup_atoms() that crashes on
+        OXT atoms when its distance-based bond detection produces asymmetric
+        results. OXT atoms are not required for pKa prediction, so removing
+        them is a safe workaround.
+
+        Args:
+            pdb_path: Path to the original PDB file.
+            output_dir: Directory to write the temporary file.
+
+        Returns:
+            Path to the temporary propka-safe PDB file.
+        """
+        safe_pdb = output_dir / f"{pdb_path.stem}_propka_tmp.pdb"
+        with open(pdb_path, "r") as fin, open(safe_pdb, "w") as fout:
+            for line in fin:
+                # Skip OXT atoms (C-terminal extra oxygen) and their ANISOU
+                if line.startswith(("ATOM  ", "HETATM")):
+                    atom_name = line[12:16].strip()
+                    if atom_name == "OXT":
+                        continue
+                elif line.startswith("ANISOU"):
+                    atom_name = line[12:16].strip()
+                    if atom_name == "OXT":
+                        continue
+                fout.write(line)
+        return str(safe_pdb)
 
     def extract_summary(
         self,
