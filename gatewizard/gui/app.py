@@ -668,6 +668,7 @@ class ProteinViewerApp(ctk.CTk):
         self.content_frame.pack(
             fill="both", expand=True, padx=5, pady=(0, 5)
         )  # < this mk setting was problematic.
+        self.content_frame.pack_propagate(False)
 
         # Status bar at the bottom
         self.status_frame.pack(fill="x", padx=5, pady=(0, 5))
