@@ -84,8 +84,8 @@ class ProteinViewerApp(ctk.CTk):
         # Initialize stages
         self._initialize_stages()
 
-        # Apply saved font scaling
-        self._apply_saved_font_scaling()
+        # FIXME: font scaling causes initial flickering on buttons
+        # self._apply_saved_font_scaling()
 
         # Initialize position saving timer
         self._position_save_timer = None
