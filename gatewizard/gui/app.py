@@ -673,7 +673,7 @@ class ProteinViewerApp(ctk.CTk):
 
         # Main content below tabs - no bottom padding to preserve status bar space
         self.content_frame.pack(
-            fill="both", expand=True, padx=5, pady=(5, 5)
+            fill="both", expand=True, padx=5, pady=(0, 5)
         )  # < this mk setting was problematic.
 
         # Status bar at the bottom
