@@ -1602,7 +1602,7 @@ For more information, visit the documentation.
                 # Save window position if enabled (batched to avoid spam)
                 if get_config_value("gui.remember_window_position", True):
                     # Cancel previous timer if exists
-                    if self._position_save_timer:
+                    if getattr(self, "_position_save_timer", None):
                         self.after_cancel(self._position_save_timer)
 
                     # Schedule save after 1 second of no movement
