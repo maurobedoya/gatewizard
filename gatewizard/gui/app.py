@@ -74,6 +74,7 @@ class ProteinViewerApp(ctk.CTk):
         self.current_stage = "Visualize"
 
         # Setup GUI
+        self.stage_frames: dict[str, ctk.CTkFrame] = {}
         self._setup_window()
         self._setup_theme()
         self._create_widgets()
@@ -598,58 +599,50 @@ class ProteinViewerApp(ctk.CTk):
             anchor="w",
         )
 
-        # NOW create frames for each stage (after status_label exists)
-        self._create_stage_frames()
-
-    def _create_stage_frames(self):
+    def _get_frame(self, name: str) -> ctk.CTkFrame:
         """Create frames for each analysis stage."""
-        self.stage_frames = {}
-
-        # Visualize frame
-        self.stage_frames["Visualize"] = VisualizeFrame(
-            self.content_frame,
-            pdb_changed_callback=self._on_pdb_changed,
-            status_callback=self._update_status,
-            initial_directory=self.initial_working_directory,
-        )
-
-        # Preparation frame
-        self.stage_frames["Preparation"] = PreparationFrame(
-            self.content_frame,
-            get_current_pdb=self._get_current_pdb,
-            status_callback=self._update_status,
-            initial_directory=self.initial_working_directory,
-        )
-
-        # Builder frame
-        self.stage_frames["Builder"] = BuilderFrame(
-            self.content_frame,
-            get_current_pdb=self._get_current_pdb,
-            status_callback=self._update_status,
-            initial_directory=self.initial_working_directory,
-        )
-
-        # Equilibration frame
-        self.stage_frames["Equilibration"] = EquilibrationFrame(
-            self.content_frame,
-            get_current_pdb=self._get_current_pdb,
-            status_callback=self._update_status,
-            initial_directory=self.initial_working_directory,
-            set_status_busy=self._set_status_busy,
-            set_status_ready=self._set_status_ready,
-        )
-
-        # Collective Variables frame
-        self.stage_frames["Analysis"] = AnalysisFrame(
-            self.content_frame,
-            get_current_pdb=self._get_current_pdb,  # type: ignore
-            status_callback=self._update_status,
-            initial_directory=self.initial_working_directory,
-        )
-
-        # Initially hide all frames
-        for frame in self.stage_frames.values():
+        frame = self.stage_frames.get(name)
+        if frame is None:
+            if name == "Visualize":
+                frame = VisualizeFrame(
+                    self.content_frame,
+                    pdb_changed_callback=self._on_pdb_changed,
+                    status_callback=self._update_status,
+                    initial_directory=self.initial_working_directory,
+                )
+            elif name == "Preparation":
+                frame = PreparationFrame(
+                    self.content_frame,
+                    get_current_pdb=self._get_current_pdb,
+                    status_callback=self._update_status,
+                    initial_directory=self.initial_working_directory,
+                )
+            elif name == "Builder":
+                frame = BuilderFrame(
+                    self.content_frame,
+                    get_current_pdb=self._get_current_pdb,
+                    status_callback=self._update_status,
+                    initial_directory=self.initial_working_directory,
+                )
+            elif name == "Equilibration":
+                frame = EquilibrationFrame(
+                    self.content_frame,
+                    get_current_pdb=self._get_current_pdb,
+                    status_callback=self._update_status,
+                    initial_directory=self.initial_working_directory,
+                )
+            elif name == "Analysis":
+                frame = AnalysisFrame(
+                    self.content_frame,
+                    get_current_pdb=self._get_current_pdb,  # type: ignore
+                    status_callback=self._update_status,
+                    initial_directory=self.initial_working_directory,
+                )
+            else:
+                raise ValueError(f"Invalid stage name: {name}")
+            self.stage_frames[name] = frame
             frame.pack_forget()
+        return frame
 
     def _setup_layout(self):
         """Setup the main window layout."""
@@ -801,16 +794,10 @@ class ProteinViewerApp(ctk.CTk):
         for frame in self.stage_frames.values():
             frame.pack_forget()
 
-        # Show the requested frame
-        if stage_name in self.stage_frames:
-            self.stage_frames[stage_name].pack(
-                fill="both", expand=True, padx=10, pady=(10, 0)
-            )
-
-            # Update frame if it has an update method
-            frame = self.stage_frames[stage_name]
-            if hasattr(frame, "on_stage_shown"):
-                frame.on_stage_shown()
+        frame = self._get_frame(stage_name)
+        frame.pack(fill="both", expand=True, padx=10, pady=(10, 0))
+        if hasattr(frame, "on_stage_shown"):
+            frame.on_stage_shown()
 
     def _on_pdb_changed(self, pdb_file: Optional[str]):
         """
@@ -1216,8 +1203,8 @@ Other:
 - F1: Show this help
 - Ctrl+Shift+T: Open shortcut tester
 
-Note: Stage shortcuts work with both main number row 
-and numeric keypad. If Ctrl+numbers don't work on your 
+Note: Stage shortcuts work with both main number row
+and numeric keypad. If Ctrl+numbers don't work on your
 keyboard, try Alt+numbers or F2-F6 instead.
 
 Stages:
@@ -1609,7 +1596,6 @@ For more information, visit the documentation.
                     self._position_save_timer = self._schedule_callback(
                         1000, self._save_window_position
                     )
-
             except Exception as e:
                 # Log the error but don't crash the app
                 logger.warning(f"Error in window configure handler: {e}")
