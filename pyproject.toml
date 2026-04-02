@@ -38,6 +38,7 @@ dependencies = [
     "rdkit>=2023.3.1",
     "vtk>=9.0.0",
     "psique>=1.2.1",
+    "mempro @ git+https://github.com/pstansfeld/MemPrO.git",
 ]
 
 [project.optional-dependencies]

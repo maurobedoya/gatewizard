@@ -16,6 +16,7 @@ from gatewizard.core.preparation import (
 from gatewizard.core.builder import Builder
 from gatewizard.core.job_monitor import JobMonitor, JobStatus
 from gatewizard.core.file_manager import FileManager
+from gatewizard.core.mempro import MemPrO, OrientationResult, MemProError
 
 __all__ = [
     "run_propka",
@@ -26,4 +27,7 @@ __all__ = [
     "JobMonitor",
     "JobStatus",
     "FileManager",
+    "MemPrO",
+    "OrientationResult",
+    "MemProError",
 ]

@@ -21,6 +21,7 @@ from gatewizard.core.preparation import (
 from gatewizard.core.builder import Builder
 from gatewizard.core.job_monitor import JobMonitor
 from gatewizard.core.viewer import MolecularViewer
+from gatewizard.core.mempro import MemPrO
 
 # GUI imports (optional, only if GUI dependencies are available)
 try:
@@ -43,6 +44,7 @@ __all__ = [
     "Builder",
     "JobMonitor",
     "MolecularViewer",
+    "MemPrO",
     "GUI_AVAILABLE",
 ]
 

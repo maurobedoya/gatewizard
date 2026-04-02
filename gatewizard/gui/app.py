@@ -611,6 +611,8 @@ class ProteinViewerApp(ctk.CTk):
             pdb_changed_callback=self._on_pdb_changed,
             status_callback=self._update_status,
             initial_directory=self.initial_working_directory,
+            set_status_busy=self._set_status_busy,
+            set_status_ready=self._set_status_ready,
         )
 
         # Preparation frame

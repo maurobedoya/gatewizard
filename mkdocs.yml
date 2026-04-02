@@ -62,6 +62,7 @@ nav:
       - Viewer Module: api/viewer.md
       - Preparation Module: api/preparation.md
       - Builder Module: api/builder.md
+      - MemPrO Module: api/mempro.md
       - Equilibration: api/equilibration.md
       - Analysis: api/analysis.md
       - Quick Reference: QUICK_REFERENCE.md
