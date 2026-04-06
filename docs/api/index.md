@@ -30,6 +30,19 @@ Module for building and preparing molecular dynamics simulation systems.
 
 ---
 
+### [MemPrO Module](mempro.md)
+Module for orienting membrane proteins using MemPrO.
+
+**Key Features:**
+- Membrane protein orientation
+- Ranked orientation results with scoring
+- Oriented PDB file access by rank
+- Command-line builder
+
+**Main Classes:** `MemPrO`, `OrientationResult`
+
+---
+
 ### [Equilibration Module](equilibration.md)
 Module for managing equilibration protocols and workflows.
 

@@ -28,6 +28,7 @@ from gatewizard.gui.constants import (
     ERROR_MESSAGES,
     SUCCESS_MESSAGES,
 )
+from gatewizard.gui.widgets.collapsible_section import CollapsibleSection
 from gatewizard.gui.widgets.leaflet_frame import LeafletFrame
 from gatewizard.gui.widgets.progress_tracker import ProgressTracker
 from gatewizard.gui.widgets.searchable_combobox import SearchableComboBox
@@ -446,6 +447,89 @@ class BuilderFrame(ctk.CTkFrame):
             text_color=COLOR_SCHEME["inactive"],
         )
 
+        # Advanced Options section (collapsible, collapsed by default)
+        self.advanced_section = CollapsibleSection(
+            self.main_scroll, "Advanced Options", expanded=False
+        )
+
+        # Box sizing mode: water layer vs explicit dims
+        self.box_mode_var = ctk.StringVar(value="water_layer")
+
+        self.box_mode_frame = ctk.CTkFrame(
+            self.advanced_section.content, fg_color="transparent"
+        )
+
+        self.box_mode_water = ctk.CTkRadioButton(
+            self.box_mode_frame,
+            text="Water layer thickness (Å):",
+            variable=self.box_mode_var,
+            value="water_layer",
+            font=FONTS["body"],
+            command=self._toggle_box_mode,
+        )
+
+        self.adv_water_entry = ctk.CTkEntry(
+            self.box_mode_frame, width=80, height=WIDGET_SIZES["entry_height"]
+        )
+        self.adv_water_entry.insert(0, "17.5")
+
+        self.adv_water_help = ctk.CTkLabel(
+            self.box_mode_frame,
+            text="Width of water layer over membrane/protein in z-axis",
+            font=FONTS["small"],
+            text_color=COLOR_SCHEME["inactive"],
+        )
+
+        self.box_mode_dims_frame = ctk.CTkFrame(
+            self.advanced_section.content, fg_color="transparent"
+        )
+
+        self.box_mode_dims = ctk.CTkRadioButton(
+            self.box_mode_dims_frame,
+            text="Box dimensions (Å):",
+            variable=self.box_mode_var,
+            value="dims",
+            font=FONTS["body"],
+            command=self._toggle_box_mode,
+        )
+
+        self.dims_x_label = ctk.CTkLabel(
+            self.box_mode_dims_frame, text="X:", font=FONTS["body"]
+        )
+        self.dims_x_entry = ctk.CTkEntry(
+            self.box_mode_dims_frame,
+            width=60,
+            height=WIDGET_SIZES["entry_height"],
+            state="disabled",
+        )
+
+        self.dims_y_label = ctk.CTkLabel(
+            self.box_mode_dims_frame, text="Y:", font=FONTS["body"]
+        )
+        self.dims_y_entry = ctk.CTkEntry(
+            self.box_mode_dims_frame,
+            width=60,
+            height=WIDGET_SIZES["entry_height"],
+            state="disabled",
+        )
+
+        self.dims_z_label = ctk.CTkLabel(
+            self.box_mode_dims_frame, text="Z:", font=FONTS["body"]
+        )
+        self.dims_z_entry = ctk.CTkEntry(
+            self.box_mode_dims_frame,
+            width=60,
+            height=WIDGET_SIZES["entry_height"],
+            state="disabled",
+        )
+
+        self.dims_help = ctk.CTkLabel(
+            self.box_mode_dims_frame,
+            text="Ensure dimensions cover the complete protein!",
+            font=FONTS["small"],
+            text_color=COLOR_SCHEME["inactive"],
+        )
+
         # Simplified protonation options
         self.protonation_frame = ctk.CTkFrame(
             self.options_section, fg_color="transparent"
@@ -783,16 +867,8 @@ class BuilderFrame(ctk.CTkFrame):
         )
         self.anion_combo.pack(side="left", padx=LAYOUT["padding_small"])
 
-        # Water distance options
-        self.water_distance_frame.pack(
-            fill="x", padx=LAYOUT["padding_medium"], pady=LAYOUT["padding_small"]
-        )
-
-        self.water_distance_label.pack(
-            side="left", padx=(LAYOUT["padding_large"], LAYOUT["padding_small"])
-        )
-        self.water_distance_entry.pack(side="left", padx=LAYOUT["padding_small"])
-        self.water_distance_help.pack(side="left", padx=LAYOUT["padding_medium"])
+        # Water distance options (kept for backwards compatibility, hidden)
+        # The water layer option is now in the Advanced Options section
 
         # Protonation options
         self.protonation_frame.pack(
@@ -801,6 +877,36 @@ class BuilderFrame(ctk.CTkFrame):
 
         self.notprotonate_checkbox.pack(anchor="w", pady=LAYOUT["padding_small"])
         self.protonation_help_text.pack(fill="x", pady=LAYOUT["padding_small"])
+
+        # Advanced Options section (collapsible)
+        self.advanced_section.pack(
+            fill="x", padx=LAYOUT["padding_medium"], pady=LAYOUT["padding_medium"]
+        )
+
+        # Water layer radio + entry
+        self.box_mode_frame.pack(
+            fill="x", padx=LAYOUT["padding_medium"], pady=LAYOUT["padding_small"]
+        )
+        self.box_mode_water.pack(
+            side="left", padx=(LAYOUT["padding_large"], LAYOUT["padding_small"])
+        )
+        self.adv_water_entry.pack(side="left", padx=LAYOUT["padding_small"])
+        self.adv_water_help.pack(side="left", padx=LAYOUT["padding_medium"])
+
+        # Box dimensions radio + X Y Z entries
+        self.box_mode_dims_frame.pack(
+            fill="x", padx=LAYOUT["padding_medium"], pady=LAYOUT["padding_small"]
+        )
+        self.box_mode_dims.pack(
+            side="left", padx=(LAYOUT["padding_large"], LAYOUT["padding_small"])
+        )
+        self.dims_x_label.pack(side="left", padx=(LAYOUT["padding_small"], 2))
+        self.dims_x_entry.pack(side="left", padx=(0, LAYOUT["padding_small"]))
+        self.dims_y_label.pack(side="left", padx=(LAYOUT["padding_small"], 2))
+        self.dims_y_entry.pack(side="left", padx=(0, LAYOUT["padding_small"]))
+        self.dims_z_label.pack(side="left", padx=(LAYOUT["padding_small"], 2))
+        self.dims_z_entry.pack(side="left", padx=(0, LAYOUT["padding_small"]))
+        self.dims_help.pack(side="left", padx=LAYOUT["padding_medium"])
 
         # Actions section
         self.actions_section.pack(
@@ -956,6 +1062,20 @@ class BuilderFrame(ctk.CTkFrame):
         self.cation_combo.configure(state=state)
         self.anion_combo.configure(state=state)
 
+    def _toggle_box_mode(self):
+        """Toggle between water layer thickness and explicit box dimensions."""
+        mode = self.box_mode_var.get()
+        if mode == "water_layer":
+            self.adv_water_entry.configure(state="normal")
+            self.dims_x_entry.configure(state="disabled")
+            self.dims_y_entry.configure(state="disabled")
+            self.dims_z_entry.configure(state="disabled")
+        else:
+            self.adv_water_entry.configure(state="disabled")
+            self.dims_x_entry.configure(state="normal")
+            self.dims_y_entry.configure(state="normal")
+            self.dims_z_entry.configure(state="normal")
+
     def _collect_inputs(self) -> dict:
         """Collect all input parameters for simplified workflow."""
         # Get working file - prioritize the working file entry over current_pdb_file
@@ -1004,7 +1124,11 @@ class BuilderFrame(ctk.CTkFrame):
             "salt_concentration": self.salt_conc_entry.get().strip(),
             "cation": self.cation_combo.get(),
             "anion": self.anion_combo.get(),
-            "dist_wat": self.water_distance_entry.get().strip(),
+            "box_mode": self.box_mode_var.get(),
+            "dist_wat": self.adv_water_entry.get().strip(),
+            "dims_x": self.dims_x_entry.get().strip(),
+            "dims_y": self.dims_y_entry.get().strip(),
+            "dims_z": self.dims_z_entry.get().strip(),
             "notprotonate": skip_protonation,  # Skip protonation if requested
             "simplified_workflow": True,  # Flag to indicate simplified workflow
             "ligand_params": self.ligand_param_widget.get_parametrized_ligands(),  # Ligand .frcmod/.lib files
@@ -1105,9 +1229,24 @@ class BuilderFrame(ctk.CTkFrame):
                 ),
                 "cation": inputs["cation"],
                 "anion": inputs["anion"],
-                "dist_wat": float(inputs["dist_wat"]) if inputs["dist_wat"] else 17.5,
                 "notprotonate": inputs["notprotonate"],
             }
+
+            # Box sizing: water layer or explicit dimensions
+            if inputs.get("box_mode") == "dims":
+                dims_x = inputs.get("dims_x", "")
+                dims_y = inputs.get("dims_y", "")
+                dims_z = inputs.get("dims_z", "")
+                if dims_x and dims_y and dims_z:
+                    config["dims"] = [float(dims_x), float(dims_y), float(dims_z)]
+                    config["dist_wat"] = None
+                else:
+                    config["dist_wat"] = 17.5
+            else:
+                config["dist_wat"] = (
+                    float(inputs["dist_wat"]) if inputs.get("dist_wat") else 17.5
+                )
+                config["dims"] = None
 
             # Add ligand parameters if available
             if inputs.get("ligand_params"):

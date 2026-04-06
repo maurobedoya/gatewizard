@@ -609,6 +609,8 @@ class ProteinViewerApp(ctk.CTk):
                     pdb_changed_callback=self._on_pdb_changed,
                     status_callback=self._update_status,
                     initial_directory=self.initial_working_directory,
+                    set_status_busy=self._set_status_busy,
+                    set_status_ready=self._set_status_ready,
                 )
             elif name == "Preparation":
                 frame = PreparationFrame(
@@ -630,6 +632,8 @@ class ProteinViewerApp(ctk.CTk):
                     get_current_pdb=self._get_current_pdb,
                     status_callback=self._update_status,
                     initial_directory=self.initial_working_directory,
+                    set_status_busy=self._set_status_busy,
+                    set_status_ready=self._set_status_ready,
                 )
             elif name == "Analysis":
                 frame = AnalysisFrame(

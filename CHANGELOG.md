@@ -7,9 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **MemPrO integration** for membrane protein orientation in the Visualize tab
+  - New collapsible "MemPrO Orientation" section with Run/Load Orient Folder buttons
+  - GUI controls for key options: dual membrane, peripheral, B-factor weighting, flip, CPUs, membrane thickness, grid size, iterations
+  - Ranked results list with potential/hits scores; click any rank to load the oriented PDB
+  - Background execution with orange status bar indicator
+  - New `gatewizard.core.mempro` API module (`MemPrO`, `OrientationResult`, `MemProError`)
+  - API documentation, test suite, and 12 example scripts
+
 ### Changed
 
 - Use official PSIQUE Python module instead of bundled binary and wrappers.
+
+### Fixed
+
+- **Propka crash** on proteins with OXT atoms (`ValueError: list.remove(x): x not in list`): OXT atoms are now stripped from a temporary PDB before running propka
 
 ## [1.0.26] - 2026-03-29
 

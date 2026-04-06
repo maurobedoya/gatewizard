@@ -12,6 +12,7 @@ using VTK-based 3D rendering with offscreen rendering to a tkinter Canvas.
 import json
 import math
 import os
+import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, colorchooser
 from typing import Optional, Callable, Dict, List
@@ -42,6 +43,7 @@ from gatewizard.core.viewer import (
 )
 from gatewizard.gui.widgets.vtk_frame import VTKFrame
 from gatewizard.gui.widgets.collapsible_section import CollapsibleSection
+from gatewizard.core.mempro import MemPrO, MemProError
 
 
 def _make_gear_image(size=16, color="white", teeth=8):
@@ -178,11 +180,15 @@ class VisualizeFrame(ctk.CTkFrame):
         pdb_changed_callback: Optional[Callable[[Optional[str]], None]] = None,
         status_callback: Optional[Callable[[str], None]] = None,
         initial_directory: Optional[str] = None,
+        set_status_busy: Optional[Callable[[str], None]] = None,
+        set_status_ready: Optional[Callable[[str], None]] = None,
     ):
         super().__init__(parent, fg_color=COLOR_SCHEME["content_bg"])
 
         self.pdb_changed_callback = pdb_changed_callback
         self.status_callback = status_callback
+        self.set_status_busy = set_status_busy
+        self.set_status_ready = set_status_ready
         self.initial_directory = initial_directory or str(Path.cwd())
 
         self.current_pdb_file = None
@@ -289,6 +295,160 @@ class VisualizeFrame(ctk.CTkFrame):
             text_color="gray60",
         )
         self._ss_method_label.pack(pady=(0, 4), padx=8)
+
+        # MemPrO - Membrane Protein Orientation (collapsed by default)
+        sec_mempro = CollapsibleSection(self.ctrl, "MemPrO Orientation", expanded=False)
+        sec_mempro.pack(fill="x")
+        ctk.CTkButton(
+            sec_mempro.content,
+            text="Run MemPrO",
+            command=self._run_mempro,
+            height=32,
+            fg_color="#2a5e8a",
+            hover_color="#357aaa",
+        ).pack(pady=3, padx=8, fill="x")
+        ctk.CTkButton(
+            sec_mempro.content,
+            text="Load Orient Folder",
+            command=self._load_mempro_folder,
+            height=30,
+            fg_color="gray35",
+        ).pack(pady=2, padx=8, fill="x")
+
+        # --- MemPrO options ---
+        _mempro_opts = ctk.CTkFrame(sec_mempro.content, fg_color="transparent")
+        _mempro_opts.pack(fill="x", padx=8, pady=(4, 0))
+
+        # Checkboxes row 1
+        _chk_row1 = ctk.CTkFrame(_mempro_opts, fg_color="transparent")
+        _chk_row1.pack(fill="x")
+        self._mempro_dual_var = tk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            _chk_row1,
+            text="Dual membrane",
+            variable=self._mempro_dual_var,
+            height=22,
+            checkbox_width=16,
+            checkbox_height=16,
+            font=FONTS.get("small", ("", 10)),
+        ).pack(side="left", padx=(0, 6))
+        self._mempro_periph_var = tk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            _chk_row1,
+            text="Peripheral",
+            variable=self._mempro_periph_var,
+            height=22,
+            checkbox_width=16,
+            checkbox_height=16,
+            font=FONTS.get("small", ("", 10)),
+        ).pack(side="left")
+
+        # Checkboxes row 2
+        _chk_row2 = ctk.CTkFrame(_mempro_opts, fg_color="transparent")
+        _chk_row2.pack(fill="x", pady=(2, 0))
+        self._mempro_weights_var = tk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            _chk_row2,
+            text="Use B-factors",
+            variable=self._mempro_weights_var,
+            height=22,
+            checkbox_width=16,
+            checkbox_height=16,
+            font=FONTS.get("small", ("", 10)),
+        ).pack(side="left", padx=(0, 6))
+        self._mempro_flip_var = tk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            _chk_row2,
+            text="Flip Z",
+            variable=self._mempro_flip_var,
+            height=22,
+            checkbox_width=16,
+            checkbox_height=16,
+            font=FONTS.get("small", ("", 10)),
+        ).pack(side="left")
+
+        # Numeric options
+        _num_frame = ctk.CTkFrame(_mempro_opts, fg_color="transparent")
+        _num_frame.pack(fill="x", pady=(4, 0))
+        _num_frame.columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(
+            _num_frame,
+            text="CPUs:",
+            font=FONTS.get("small", ("", 10)),
+            anchor="w",
+            width=60,
+        ).grid(row=0, column=0, sticky="w", pady=1)
+        self._mempro_cpus_entry = ctk.CTkEntry(
+            _num_frame,
+            placeholder_text="all",
+            height=24,
+            width=60,
+            font=FONTS.get("small", ("", 10)),
+        )
+        self._mempro_cpus_entry.grid(row=0, column=1, sticky="w", pady=1)
+
+        ctk.CTkLabel(
+            _num_frame,
+            text="Thickness:",
+            font=FONTS.get("small", ("", 10)),
+            anchor="w",
+            width=60,
+        ).grid(row=1, column=0, sticky="w", pady=1)
+        self._mempro_thick_entry = ctk.CTkEntry(
+            _num_frame,
+            placeholder_text="28",
+            height=24,
+            width=60,
+            font=FONTS.get("small", ("", 10)),
+        )
+        self._mempro_thick_entry.grid(row=1, column=1, sticky="w", pady=1)
+
+        ctk.CTkLabel(
+            _num_frame,
+            text="Grid size:",
+            font=FONTS.get("small", ("", 10)),
+            anchor="w",
+            width=60,
+        ).grid(row=2, column=0, sticky="w", pady=1)
+        self._mempro_grid_entry = ctk.CTkEntry(
+            _num_frame,
+            placeholder_text="36",
+            height=24,
+            width=60,
+            font=FONTS.get("small", ("", 10)),
+        )
+        self._mempro_grid_entry.grid(row=2, column=1, sticky="w", pady=1)
+
+        ctk.CTkLabel(
+            _num_frame,
+            text="Iterations:",
+            font=FONTS.get("small", ("", 10)),
+            anchor="w",
+            width=60,
+        ).grid(row=3, column=0, sticky="w", pady=1)
+        self._mempro_iters_entry = ctk.CTkEntry(
+            _num_frame,
+            placeholder_text="150",
+            height=24,
+            width=60,
+            font=FONTS.get("small", ("", 10)),
+        )
+        self._mempro_iters_entry.grid(row=3, column=1, sticky="w", pady=1)
+
+        self._mempro_rank_frame = ctk.CTkFrame(
+            sec_mempro.content, fg_color="transparent"
+        )
+        self._mempro_rank_frame.pack(fill="x", padx=8, pady=2)
+        self._mempro_status_label = ctk.CTkLabel(
+            sec_mempro.content,
+            text="",
+            font=FONTS.get("small", ("", 10)),
+            text_color="gray60",
+            wraplength=180,
+        )
+        self._mempro_status_label.pack(pady=(0, 4), padx=8)
+        self._mempro_results: list = []
 
         # Save (collapsed by default)
         sec_save = CollapsibleSection(self.ctrl, "Save", expanded=False)
@@ -691,6 +851,173 @@ class VisualizeFrame(ctk.CTkFrame):
         except Exception as e:
             messagebox.showerror("Error", f"Parse failed: {e}")
             logger.error(f"PDB parse error: {e}")
+
+    # ------------------------------------------------------------------
+    # MemPrO orientation
+    # ------------------------------------------------------------------
+
+    def _run_mempro(self):
+        """Run MemPrO on the currently loaded PDB."""
+        if not hasattr(self, "_pdb_filepath") or not self._pdb_filepath:
+            messagebox.showwarning("Warning", "Load a PDB file first.")
+            return
+        if not MemPrO.is_available():
+            messagebox.showerror(
+                "Error",
+                "mempro is not installed.\n"
+                "Install with:\npip install git+https://github.com/pstansfeld/MemPrO.git",
+            )
+            return
+
+        self._mempro_status_label.configure(text="Running MemPrO, please wait.")
+        if self.set_status_busy:
+            self.set_status_busy("Running MemPrO...")
+        elif self.status_callback:
+            self.status_callback("Running MemPrO...")
+
+        pdb_path = self._pdb_filepath
+
+        # Collect options from GUI
+        mempro_kwargs = {
+            "dual_membrane": self._mempro_dual_var.get(),
+            "peripheral": self._mempro_periph_var.get(),
+            "use_weights": self._mempro_weights_var.get(),
+            "flip": self._mempro_flip_var.get(),
+        }
+        cpus_txt = self._mempro_cpus_entry.get().strip()
+        if cpus_txt:
+            try:
+                mempro_kwargs["n_cpus"] = int(cpus_txt)
+            except ValueError:
+                messagebox.showwarning("Warning", "CPUs must be an integer.")
+                return
+        thick_txt = self._mempro_thick_entry.get().strip()
+        if thick_txt:
+            try:
+                mempro_kwargs["membrane_thickness"] = float(thick_txt)
+            except ValueError:
+                messagebox.showwarning("Warning", "Thickness must be a number.")
+                return
+        grid_txt = self._mempro_grid_entry.get().strip()
+        if grid_txt:
+            try:
+                mempro_kwargs["grid_size"] = int(grid_txt)
+            except ValueError:
+                messagebox.showwarning("Warning", "Grid size must be an integer.")
+                return
+        iters_txt = self._mempro_iters_entry.get().strip()
+        if iters_txt:
+            try:
+                mempro_kwargs["n_iters"] = int(iters_txt)
+            except ValueError:
+                messagebox.showwarning("Warning", "Iterations must be an integer.")
+                return
+
+        def worker():
+            try:
+                mp = MemPrO()
+                results = mp.run(pdb_path, **mempro_kwargs)
+                self.after(0, lambda: self._on_mempro_done(results))
+            except (MemProError, FileNotFoundError) as e:
+                self.after(
+                    0,
+                    lambda: self._on_mempro_error(str(e)),
+                )
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+
+    def _on_mempro_done(self, results):
+        """Handle MemPrO completion (called on main thread)."""
+        self._mempro_results = results
+        n = len(results)
+        self._mempro_status_label.configure(text=f"Done — {n} orientation(s) found.")
+        if self.set_status_ready:
+            self.set_status_ready(f"MemPrO finished: {n} orientations")
+        elif self.status_callback:
+            self.status_callback(f"MemPrO finished: {n} orientations")
+        self._refresh_mempro_ranks()
+
+        # Auto-load the best rank
+        if results and results[0].pdb_path:
+            self._load_mempro_rank(results[0].pdb_path)
+
+    def _on_mempro_error(self, msg):
+        """Handle MemPrO error (called on main thread)."""
+        self._mempro_status_label.configure(text="MemPrO failed.")
+        messagebox.showerror("MemPrO Error", msg)
+        if self.set_status_ready:
+            self.set_status_ready("MemPrO failed")
+        elif self.status_callback:
+            self.status_callback("MemPrO failed")
+
+    def _load_mempro_folder(self):
+        """Browse for an existing Orient directory and parse results."""
+        folder = filedialog.askdirectory(
+            title="Select MemPrO Orient Folder",
+            initialdir=self.initial_directory,
+        )
+        if not folder:
+            return
+        try:
+            results = MemPrO.parse_results(folder)
+            self._mempro_results = results
+            n = len(results)
+            self._mempro_status_label.configure(
+                text=f"Loaded {n} orientation(s) from folder."
+            )
+            self._refresh_mempro_ranks()
+        except MemProError as e:
+            messagebox.showerror("Error", str(e))
+
+    def _refresh_mempro_ranks(self):
+        """Rebuild the rank buttons inside the MemPrO section."""
+        for w in self._mempro_rank_frame.winfo_children():
+            w.destroy()
+
+        if not self._mempro_results:
+            return
+
+        self._mempro_rank_buttons: list = []
+        self._mempro_loaded_path: str = getattr(self, "_mempro_loaded_path", "")
+
+        header = ctk.CTkLabel(
+            self._mempro_rank_frame,
+            text="Rank   Potential   Hits%",
+            font=FONTS.get("small", ("", 10)),
+            text_color="gray60",
+            anchor="w",
+        )
+        header.pack(fill="x", pady=(4, 2))
+
+        for res in self._mempro_results:
+            if not res.pdb_path:
+                continue
+            text = f"Rank {res.rank:>2d}  {res.relative_potential:>8.2f}  {res.hits_pct:>5.1f}%"
+            is_loaded = res.pdb_path == self._mempro_loaded_path
+            btn = ctk.CTkButton(
+                self._mempro_rank_frame,
+                text=text,
+                command=lambda p=res.pdb_path: self._load_mempro_rank(p),
+                height=26,
+                font=("Courier", 11),
+                fg_color="#2a5e8a" if is_loaded else "gray30",
+                hover_color="#357aaa" if is_loaded else "gray40",
+                anchor="w",
+            )
+            btn.pack(fill="x", pady=1)
+            self._mempro_rank_buttons.append((res.pdb_path, btn))
+
+    def _load_mempro_rank(self, pdb_path: str):
+        """Load an oriented PDB and highlight the selected rank button."""
+        self._mempro_loaded_path = pdb_path
+        # Update button colors
+        for path, btn in self._mempro_rank_buttons:
+            if path == pdb_path:
+                btn.configure(fg_color="#2a5e8a", hover_color="#357aaa")
+            else:
+                btn.configure(fg_color="gray30", hover_color="gray40")
+        self._load(pdb_path)
 
     # ------------------------------------------------------------------
     # Scene rebuild

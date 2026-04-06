@@ -60,6 +60,7 @@ class Builder:
             "cation": "K+",
             "anion": "Cl-",
             "dist_wat": 17.5,  # Default water layer thickness in Angstroms
+            "dims": None,  # Explicit box dimensions [X, Y, Z] in Angstroms
             "notprotonate": False,  # False = allow protonation (default)
             "two_stage_process": False,  # Enable two-stage packing + parametrization
             "pack_only": False,  # Only perform packing stage
@@ -401,6 +402,11 @@ class Builder:
         # Add water layer distance (include even if default value for explicit control)
         if config.get("dist_wat") is not None:
             cmd.extend(["--dist_wat", str(config["dist_wat"])])
+
+        # Add explicit box dimensions (mutually exclusive with dist_wat)
+        dims = config.get("dims")
+        if dims and len(dims) == 3:
+            cmd.extend(["--dims", str(dims[0]), str(dims[1]), str(dims[2])])
 
         # Add ligand parameters (--ligand_param frcmod:lib for each ligand)
         ligand_params = config.get("ligand_params", {})
