@@ -63,7 +63,6 @@ FONTS = {
     "small": (ui_font, 10),
     "code": (mono_font, 10),
 }
-print(FONTS)
 
 # Font scaling options
 FONT_SCALE_OPTIONS = {
