@@ -9,7 +9,18 @@ This module contains all GUI-related constants including colors,
 sizes, and other visual configuration parameters.
 """
 
+import sys
 from typing import Dict, List
+
+if sys.platform == "win32":
+    ui_font = "Segoe UI"
+    mono_font = "Consolas"
+elif sys.platform == "darwin":
+    ui_font = ".AppleSystemUIFont"
+    mono_font = "Menlo"
+else:
+    ui_font = "DejaVu Sans"
+    mono_font = "DejaVu Sans Mono"
 
 # Color schemes using HEX codes
 COLOR_SCHEME = {
@@ -45,13 +56,14 @@ WINDOW_CONFIG = {
 
 # Font configurations
 FONTS = {
-    "title": ("Helvetica", 20, "bold"),
-    "subtitle": ("Helvetica", 16, "bold"),
-    "heading": ("Helvetica", 14, "bold"),
-    "body": ("Helvetica", 12),
-    "small": ("Helvetica", 10),
-    "code": ("Courier", 10),
+    "title": (ui_font, 20, "bold"),
+    "subtitle": (ui_font, 16, "bold"),
+    "heading": (ui_font, 14, "bold"),
+    "body": (ui_font, 12),
+    "small": (ui_font, 10),
+    "code": (mono_font, 10),
 }
+print(FONTS)
 
 # Font scaling options
 FONT_SCALE_OPTIONS = {
