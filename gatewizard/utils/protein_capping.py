@@ -129,13 +129,11 @@ class ProteinCapper:
         try:
             u = mda.Universe(str(input_file))
 
-            # Select protein atoms without hydrogens
-            protein_no_h = u.select_atoms("protein and not name H* 1H* 2H* 3H*")
+            # Select atoms without hydrogens
+            protein_no_h = u.select_atoms("not element H")
 
             if len(protein_no_h) == 0:
-                raise ProteinCappingError(
-                    "No protein atoms found or all atoms are hydrogens"
-                )
+                raise ProteinCappingError("No heavy atoms found")
 
             # Create temporary file
             with NamedTemporaryFile(mode="w", suffix=".pdb", delete=False) as temp_file:
@@ -228,14 +226,19 @@ class ProteinCapper:
                     seg_to_chain_map[seg.segid] = seg.segid
 
             for seg in u.segments:  # type: ignore[union-attr]
-                chain = u.select_atoms(f"segid {seg.segid}")
+                # IMPORTANT: segment is not equivalent to selecting by segid, so
+                # selections must be made on the segment's atoms
+
+                chain = seg.atoms.select_atoms("protein")
+                if len(chain) == 0:
+                    segment_universes.append(seg)
+                    continue
+
                 original_chain_id = seg_to_chain_map.get(seg.segid, seg.segid)
 
                 # Add ACE capping group to N-terminus
                 resid_n = chain.residues.resids[0]
-                n_term_residue = u.select_atoms(
-                    f"segid {seg.segid} and resid {resid_n}"
-                )
+                n_term_residue = chain.select_atoms(f"resid {resid_n}")
                 ace_positions = self._get_ace_positions(n_term_residue)
 
                 ace_universe = self._create_universe(
@@ -249,9 +252,7 @@ class ProteinCapper:
 
                 # Add NME capping group to C-terminus
                 resid_c = chain.residues.resids[-1]
-                c_term_residue = u.select_atoms(
-                    f"segid {seg.segid} and resid {resid_c}"
-                )
+                c_term_residue = chain.select_atoms(f"resid {resid_c}")
                 nme_positions = self._get_nme_positions(c_term_residue)
 
                 nme_universe = self._create_universe(
@@ -267,11 +268,9 @@ class ProteinCapper:
                 if "OXT" in c_term_residue.names:
                     oxt_index = np.where(c_term_residue.names == "OXT")[0][0]
                     oxt_atom = c_term_residue[oxt_index]
-                    chain_atoms = u.select_atoms(
-                        f"segid {seg.segid} and not index {oxt_atom.index}"
-                    )
+                    chain_atoms = chain.select_atoms(f"not index {oxt_atom.index}")
                 else:
-                    chain_atoms = u.select_atoms(f"segid {seg.segid}")
+                    chain_atoms = chain
 
                 # Merge ACE, protein chain, and NME
                 capped_chain = mda.Merge(

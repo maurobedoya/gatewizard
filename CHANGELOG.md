@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Propka crash** on proteins with OXT atoms (`ValueError: list.remove(x): x not in list`): OXT atoms are now stripped from a temporary PDB before running propka
+- Keep HET atoms when adding caps (#10)
 
 ## [1.0.26] - 2026-03-29
 
