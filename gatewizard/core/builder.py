@@ -470,6 +470,18 @@ class Builder:
         self, cmd: List[str], job_dir: Path, config: Dict[str, Any]
     ):
         """Create initial status file for job monitoring."""
+        # Determine the full workflow steps based on configuration
+        preoriented = config.get("preoriented", True)
+        parametrize = config.get("parametrize", True)
+        if preoriented:
+            steps = ["Packmol", "pdb4amber", "tleap"] if parametrize else ["Packmol"]
+        else:
+            steps = (
+                ["MEMEMBED", "Packmol", "pdb4amber", "tleap"]
+                if parametrize
+                else ["MEMEMBED", "Packmol"]
+            )
+
         status = {
             "command": " ".join(cmd),
             "start_time": datetime.now().isoformat(),
@@ -477,7 +489,9 @@ class Builder:
             "current_step": 0,
             "status": "running",
             "error": None,
+            "steps": steps,
             "steps_completed": [],
+            "step_messages": [],
             "config": config,
         }
 
