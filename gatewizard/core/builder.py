@@ -588,11 +588,11 @@ def update_status(step, msg):
         status['last_update'] = datetime.now().isoformat()
         
         # Update message for current step
-        if step <= len(status.get('step_messages', [])):
-            if 'step_messages' not in status:
-                status['step_messages'] = []
-            while len(status['step_messages']) < step:
-                status['step_messages'].append("")
+        if 'step_messages' not in status:
+            status['step_messages'] = []
+        while len(status['step_messages']) < step:
+            status['step_messages'].append("")
+        if step > 0:
             status['step_messages'][step-1] = msg
         
         # Write updated status
