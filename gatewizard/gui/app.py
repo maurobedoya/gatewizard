@@ -555,9 +555,9 @@ class ProteinViewerApp(ctk.CTk):
         # App descriptor placed inline to the right of the title
         self.app_descriptor_label = ctk.CTkLabel(
             self.title_content_frame,
-            text="",
+            text="[Beta] Not ready for production use",
             font=FONTS["subtitle"],
-            text_color=COLOR_SCHEME["text"],
+            text_color="#E07B00",
         )
 
         # Settings button (top right)

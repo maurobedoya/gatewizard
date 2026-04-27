@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.27] - 2026-04-27
+
+### Added
+
+- Beta warning message displayed in the title bar next to the app name, indicating the app is not ready for production use
+
 ### Added
 
 - **MemPrO integration** for membrane protein orientation in the Visualize tab
@@ -326,7 +332,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive API documentation
 - User guide and troubleshooting documentation
 
-[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.25...HEAD
+[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.27...HEAD
+[1.0.27]: https://github.com/maurobedoya/gatewizard/compare/v1.0.26...v1.0.27
+[1.0.26]: https://github.com/maurobedoya/gatewizard/compare/v1.0.25...v1.0.26
 [1.0.25]: https://github.com/maurobedoya/gatewizard/compare/v1.0.24...v1.0.25
 [1.0.24]: https://github.com/maurobedoya/gatewizard/compare/v1.0.23...v1.0.24
 [1.0.23]: https://github.com/maurobedoya/gatewizard/compare/v1.0.20...v1.0.23
