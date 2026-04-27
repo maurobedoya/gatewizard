@@ -5,7 +5,7 @@
 Gatewizard - A tool for membrane protein preparation and analysis.
 """
 
-__version__ = "1.0.27"
+__version__ = "1.0.28"
 __author__ = "Constanza González, Mauricio Bedoya"
 __email__ = ""
 __license__ = "MIT"

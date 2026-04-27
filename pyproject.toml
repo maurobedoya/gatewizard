@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gatewizard"
-version = "1.0.27"
+version = "1.0.28"
 description = "A tool for membrane protein preparation and molecular dynamics analysis"
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -38,7 +38,6 @@ dependencies = [
     "rdkit>=2023.3.1",
     "vtk>=9.0.0",
     "psique>=1.2.1",
-    "mempro @ git+https://github.com/pstansfeld/MemPrO.git",
 ]
 
 [project.optional-dependencies]

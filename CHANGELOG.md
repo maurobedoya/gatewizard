@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.28] - 2026-04-27
+
+### Changed
+
+- Removed `mempro` from PyPI dependencies (PyPI does not allow direct git URL dependencies); must be installed manually with `pip install git+https://github.com/pstansfeld/MemPrO.git`
+- Added manual MemPrO installation instructions to README under External Requirements
+
 ## [1.0.27] - 2026-04-27
 
 ### Added
@@ -332,7 +339,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive API documentation
 - User guide and troubleshooting documentation
 
-[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.27...HEAD
+[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.28...HEAD
+[1.0.28]: https://github.com/maurobedoya/gatewizard/compare/v1.0.27...v1.0.28
 [1.0.27]: https://github.com/maurobedoya/gatewizard/compare/v1.0.26...v1.0.27
 [1.0.26]: https://github.com/maurobedoya/gatewizard/compare/v1.0.25...v1.0.26
 [1.0.25]: https://github.com/maurobedoya/gatewizard/compare/v1.0.24...v1.0.25

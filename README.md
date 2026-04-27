@@ -84,6 +84,12 @@ For developers or to install from source:
   - Download from: [NAMD Official Website](https://www.ks.uiuc.edu/Research/namd/)
   - Must be installed separately and accessible in your system PATH
 
+- **MemPrO** - Required for membrane protein orientation (not available on PyPI)
+  - Must be installed manually from GitHub:
+    ```bash
+    pip install git+https://github.com/pstansfeld/MemPrO.git
+    ```
+
 ## Usage
 
 ### Launch the GUI
