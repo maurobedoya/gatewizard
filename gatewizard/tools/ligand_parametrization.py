@@ -354,6 +354,54 @@ def extract_ligand_pdb(pdb_file: str, ligand_name: str, output_dir: str) -> str:
         raise LigandParametrizationError(f"Error extracting ligand: {e}")
 
 
+def parametrize_ligand_from_system_pdb(
+    pdb_file: str,
+    ligand_name: str,
+    output_dir: str,
+    charge: int = 0,
+    charge_method: str = DEFAULT_CHARGE_METHOD,
+    multiplicity: int = 1,
+    atom_type: str = DEFAULT_ATOM_TYPE,
+    sqm_keywords: str = "",
+) -> Dict[str, str]:
+    """
+    Extract and parametrize one ligand from a full system PDB.
+
+    Output layout follows the classic GateWizard structure:
+    ``{output_dir}/ligand_params/{ligand_name}/`` containing the extracted
+    ligand PDB and all generated AMBER files.
+
+    Args:
+        pdb_file: Path to the full system PDB containing protein/lipids/ligand
+        ligand_name: Ligand residue name to parametrize
+        output_dir: Base working directory where ``ligand_params`` is created
+        charge: Net charge of the ligand
+        charge_method: Charge method (e.g. 'bcc', 'abcg2')
+        multiplicity: Spin multiplicity
+        atom_type: Atom type set ('gaff2' or 'gaff')
+        sqm_keywords: Extra SQM keywords for antechamber ``-ek`` flag
+
+    Returns:
+        Dictionary with paths to generated files.
+    """
+    base_dir = Path(output_dir).resolve()
+    lig_dir = base_dir / "ligand_params" / ligand_name
+    lig_dir.mkdir(parents=True, exist_ok=True)
+
+    lig_pdb = extract_ligand_pdb(pdb_file, ligand_name, str(lig_dir))
+
+    return parametrize_ligand(
+        ligand_pdb=lig_pdb,
+        ligand_name=ligand_name,
+        output_dir=str(lig_dir),
+        charge=charge,
+        charge_method=charge_method,
+        multiplicity=multiplicity,
+        atom_type=atom_type,
+        sqm_keywords=sqm_keywords,
+    )
+
+
 def parametrize_ligand(
     ligand_pdb: str,
     ligand_name: str,

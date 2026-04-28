@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.29] - 2026-04-27
+
+### Added
+
+- `parametrize_ligand_from_system_pdb()` to centralize extraction plus parametrization
+
 ## [1.0.28] - 2026-04-27
 
 ### Changed
@@ -339,7 +345,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive API documentation
 - User guide and troubleshooting documentation
 
-[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.28...HEAD
+[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.29...HEAD
+[1.0.29]: https://github.com/maurobedoya/gatewizard/compare/v1.0.28...v1.0.29
 [1.0.28]: https://github.com/maurobedoya/gatewizard/compare/v1.0.27...v1.0.28
 [1.0.27]: https://github.com/maurobedoya/gatewizard/compare/v1.0.26...v1.0.27
 [1.0.26]: https://github.com/maurobedoya/gatewizard/compare/v1.0.25...v1.0.26
