@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.33] - 2026-05-01
+
+### Fixed
+
+- Fix TrajectoryAnalyzer to use instance attributes (self.topology, self.trajectories) instead of temporary locals when creating MDAnalysis Universe and when loading individual trajectory files to count frames, preventing incorrect file/path usage when handling multiple trajectories.
+
 ## [1.0.32] - 2026-05-01
 
 ### Added
@@ -371,7 +377,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive API documentation
 - User guide and troubleshooting documentation
 
-[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.32...HEAD
+[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.33...HEAD
+[1.0.33]: https://github.com/maurobedoya/gatewizard/compare/v1.0.32...v1.0.33
 [1.0.32]: https://github.com/maurobedoya/gatewizard/compare/v1.0.31...v1.0.32
 [1.0.31]: https://github.com/maurobedoya/gatewizard/compare/v1.0.30...v1.0.31
 [1.0.30]: https://github.com/maurobedoya/gatewizard/compare/v1.0.29...v1.0.30

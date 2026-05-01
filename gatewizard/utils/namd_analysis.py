@@ -1780,11 +1780,11 @@ class TrajectoryAnalyzer:
         self.file_times = file_times or {}
 
         # Load trajectories into MDAnalysis
-        if len(tmp_trajs) == 1:
-            self.universe = mda.Universe(str(tmp_top), str(tmp_trajs[0]))
+        if len(self.trajectories) == 1:
+            self.universe = mda.Universe(str(self.topology), str(self.trajectories[0]))
         else:
             # Concatenate multiple trajectories
-            self.universe = mda.Universe(str(tmp_top), [str(t) for t in tmp_trajs])
+            self.universe = mda.Universe(str(self.topology), [str(t) for t in self.trajectories])
 
         logger.info(
             f"Loaded trajectory: {len(self.universe.trajectory)} frames "
@@ -1820,7 +1820,7 @@ class TrajectoryAnalyzer:
             filename = str(traj_path.name)
 
             # Load this trajectory to count frames
-            temp_universe = mda.Universe(str(tmp_top), str(tmp_traj))
+            temp_universe = mda.Universe(str(self.topology), str(traj_path))
             n_frames = len(temp_universe.trajectory)
 
             # Get duration for this file (in ns)
