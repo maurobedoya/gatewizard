@@ -7,7 +7,7 @@ information like simulation progress, performance metrics, and timing data.
 
 import re
 from pathlib import Path
-from typing import Dict, List, Optional, NamedTuple, TYPE_CHECKING, Union
+from typing import Dict, List, Optional, Any, NamedTuple, TYPE_CHECKING, Union
 from dataclasses import dataclass
 from .logger import get_logger
 
