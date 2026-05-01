@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [1.0.32] - 2026-05-01
+
+### Added
+
+- `rmsf_xaxis_type` parameter in `run_structural_analysis()` — controls RMSF x-axis labeling with three modes: `"residue_number"` (default), `"residue_type_number"` (e.g. `ALA42`), and `"atom_index"`
+
+### Fixed
+
+- `TrajectoryAnalyzer` used stale `self.trajectories` / `self.topology` references instead of the resolved `tmp_trajs` / `tmp_top` variables when loading trajectories, causing incorrect universe construction
+
 ## [1.0.31] - 2026-04-30
 
 ### Fixed
@@ -360,7 +371,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive API documentation
 - User guide and troubleshooting documentation
 
-[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.30...HEAD
+[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.32...HEAD
+[1.0.32]: https://github.com/maurobedoya/gatewizard/compare/v1.0.31...v1.0.32
+[1.0.31]: https://github.com/maurobedoya/gatewizard/compare/v1.0.30...v1.0.31
 [1.0.30]: https://github.com/maurobedoya/gatewizard/compare/v1.0.29...v1.0.30
 [1.0.29]: https://github.com/maurobedoya/gatewizard/compare/v1.0.28...v1.0.29
 [1.0.28]: https://github.com/maurobedoya/gatewizard/compare/v1.0.27...v1.0.28

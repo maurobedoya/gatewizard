@@ -1259,6 +1259,7 @@ def run_structural_analysis(
     reference_frame: int = 0,
     align: bool = True,
     file_times: Optional[Dict[str, float]] = None,
+    rmsf_xaxis_type: str = "residue_number",
 ) -> Dict[str, Any]:
     """
     Run trajectory structural analysis and return JSON-serializable arrays.
@@ -1298,19 +1299,33 @@ def run_structural_analysis(
         data = analyzer.calculate_rmsf(selection=selection)
         resids = np.asarray(data["resids"]).tolist()
         resnames = np.asarray(data.get("resnames", [])).tolist()
-        labels = []
-        for i, rid in enumerate(resids):
-            if i < len(resnames):
-                labels.append(f"{resnames[i]}{rid}")
-            else:
-                labels.append(str(rid))
+        atom_indices = list(range(len(resids)))
+
+        if rmsf_xaxis_type == "residue_type_number":
+            x_values = list(range(len(resids)))
+            labels = []
+            for i, rid in enumerate(resids):
+                rname = resnames[i] if i < len(resnames) else ""
+                labels.append(f"{rname}{rid}")
+        elif rmsf_xaxis_type == "atom_index":
+            x_values = atom_indices
+            labels = [str(v) for v in atom_indices]
+        else:  # residue_number (default)
+            x_values = resids
+            labels = []
+            for i, rid in enumerate(resids):
+                if i < len(resnames):
+                    labels.append(f"{resnames[i]}{rid}")
+                else:
+                    labels.append(str(rid))
+
         y = np.asarray(data["rmsf"], dtype=float)
         return {
             "analysis_type": "rmsf",
-            "x": resids,
+            "x": x_values,
             "x_labels": labels,
             "y": y.tolist(),
-            "x_label": "Residue",
+            "x_label": "Residue" if rmsf_xaxis_type != "atom_index" else "Atom index",
             "y_label": "RMSF (Å)",
             "series_name": "RMSF",
             "stats": {
@@ -1765,13 +1780,11 @@ class TrajectoryAnalyzer:
         self.file_times = file_times or {}
 
         # Load trajectories into MDAnalysis
-        if len(self.trajectories) == 1:
-            self.universe = mda.Universe(str(self.topology), str(self.trajectories[0]))
+        if len(tmp_trajs) == 1:
+            self.universe = mda.Universe(str(tmp_top), str(tmp_trajs[0]))
         else:
             # Concatenate multiple trajectories
-            self.universe = mda.Universe(
-                str(self.topology), [str(t) for t in self.trajectories]
-            )
+            self.universe = mda.Universe(str(tmp_top), [str(t) for t in tmp_trajs])
 
         logger.info(
             f"Loaded trajectory: {len(self.universe.trajectory)} frames "
@@ -1807,7 +1820,7 @@ class TrajectoryAnalyzer:
             filename = str(traj_path.name)
 
             # Load this trajectory to count frames
-            temp_universe = mda.Universe(str(self.topology), str(traj_path))
+            temp_universe = mda.Universe(str(tmp_top), str(tmp_traj))
             n_frames = len(temp_universe.trajectory)
 
             # Get duration for this file (in ns)
