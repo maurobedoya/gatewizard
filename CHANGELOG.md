@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.34] - 2026-05-01
+
+### Fixed
+
+- `run_structural_analysis()` RMSF `residue_number` mode now returns numeric residue IDs as x-values instead of mixed `"{resname}{resid}"` strings, so downstream plots and data consumers receive a consistent numeric series for this mode
+
 ## [1.0.33] - 2026-05-01
 
 ### Fixed
@@ -377,7 +383,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive API documentation
 - User guide and troubleshooting documentation
 
-[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.33...HEAD
+[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.34...HEAD
+[1.0.34]: https://github.com/maurobedoya/gatewizard/compare/v1.0.33...v1.0.34
 [1.0.33]: https://github.com/maurobedoya/gatewizard/compare/v1.0.32...v1.0.33
 [1.0.32]: https://github.com/maurobedoya/gatewizard/compare/v1.0.31...v1.0.32
 [1.0.31]: https://github.com/maurobedoya/gatewizard/compare/v1.0.30...v1.0.31

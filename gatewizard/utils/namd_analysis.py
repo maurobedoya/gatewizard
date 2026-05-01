@@ -1312,12 +1312,7 @@ def run_structural_analysis(
             labels = [str(v) for v in atom_indices]
         else:  # residue_number (default)
             x_values = resids
-            labels = []
-            for i, rid in enumerate(resids):
-                if i < len(resnames):
-                    labels.append(f"{resnames[i]}{rid}")
-                else:
-                    labels.append(str(rid))
+            labels = [str(rid) for rid in resids]
 
         y = np.asarray(data["rmsf"], dtype=float)
         return {
@@ -1784,7 +1779,9 @@ class TrajectoryAnalyzer:
             self.universe = mda.Universe(str(self.topology), str(self.trajectories[0]))
         else:
             # Concatenate multiple trajectories
-            self.universe = mda.Universe(str(self.topology), [str(t) for t in self.trajectories])
+            self.universe = mda.Universe(
+                str(self.topology), [str(t) for t in self.trajectories]
+            )
 
         logger.info(
             f"Loaded trajectory: {len(self.universe.trajectory)} frames "
