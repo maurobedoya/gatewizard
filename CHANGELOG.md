@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [1.0.30] - 2026-04-30
+
+### Added
+
+- API-oriented analysis helpers in `gatewizard.utils.namd_analysis`:
+  - `run_structural_analysis()` for RMSD, RMSF, distance, and radius of gyration
+  - `list_namd_energy_properties()` for NAMD log property discovery
+  - `run_energetic_analysis()` returning JSON-serializable multi-series data
+
 
 ## [1.0.29] - 2026-04-27
 
@@ -345,7 +354,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive API documentation
 - User guide and troubleshooting documentation
 
-[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.29...HEAD
+[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.30...HEAD
+[1.0.30]: https://github.com/maurobedoya/gatewizard/compare/v1.0.29...v1.0.30
 [1.0.29]: https://github.com/maurobedoya/gatewizard/compare/v1.0.28...v1.0.29
 [1.0.28]: https://github.com/maurobedoya/gatewizard/compare/v1.0.27...v1.0.28
 [1.0.27]: https://github.com/maurobedoya/gatewizard/compare/v1.0.26...v1.0.27
