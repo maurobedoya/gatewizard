@@ -137,3 +137,8 @@ gatewizard_logging.log
 *.trr
 status.json
 logs/
+
+# tests output
+tests/equilibration_examples/popc_membrane/level*/
+tests/equilibration_examples/popc_membrane/openmm_example_*/
+*.tmp.*

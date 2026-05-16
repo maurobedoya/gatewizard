@@ -1579,6 +1579,544 @@ head bilayer_protein_protonated_prepared_lipid.pdb
 
 ---
 
+---
+
+## Class: OpenMMEquilibrationManager
+
+Manager for OpenMM equilibration simulations using CHARMM-GUI templates and the AMBER force field.
+Uses the same user-facing API as `NAMDEquilibrationManager`.
+
+### Constructor
+
+```python
+OpenMMEquilibrationManager(working_dir: Path)
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `working_dir` | `Path` | Required | Working directory containing system files |
+
+---
+
+### Quick Start (OpenMM)
+
+#### Example: Single NVT Stage with Auto-Detection
+
+```python
+from pathlib import Path
+from gatewizard.tools.equilibration import OpenMMEquilibrationManager
+
+work_dir = Path("popc_membrane")
+
+stages = [
+    {
+        "name": "Equilibration 1",
+        "time_ns": 0.125,
+        "ensemble": "NVT",
+        "temperature": 310.15,
+        "timestep": 1.0,       # femtoseconds (same as NAMD)
+        "minimize_steps": 5000,
+        "constraints": {
+            "protein_backbone": 10.0,   # kcal/mol/Å²
+            "protein_sidechain": 5.0,
+            "lipid_head": 2.5,
+            "lipid_tail": 0.0,
+        },
+    }
+]
+
+manager = OpenMMEquilibrationManager(work_dir)
+result = manager.setup_openmm_equilibration(
+    stage_params_list=stages,
+    output_name="openmm_example_01",
+)
+print(f"Setup complete: {result['openmm_dir']}")
+# Run with: cd {result['openmm_dir']} && bash run_equilibration.sh
+```
+
+#### Example: Full 7-Stage NPT Protocol
+
+```python
+from pathlib import Path
+from gatewizard.tools.equilibration import OpenMMEquilibrationManager
+
+work_dir = Path("popc_membrane")
+
+stages = [
+    {"name": "Eq 1 NVT strong",   "time_ns": 0.125, "ensemble": "NVT",  "temperature": 303.15, "timestep": 1.0, "minimize_steps": 5000, "constraints": {"protein_backbone": 10.0, "protein_sidechain": 5.0,  "lipid_head": 2.5, "lipid_tail": 0.0}},
+    {"name": "Eq 2 NVT relax",    "time_ns": 0.125, "ensemble": "NVT",  "temperature": 303.15, "timestep": 1.0,                          "constraints": {"protein_backbone":  5.0, "protein_sidechain": 2.5,  "lipid_head": 1.0, "lipid_tail": 0.0}},
+    {"name": "Eq 3 NPT pcouple",  "time_ns": 0.125, "ensemble": "NPT",  "temperature": 303.15, "timestep": 1.0,                          "constraints": {"protein_backbone":  2.5, "protein_sidechain": 1.0,  "lipid_head": 0.5, "lipid_tail": 0.0}},
+    {"name": "Eq 4 NPT relax",    "time_ns": 0.250, "ensemble": "NPT",  "temperature": 303.15, "timestep": 2.0,                          "constraints": {"protein_backbone":  1.0, "protein_sidechain": 0.5,  "lipid_head": 0.0, "lipid_tail": 0.0}},
+    {"name": "Eq 5 NPT backbone", "time_ns": 0.250, "ensemble": "NPT",  "temperature": 303.15, "timestep": 2.0,                          "constraints": {"protein_backbone":  0.5, "protein_sidechain": 0.0,  "lipid_head": 0.0, "lipid_tail": 0.0}},
+    {"name": "Eq 6 NPT light",    "time_ns": 0.500, "ensemble": "NPT",  "temperature": 303.15, "timestep": 2.0,                          "constraints": {"protein_backbone":  0.1, "protein_sidechain": 0.0,  "lipid_head": 0.0, "lipid_tail": 0.0}},
+    {"name": "Production",        "time_ns": 50.0,  "ensemble": "NPT",  "temperature": 303.15, "timestep": 2.0,                          "constraints": {"protein_backbone":  0.0, "protein_sidechain": 0.0,  "lipid_head": 0.0, "lipid_tail": 0.0}},
+]
+
+manager = OpenMMEquilibrationManager(work_dir)
+result = manager.setup_openmm_equilibration(
+    stage_params_list=stages,
+    output_name="openmm_npt_7stage",
+    scheme_type="NPT",          # explicit; otherwise auto-detected from stage 1 ensemble
+)
+print(f"Setup complete: {result['openmm_dir']}")
+print(f"Config files: {len(result['config_files'])}")
+# Run with: cd {result['openmm_dir']} && bash run_equilibration.sh
+```
+
+---
+
+### Ensemble Types (OpenMM)
+
+| Ensemble | Folder | Pressure Coupling | Use Case |
+|----------|--------|------------------|----------|
+| **NVT** | `01_NVT` | None (`pcouple = no`) | Initial heating / fixed box |
+| **NPT** | `02_NPT` | `MonteCarloMembraneBarostat` | General membrane equilibration |
+| **NPAT** | `03_NPAT` | `MonteCarloAnisotropicBarostat` (Z-free) | Anisotropic pressure control |
+| **NPgT** | `04_NPgT` | `MonteCarloMembraneBarostat` + surface tension | Membrane with explicit surface tension |
+
+---
+
+### Important Notes
+
+#### Force constant schedule
+
+The CHARMM-GUI template files contain a built-in force constant schedule
+(`fc_bb`, `fc_sc`, `fc_lpos`) that decreases progressively across the six equilibration steps
+(4000 → 2000 → 1000 → 500 → 200 → 50 kJ/mol/nm²). These values are **hardcoded in the templates**
+and are not controlled by the user's `constraints` dict.
+
+The `constraints` dict controls **which atom types are included in the restraint index files**:
+
+- A non-zero value → that atom type is written to `prot_pos.txt` or `lipid_pos.txt`
+- A zero value → that atom type is excluded from the restraint files
+
+#### Units
+
+| Parameter | NAMD | OpenMM template | User API |
+|-----------|------|-----------------|----------|
+| Force constants | kcal/mol/Å² (B-factor) | kJ/mol/nm² (hardcoded in template) | kcal/mol/Å² (controls inclusion only) |
+| Timestep | fs | ps (converted internally) | fs |
+| Temperature | K | K | K |
+
+#### Lipid dihedral restraints
+
+`fc_ldih = 0` is hardcoded in all templates. OpenMM dihedral restraints require equilibrium
+dihedral angles from the structure, which GateWizard does not compute. Only positional
+restraints (`prot_pos.txt`, `lipid_pos.txt`) are used.
+
+---
+
+### Core Method: setup_openmm_equilibration()
+
+```python
+setup_openmm_equilibration(
+    system_files: Optional[Dict[str, str]] = None,
+    stage_params_list: Optional[List[Dict[str, Any]]] = None,
+    output_name: str = "equilibration",
+    scheme_type: Optional[str] = None,
+) -> Dict[str, Any]
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `system_files` | `Optional[Dict[str, str]]` | `None` | System file paths. If `None`, auto-detects in `working_dir` |
+| `stage_params_list` | `List[Dict[str, Any]]` | Required | List of stage parameter dicts |
+| `output_name` | `str` | `"equilibration"` | Name for output folder |
+| `scheme_type` | `Optional[str]` | `None` | Equilibration scheme (NVT, NPT, NPAT, NPgT). Auto-detected from first stage if `None` |
+
+**Returns:** `Dict[str, Any]` with keys:
+
+- `openmm_dir` (`Path`): Output directory path
+- `config_files` (`List[Path]`): Generated `.inp` files
+- `run_script` (`Path`): Bash run script path
+
+**What it does:**
+
+1. Auto-detects system files if not provided
+2. Creates `{working_dir}/{output_name}/` output directory
+3. Copies system files (`prmtop`, `inpcrd`, `pdb`) into the output directory
+4. Copies the 7 CHARMM-GUI Python helper scripts into the output directory
+5. Generates `.inp` config files for each stage from the appropriate template
+6. Generates restraint index files (`prot_pos.txt`, `lipid_pos.txt`, `dihe.txt`) in `restraints/`
+7. Generates `run_equilibration.sh` bash script
+
+---
+
+### Stage Parameters (OpenMM)
+
+Each entry in `stage_params_list` accepts:
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | `str` | Yes | — | Stage label (for logging) |
+| `time_ns` | `float` | Yes | — | Simulation time in nanoseconds |
+| `ensemble` | `str` | Yes | — | NVT, NPT, NPAT, or NPgT |
+| `temperature` | `float` | Yes | — | Temperature in Kelvin |
+| `timestep` | `float` | No | `2.0` | Timestep in femtoseconds |
+| `minimize_steps` | `int` | No | `0` | Minimization steps (first stage only) |
+| `dcd_freq` | `int` | No | `5000` | DCD output frequency (steps) |
+| `constraints` | `Dict[str, float]` | No | all zero | Restraint inclusion dict (kcal/mol/Å²) |
+
+**Constraints keys:** `protein_backbone`, `protein_sidechain`, `lipid_head`, `lipid_tail`
+
+---
+
+### Output Structure (OpenMM)
+
+```
+{output_name}/
+├── system.prmtop              # Copied AMBER topology
+├── system.inpcrd              # Copied AMBER coordinates
+├── system.pdb                 # Copied system PDB
+├── openmm_run.py              # CHARMM-GUI runner script
+├── omm_readinputs.py          # Config parser
+├── omm_readparams.py          # File I/O
+├── omm_restraints.py          # Restraint forces
+├── omm_barostat.py            # Pressure coupling
+├── omm_vfswitch.py            # vdW force switching
+├── omm_rewrap.py              # Coordinate rewrapping
+├── step6.1_equilibration.inp  # Stage 1 config
+├── step6.2_equilibration.inp  # Stage 2 config
+├── ...
+├── step7_production.inp       # Production config
+├── run_equilibration.sh       # Bash run script
+└── restraints/
+    ├── prot_pos.txt           # Protein atom indices (BB / SC labels)
+    ├── lipid_pos.txt          # Lipid head-group atom indices
+    └── dihe.txt               # Dihedral restraints (always empty)
+```
+
+---
+
+### How to Run (OpenMM)
+
+```bash
+cd {output_name}/
+bash run_equilibration.sh
+
+# Override Python interpreter:
+PYTHON=python3 bash run_equilibration.sh
+```
+
+The run script chains all stages sequentially. Each stage uses `-irst <prev>.rst` to restart
+from the previous stage's checkpoint, except the first stage which reads from the AMBER
+coordinate file.
+
+---
+
+---
+
+## EquilibrationStage Dataclass
+
+`EquilibrationStage` is a typed, immutable-friendly dataclass that wraps the
+stage-parameter dictionary used by both engines.  It is the recommended way to
+build and manipulate individual stages.
+
+### Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | `str` | `"Stage"` | Human-readable label |
+| `ensemble` | `str` | `"NPT"` | Thermodynamic ensemble (`NVT`, `NPT`, `NPAT`, `NPgT`) |
+| `time_ns` | `float` | `0.125` | Simulation time per stage (ns) |
+| `temperature` | `float` | `310.15` | Temperature (K) |
+| `timestep` | `float` | `2.0` | Integration timestep (fs) |
+| `pressure` | `float` | `1.0` | Target pressure (bar) |
+| `minimize_steps` | `int` | `0` | Energy minimization steps (first stage only) |
+| `dcd_freq` | `int` | `5000` | Trajectory save frequency (steps) |
+| `constraints` | `Dict[str, float]` | `{}` | Force constants (kcal/mol/Å²) per category |
+
+### Methods
+
+```python
+# Replace specific fields → new object (original unchanged)
+new_stage = stage.replace(time_ns=0.5, temperature=298.15)
+
+# Convert to plain dict for the manager API
+d = stage.to_dict()
+```
+
+### Example
+
+```python
+from gatewizard.tools.equilibration import EquilibrationStage
+
+s = EquilibrationStage(
+    name="NVT Heating",
+    ensemble="NVT",
+    time_ns=0.25,
+    temperature=310.15,
+    timestep=2.0,
+    minimize_steps=5000,
+    constraints={"protein_backbone": 10.0, "protein_sidechain": 5.0},
+)
+# Create a NPT variant at different temperature
+s_npt = s.replace(ensemble="NPT", name="NPT Stage 1", minimize_steps=0)
+```
+
+---
+
+## Default Equilibration Protocol
+
+Both engines expose `get_default_stage_params()` to generate a standard
+CHARMM-GUI-compatible six-stage schedule with gradually decreasing positional
+restraints.
+
+### NAMD — zero-config defaults
+
+```python
+from pathlib import Path
+from gatewizard.tools.equilibration import NAMDEquilibrationManager
+
+manager = NAMDEquilibrationManager(working_dir=Path("/tmp/work"))
+
+result = manager.setup_namd_equilibration(
+    system_files={
+        "psf":  "system.psf",
+        "pdb":  "system.pdb",
+        "prm":  "par_all36m_prot.prm",
+    },
+    # stage_params_list omitted → uses 6-stage default
+)
+print(result["namd_dir"])   # Path to output folder
+```
+
+### OpenMM — zero-config defaults
+
+```python
+from pathlib import Path
+from gatewizard.tools.equilibration import OpenMMEquilibrationManager
+
+manager = OpenMMEquilibrationManager(working_dir=Path("/tmp/work"))
+
+result = manager.setup_openmm_equilibration(
+    system_files={
+        "prmtop": "system.prmtop",
+        "inpcrd": "system.inpcrd",
+        "pdb":    "system.pdb",
+    },
+    # stage_params_list omitted → uses 6-stage CHARMM-GUI default
+)
+print(result["openmm_dir"])
+```
+
+### Retrieving the default stages
+
+```python
+# NAMD
+stages = NAMDEquilibrationManager.get_default_stage_params()
+
+# OpenMM  (NPT, NPAT, or NPgT scheme)
+stages = OpenMMEquilibrationManager.get_default_stage_params(scheme_type="NPT")
+```
+
+---
+
+## Modifying Stage Parameters
+
+### Direct attribute assignment
+
+```python
+stages = OpenMMEquilibrationManager.get_default_stage_params()
+
+# Run all stages at 298 K instead of 310.15 K
+for s in stages:
+    s["temperature"] = 298.15
+
+# Double the simulation time for stage 6
+stages[5]["time_ns"] = 0.5
+```
+
+### Using `EquilibrationStage.replace()` for immutable updates
+
+```python
+from gatewizard.tools.equilibration import EquilibrationStage
+
+raw = OpenMMEquilibrationManager.get_default_stage_params()
+stages = [EquilibrationStage(**s) for s in raw]
+
+# Build a taper schedule: halve backbone restraint each stage
+bb_forces = [10.0, 5.0, 2.5, 1.0, 0.5, 0.0]
+stages = [
+    s.replace(constraints={**s.constraints, "protein_backbone": bb_forces[i]})
+    for i, s in enumerate(stages)
+]
+
+result = manager.setup_openmm_equilibration(
+    system_files=system_files,
+    stage_params_list=[s.to_dict() for s in stages],
+)
+```
+
+---
+
+## Custom Restraints — NAMD
+
+Three levels of customisation are available, from simplest to most flexible.
+
+### Level 1 — Override a single force constant key
+
+Use this when you only need to change one category (e.g. turn off sidechain
+restraints entirely):
+
+```python
+stages = NAMDEquilibrationManager.get_default_stage_params()
+for s in stages:
+    s["constraints"]["protein_sidechain"] = 0.0  # no SC restraints
+
+result = manager.setup_namd_equilibration(
+    system_files=system_files,
+    stage_params_list=stages,
+)
+```
+
+### Level 2 — Auto-detected MDAnalysis selections
+
+GateWizard can auto-detect standard selections from your PDB.  Pass a custom
+`selections` dict to override specific categories:
+
+```python
+result = manager.setup_namd_equilibration(
+    system_files=system_files,
+    stage_params_list=stages,
+    selections={
+        "protein_backbone": "backbone and segid PROA PROB",
+        "protein_sidechain": "protein and not backbone and segid PROA PROB",
+        "lipid_head":        "resname POPC and name P O11 O12 O13 O14",
+    },
+)
+```
+
+Supported keys: `protein_backbone`, `protein_sidechain`, `lipid_head`,
+`lipid_tail`, `water`, `ions`, `other`.
+
+### Level 3 — Full MDAnalysis control with ligands
+
+Add a custom `ligand_<RESNAME>` or `other` key to the `constraints` dict, and
+provide a matching MDAnalysis selection string:
+
+```python
+stages = NAMDEquilibrationManager.get_default_stage_params()
+for s in stages[:3]:                            # restrain ligand only in stages 1-3
+    s["constraints"]["ligand_ABC"] = 5.0        # kcal/mol/Å²
+
+result = manager.setup_namd_equilibration(
+    system_files=system_files,
+    stage_params_list=stages,
+    selections={
+        "ligand_ABC": "resname ABC",            # MDAnalysis selection string
+    },
+)
+# Generates: restraints/ligand_ABC_restraints.txt (PDB-format NAMD restraint file)
+```
+
+> **Requires MDAnalysis.**  Install with `conda install -c conda-forge mdanalysis`.
+
+---
+
+## Custom Restraints — OpenMM
+
+OpenMM restraints use atom-index files consumed by `omm_restraints.py` at
+runtime.
+
+### Standard protein / lipid restraints
+
+These are enabled automatically when the `constraints` dict contains non-zero
+forces for the standard keys:
+
+```python
+stages = OpenMMEquilibrationManager.get_default_stage_params()
+# stages already contain protein_backbone, protein_sidechain, lipid_head, etc.
+
+result = manager.setup_openmm_equilibration(
+    system_files=system_files,
+    stage_params_list=stages,
+)
+# Generates:
+#   restraints/prot_pos.txt   (BB / SC labels)
+#   restraints/lipid_pos.txt  (lipid atom indices)
+```
+
+GateWizard writes `rest = yes` automatically for any stage where at least one
+force constant is > 0, and injects the correct `fc_bb`, `fc_sc`, and `fc_lpos`
+values (in kJ/mol/nm²) into the CHARMM-GUI template.
+
+### Ligand / cofactor restraints (`custom_pos.txt`)
+
+Add a `ligand_<RESNAME>` (or any non-standard) key to the `constraints` dict
+and supply a matching MDAnalysis selection:
+
+```python
+stages = OpenMMEquilibrationManager.get_default_stage_params()
+
+# Restrain ligand ABC at 5 kcal/mol/Å² in the first three stages
+for s in stages[:3]:
+    s["constraints"]["ligand_ABC"] = 5.0
+
+result = manager.setup_openmm_equilibration(
+    system_files=system_files,
+    stage_params_list=stages,
+    selections={
+        "ligand_ABC": "resname ABC",   # MDAnalysis selection string
+    },
+)
+# Generates:
+#   restraints/custom_pos.txt  (per-atom force constants in kJ/mol/nm²)
+```
+
+The `custom_pos.txt` file is read at runtime by the GateWizard extension block
+inside `omm_restraints.py` via a `CustomExternalForce` with a periodic harmonic
+potential (`k*periodicdistance(x,y,z,x0,y0,z0)²`).
+
+### How force constants are determined
+
+| Key | Restraint file | Force constant source |
+|-----|---------------|----------------------|
+| `protein_backbone` | `prot_pos.txt` (BB) | Per-stage `fc_bb` in the `.inp` config |
+| `protein_sidechain` | `prot_pos.txt` (SC) | Per-stage `fc_sc` in the `.inp` config |
+| `lipid_head` / `lipid_tail` | `lipid_pos.txt` | Per-stage `fc_lpos` in the `.inp` config |
+| Any other key | `custom_pos.txt` | Fixed at **maximum across all stages**; baked into the file |
+
+> **Note — `custom_pos.txt` limitation**: force constants in `custom_pos.txt`
+> are fixed at the maximum value found across all stages.  Per-stage scaling of
+> custom forces is not supported in the current implementation.  If you need
+> different forces per stage, generate the files manually and place them in the
+> `restraints/` directory before running.
+
+### Using pre-computed atom indices (PSF + PDB)
+
+MDAnalysis can load topology files for more accurate selections.  If you have
+already computed the 0-based atom indices externally, pass them as a literal
+index selection:
+
+```python
+selections = {
+    "ligand_ABC": "index 1234 1235 1236 1237",  # 0-based, space-separated
+}
+```
+
+Or generate the `restraints/` files manually and simply omit `selections` from
+the call.
+
+> **Requires MDAnalysis** for custom categories.
+> Install with `conda install -c conda-forge mdanalysis`.
+
+### Return value
+
+`setup_openmm_equilibration()` now returns a `"restraint_files"` key:
+
+```python
+result = manager.setup_openmm_equilibration(...)
+print(result["restraint_files"])
+# {"prot_pos": PosixPath("...restraints/prot_pos.txt"),
+#  "lipid_pos": None,
+#  "custom_pos": PosixPath("...restraints/custom_pos.txt")}
+```
+
+---
+
 ## See Also
 
 - [User Guide](../user-guide.md) - Complete usage guide
