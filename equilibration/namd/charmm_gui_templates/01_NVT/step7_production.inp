@@ -1,5 +1,5 @@
 # Adapted from CHARMM-GUI
-# NVT SCHEME - template step7_production.inp
+# NVT SCHEME for NAMD - template step7_production.inp
 
 amber                   on;
 parmfile                system.prmtop

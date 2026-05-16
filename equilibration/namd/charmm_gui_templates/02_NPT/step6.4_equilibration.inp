@@ -1,5 +1,5 @@
 # Adapted from CHARMM-GUI
-# NPT SCHEME - template step6.4_equilibration.inp
+# NPT SCHEME for NAMD - template step6.4_equilibration.inp
 
 amber                   on;
 parmfile                system.prmtop
