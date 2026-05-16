@@ -28,11 +28,13 @@ from gatewizard.tools.ligand_parametrization import (
     NON_RECOMMENDED_COMBOS,
     LIGHT_PALETTE,
 )
+from gatewizard.tools.equilibration import EquilibrationStage
 
 __all__ = [
     "MolecularViewer",
     "ForceFieldManager",
     "SystemValidator",
+    "EquilibrationStage",
     "detect_ligands",
     "extract_ligand_pdb",
     "parametrize_ligand",

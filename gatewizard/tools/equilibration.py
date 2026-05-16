@@ -10,16 +10,108 @@ input files for various molecular dynamics engines.
 """
 
 import os
+import re
 import subprocess
 import shutil
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
+from dataclasses import dataclass, field, replace as _dc_replace
 import json
 import tempfile
 
 from gatewizard.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class EquilibrationStage:
+    """
+    Parameters for a single equilibration stage.
+
+    Accepted by both :class:`OpenMMEquilibrationManager` and
+    :class:`NAMDEquilibrationManager` as an alternative to plain dicts.
+    Fields prefixed with the engine name are silently ignored by the other engine.
+
+    Args:
+        name: Human-readable stage label.
+        ensemble: NVT | NPT | NPAT | NPgT.
+        time_ns: Simulation length in nanoseconds.
+        timestep: Integration timestep in femtoseconds.
+        temperature: Target temperature in Kelvin.
+        constraints: Force constants (kcal/mol/Å²) keyed by atom class:
+            ``protein_backbone``, ``protein_sidechain``, ``lipid_head``,
+            ``lipid_tail``, ``water``, ``ions``, ``other``.
+        minimize_steps: Energy minimisation steps (first stage only).
+        dcd_freq: Trajectory write frequency in steps (OpenMM).
+        steps: Explicit step count override (NAMD); computed from
+            ``time_ns / timestep`` if None.
+        pressure: Target pressure in bar (NAMD, NPT/NPAT/NPgT ensembles).
+        surface_tension: Surface tension in dyn/cm (NAMD, NPAT/NPgT ensembles).
+
+    Example::
+
+        from dataclasses import replace
+        from gatewizard.tools.equilibration import (
+            OpenMMEquilibrationManager, EquilibrationStage
+        )
+
+        stages = OpenMMEquilibrationManager.get_default_stage_params("NPT",
+                                                                      include_production=True)
+
+        # Attribute access
+        stages[-1].time_ns = 100.0
+
+        # Immutable-style copy with dataclasses.replace
+        stages[-1] = replace(stages[-1], time_ns=100.0, temperature=303.15)
+
+        manager = OpenMMEquilibrationManager(prepared_folder)
+        result = manager.setup_openmm_equilibration(
+            stage_params_list=stages, scheme_type="NPT"
+        )
+    """
+
+    name: str
+    ensemble: str
+    time_ns: float
+    timestep: float
+    temperature: float
+    constraints: Dict[str, float] = field(default_factory=dict)
+    minimize_steps: int = 0
+    dcd_freq: int = 5000
+    # NAMD-specific optional fields
+    steps: Optional[int] = None
+    pressure: Optional[float] = None
+    surface_tension: Optional[float] = None
+
+    def replace(self, **kwargs) -> "EquilibrationStage":
+        """Return a copy of this stage with the given fields overridden.
+
+        Example::
+
+            fast_prod = stages[-1].replace(time_ns=10.0, temperature=303.15)
+        """
+        return _dc_replace(self, **kwargs)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialise to a plain dict compatible with the setup methods."""
+        d: Dict[str, Any] = {
+            "name": self.name,
+            "ensemble": self.ensemble,
+            "time_ns": self.time_ns,
+            "timestep": self.timestep,
+            "temperature": self.temperature,
+            "constraints": dict(self.constraints),
+            "minimize_steps": self.minimize_steps,
+            "dcd_freq": self.dcd_freq,
+        }
+        if self.steps is not None:
+            d["steps"] = self.steps
+        if self.pressure is not None:
+            d["pressure"] = self.pressure
+        if self.surface_tension is not None:
+            d["surface_tension"] = self.surface_tension
+        return d
 
 
 class EquilibrationProtocol:
@@ -1459,6 +1551,118 @@ class NAMDEquilibrationManager:
         else:
             return constraints.get("other", 0.0), "other"
 
+    @staticmethod
+    def get_default_stage_params(
+        scheme_type: str = "NPT",
+        temperature: float = 310.15,
+        include_production: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """
+        Return default CHARMM-GUI-style equilibration stages for a membrane protein system.
+
+        Six stages with gradually decreasing positional restraints, following the
+        standard CHARMM-GUI membrane equilibration schedule. Suitable as a starting
+        point that can be further customised before passing to setup_namd_equilibration.
+
+        Args:
+            scheme_type: Ensemble for all stages (NVT | NPT | NPAT | NPgT).
+            temperature: Simulation temperature in Kelvin (default 310.15).
+            include_production: When True, append a 50 ns unrestrained production
+                stage (default False).
+
+        Returns:
+            List of :class:`EquilibrationStage` objects ready to pass to
+            setup_namd_equilibration.  Fields can be edited via attribute
+            assignment or the :meth:`~EquilibrationStage.replace` method.
+
+        Example::
+
+            >>> from dataclasses import replace
+            >>> stages = NAMDEquilibrationManager.get_default_stage_params("NPT",
+            ...                                                              include_production=True)
+            >>> stages[-1].time_ns = 100.0          # mutable attribute set
+            >>> stages[0] = stages[0].replace(temperature=303.15)  # immutable copy
+            >>> manager = NAMDEquilibrationManager(Path("/work/dir"))
+            >>> result = manager.setup_namd_equilibration(stage_params_list=stages)
+        """
+        valid = {"NVT", "NPT", "NPAT", "NPgT"}
+        if scheme_type not in valid:
+            raise ValueError(
+                f"scheme_type must be one of {sorted(valid)}, got '{scheme_type}'"
+            )
+
+        def _steps(time_ns: float, timestep_fs: float) -> int:
+            return int(round(time_ns * 1_000_000 / timestep_fs))
+
+        pressure = 1.0 if scheme_type in {"NPT", "NPAT", "NPgT"} else None
+        surface_tension = 0.0 if scheme_type in {"NPAT", "NPgT"} else None
+
+        def _stage(name, time_ns, timestep, minimize_steps=0, **constraints_overrides):
+            base_constraints = {
+                "protein_backbone": 0.0,
+                "protein_sidechain": 0.0,
+                "lipid_head": 0.0,
+                "lipid_tail": 0.0,
+                "water": 0.0,
+                "ions": 0.0,
+                "other": 0.0,
+            }
+            base_constraints.update(constraints_overrides)
+            return EquilibrationStage(
+                name=name,
+                ensemble=scheme_type,
+                time_ns=time_ns,
+                steps=_steps(time_ns, timestep),
+                timestep=timestep,
+                temperature=temperature,
+                minimize_steps=minimize_steps,
+                pressure=pressure,
+                surface_tension=surface_tension,
+                constraints=base_constraints,
+            )
+
+        stages: List[EquilibrationStage] = [
+            _stage(
+                "Equilibration 1",
+                0.125,
+                1.0,
+                minimize_steps=10000,
+                protein_backbone=10.0,
+                protein_sidechain=5.0,
+                lipid_head=2.5,
+            ),
+            _stage(
+                "Equilibration 2",
+                0.125,
+                1.0,
+                protein_backbone=5.0,
+                protein_sidechain=2.5,
+                lipid_head=1.0,
+            ),
+            _stage(
+                "Equilibration 3",
+                0.125,
+                1.0,
+                protein_backbone=2.5,
+                protein_sidechain=1.0,
+                lipid_head=0.5,
+            ),
+            _stage(
+                "Equilibration 4",
+                0.25,
+                2.0,
+                protein_backbone=1.0,
+                protein_sidechain=0.5,
+            ),
+            _stage("Equilibration 5", 0.25, 2.0, protein_backbone=0.5),
+            _stage("Equilibration 6", 0.5, 2.0, protein_backbone=0.1),
+        ]
+
+        if include_production:
+            stages.append(_stage("Production", 50.0, 2.0))
+
+        return stages
+
     def setup_namd_equilibration(
         self,
         system_files: Optional[Dict[str, str]] = None,
@@ -1466,6 +1670,7 @@ class NAMDEquilibrationManager:
         output_name: str = "equilibration",
         scheme_type: Optional[str] = None,
         namd_executable: str = "namd3",
+        selections: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         """
         Complete NAMD equilibration setup - replicates GUI workflow.
@@ -1534,6 +1739,14 @@ class NAMDEquilibrationManager:
         import json
 
         self.logger.info("=== Setting up NAMD equilibration ===")
+
+        # Normalise EquilibrationStage objects to plain dicts early so that
+        # all subsequent code can safely use dict-API (.get, subscript, etc.)
+        if stage_params_list:
+            stage_params_list = [
+                s.to_dict() if isinstance(s, EquilibrationStage) else s
+                for s in stage_params_list
+            ]
 
         # Auto-detect scheme_type from stages if not provided
         if scheme_type is None:
@@ -1616,9 +1829,19 @@ class NAMDEquilibrationManager:
         config_files = []
         protocols_dict = {}
 
-        # Ensure stage_params_list is not None
-        if stage_params_list is None:
-            raise ValueError("stage_params_list cannot be None")
+        # Use default stages when none are provided
+        if not stage_params_list:
+            stage_params_list = self.get_default_stage_params(scheme_type)
+            self.logger.info(
+                f"No stages provided — using default {scheme_type} protocol "
+                f"({len(stage_params_list)} stages)"
+            )
+
+        # Normalise EquilibrationStage objects to plain dicts
+        stage_params_list = [
+            s.to_dict() if isinstance(s, EquilibrationStage) else s
+            for s in stage_params_list
+        ]
 
         # Convert stage list to protocols dictionary
         for i, stage_params in enumerate(stage_params_list):
@@ -1677,6 +1900,7 @@ class NAMDEquilibrationManager:
                         constraints=constraints,
                         output_file=restraint_file,
                         stage_name=stage_params.get("name", stage_name),
+                        selections=selections,
                     )
                     self.logger.info(f"  Generated: {restraint_file.name}")
         else:
@@ -3135,6 +3359,1044 @@ PMEGridSpacing          1.0"""
             return "# No restraints defined for this stage"
 
         return "\n".join(restraints_lines)
+
+
+class OpenMMEquilibrationManager:
+    """Manager for OpenMM equilibration simulations using CHARMM-GUI templates.
+
+    Mirrors the NAMDEquilibrationManager API. The ``constraints`` dict accepts
+    the same keys and kcal/mol/Å² units as NAMD; non-zero values control which
+    atom types appear in the OpenMM restraint index files (prot_pos.txt,
+    lipid_pos.txt). Per-stage force constant magnitudes follow the CHARMM-GUI
+    equilibration schedule embedded in the template files. Lipid dihedral
+    restraints (fc_ldih) are always disabled; only positional restraints are used.
+    """
+
+    SCHEME_MAPPING: Dict[str, str] = {
+        "NVT": "01_NVT",
+        "NPT": "02_NPT",
+        "NPAT": "03_NPAT",
+        "NPgT": "04_NPgT",
+    }
+
+    TEMPLATE_MAPPING: Dict[str, str] = {
+        "step1": "step6.1_equilibration.inp",
+        "step2": "step6.2_equilibration.inp",
+        "step3": "step6.3_equilibration.inp",
+        "step4": "step6.4_equilibration.inp",
+        "step5": "step6.5_equilibration.inp",
+        "step6": "step6.6_equilibration.inp",
+        "step7_production": "step7_production.inp",
+    }
+
+    STAGE_INDEX_TO_KEY: Dict[int, str] = {
+        1: "step1",
+        2: "step2",
+        3: "step3",
+        4: "step4",
+        5: "step5",
+        6: "step6",
+        7: "step7_production",
+    }
+
+    def __init__(self, working_dir: Path):
+        self.working_dir = Path(working_dir)
+        self.templates_dir = (
+            Path(__file__).parent.parent.parent / "equilibration" / "openmm"
+        )
+        self.scripts_dir = self.templates_dir / "scripts"
+        self.logger = get_logger(self.__class__.__name__)
+
+    def find_system_files(self) -> Optional[Dict[str, str]]:
+        """
+        Automatically detect AMBER system files in the working directory.
+
+        Returns:
+            Dict with keys ``prmtop``, ``inpcrd``, ``pdb``, ``bilayer_pdb``
+            or None on failure.
+
+        Example:
+            >>> manager = OpenMMEquilibrationManager(Path("work_dir"))
+            >>> files = manager.find_system_files()
+            >>> if files:
+            ...     result = manager.setup_openmm_equilibration(system_files=files)
+        """
+        system_files: Dict[str, Any] = {}
+
+        prmtop_files = list(self.working_dir.glob("*.prmtop"))
+        if not prmtop_files:
+            self.logger.error("No .prmtop file found in working directory")
+            return None
+        system_files["prmtop"] = str(prmtop_files[0])
+        self.logger.info(f"Found topology: {prmtop_files[0].name}")
+
+        inpcrd_files = list(self.working_dir.glob("*.inpcrd"))
+        if not inpcrd_files:
+            inpcrd_files = list(self.working_dir.glob("*.crd"))
+        if not inpcrd_files:
+            inpcrd_files = list(self.working_dir.glob("*.rst"))
+        if not inpcrd_files:
+            self.logger.error("No .inpcrd/.crd/.rst file found in working directory")
+            return None
+        system_files["inpcrd"] = str(inpcrd_files[0])
+        self.logger.info(f"Found coordinates: {inpcrd_files[0].name}")
+
+        system_pdb = self.working_dir / "system.pdb"
+        if system_pdb.exists():
+            system_files["pdb"] = str(system_pdb)
+        else:
+            pdb_files = [
+                p
+                for p in self.working_dir.glob("*.pdb")
+                if "bilayer" not in p.name.lower()
+            ]
+            if pdb_files:
+                system_files["pdb"] = str(pdb_files[0])
+            else:
+                self.logger.warning(
+                    "No .pdb file found; restraint generation will be skipped"
+                )
+                system_files["pdb"] = None
+
+        if system_files.get("pdb"):
+            self.logger.info(f"Found PDB: {Path(system_files['pdb']).name}")
+
+        # Bilayer PDB with CRYST1 record — needed to supply box dimensions when
+        # prmtop has IFBOX=0 (common in membrane-system preparations).
+        bilayer_pdb: Optional[Path] = None
+        for pattern in ("bilayer*_lipid.pdb", "bilayer_*.pdb", "*_bilayer.pdb"):
+            candidates = list(self.working_dir.glob(pattern))
+            if candidates:
+                bilayer_pdb = candidates[0]
+                break
+        if bilayer_pdb:
+            system_files["bilayer_pdb"] = str(bilayer_pdb)
+            self.logger.info(f"Found bilayer PDB: {bilayer_pdb.name}")
+        else:
+            system_files["bilayer_pdb"] = None
+            self.logger.warning(
+                "No bilayer PDB (bilayer_*_lipid.pdb) found; box dimensions may "
+                "not be set correctly if prmtop has IFBOX=0"
+            )
+
+        return system_files
+
+    @staticmethod
+    def get_default_selections(pdb_path: str) -> Dict[str, str]:
+        """
+        Auto-detect MDAnalysis selection strings for the system in *pdb_path*.
+
+        Delegates to :meth:`NAMDEquilibrationManager.get_default_selections`,
+        which inspects the PDB for standard protein/lipid residues and any
+        non-standard residues that should be treated as ligands.
+
+        Returns:
+            Dict mapping category keys (``"protein_backbone"``,
+            ``"protein_sidechain"``, ``"lipid_head"``, ``"lipid_tail"``,
+            ``"ligand_<RESNAME>"``, …) to MDAnalysis selection strings.
+
+        Example:
+            >>> sels = OpenMMEquilibrationManager.get_default_selections("system.pdb")
+            >>> print(sels["protein_backbone"])
+            protein and backbone
+        """
+        return NAMDEquilibrationManager.get_default_selections(pdb_path)
+
+    def setup_openmm_equilibration(
+        self,
+        system_files: Optional[Dict[str, str]] = None,
+        stage_params_list: Optional[List[Dict[str, Any]]] = None,
+        output_name: str = "equilibration",
+        scheme_type: Optional[str] = None,
+        selections: Optional[Dict[str, str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Complete OpenMM equilibration setup.
+
+        Generates .inp configuration files, restraint index files (prot_pos.txt,
+        lipid_pos.txt, dihe.txt), copies the CHARMM-GUI Python runner scripts,
+        and produces a bash run script.
+
+        Args:
+            system_files: Dict with ``prmtop``, ``inpcrd``, ``pdb``. Auto-detected
+                from working_dir if None.
+            stage_params_list: List of stage parameter dicts. Supported keys:
+
+                - ``name`` (str): human-readable label (optional)
+                - ``ensemble`` (str): NVT | NPT | NPAT | NPgT
+                - ``time_ns`` (float): simulation time in nanoseconds
+                - ``timestep`` (float): integration timestep in femtoseconds (default 2.0)
+                - ``temperature`` (float): temperature in Kelvin (default 310.15)
+                - ``dcd_freq`` (int): trajectory write frequency in steps (default 5000)
+                - ``minimize_steps`` (int): minimization steps for first stage (default 5000)
+                - ``constraints`` (dict): kcal/mol/Å² force constants; keys:
+                  ``protein_backbone``, ``protein_sidechain``, ``lipid_head``,
+                  ``lipid_tail``, ``water``, ``ions``, ``other``, or any
+                  custom key such as ``ligand_ABC``.  Non-zero values generate
+                  the corresponding restraint index files and set ``fc_bb``,
+                  ``fc_sc``, ``fc_lpos`` in the .inp file (converted to
+                  kJ/mol/nm²).  Custom keys write ``restraints/custom_pos.txt``.
+
+            output_name: Subdirectory name under working_dir.
+            scheme_type: Override ensemble for all stages. Auto-detected from the
+                ``ensemble`` field of the first stage if None.
+            selections: Optional ``{key: mda_selection_string}`` dict that
+                overrides the auto-detected MDAnalysis selections used when
+                generating restraint index files.  Keys should match the
+                ``constraints`` dict keys (e.g. ``"protein_backbone"``,
+                ``"ligand_ABC"``).  Requires MDAnalysis.
+
+        Returns:
+            Dict with keys ``openmm_dir``, ``config_files``, ``run_script``,
+            and ``system_files``.
+
+        Example:
+            >>> from pathlib import Path
+            >>> from gatewizard.tools.equilibration import OpenMMEquilibrationManager
+            >>> stages = [
+            ...     {"name": "Eq1", "ensemble": "NPT", "time_ns": 0.125,
+            ...      "temperature": 310.15, "timestep": 1.0,
+            ...      "constraints": {"protein_backbone": 10.0, "lipid_head": 2.5}},
+            ... ]
+            >>> manager = OpenMMEquilibrationManager(Path("/work/dir"))
+            >>> result = manager.setup_openmm_equilibration(stage_params_list=stages)
+            >>> print(result["openmm_dir"])
+        """
+        self.logger.info("=== Setting up OpenMM equilibration ===")
+
+        if system_files is None:
+            system_files = self.find_system_files()
+            if system_files is None:
+                raise ValueError(
+                    "Could not auto-detect system files in working directory"
+                )
+
+        if not stage_params_list:
+            _scheme_for_defaults = scheme_type or "NPT"
+            stage_params_list = self.get_default_stage_params(_scheme_for_defaults)
+            self.logger.info(
+                f"No stages provided — using default {_scheme_for_defaults} protocol "
+                f"({len(stage_params_list)} stages)"
+            )
+
+        # Normalise EquilibrationStage objects to plain dicts
+        stage_params_list = [
+            s.to_dict() if isinstance(s, EquilibrationStage) else s
+            for s in stage_params_list
+        ]
+
+        if scheme_type is None:
+            scheme_type = stage_params_list[0].get("ensemble", "NPT")
+            self.logger.info(f"Auto-detected scheme_type: {scheme_type}")
+
+        if scheme_type not in self.SCHEME_MAPPING:
+            raise ValueError(
+                f"Unknown scheme_type '{scheme_type}'. "
+                f"Must be one of {list(self.SCHEME_MAPPING.keys())}"
+            )
+
+        openmm_dir = self.working_dir / output_name
+        openmm_dir.mkdir(parents=True, exist_ok=True)
+        self.logger.info(f"Output directory: {openmm_dir}")
+
+        # Copy system files
+        self.logger.info("Copying system files...")
+        for key in ("prmtop", "inpcrd", "pdb", "bilayer_pdb"):
+            src = system_files.get(key)
+            if src and Path(src).exists():
+                dest = openmm_dir / Path(src).name
+                shutil.copy2(src, dest)
+                self.logger.info(f"  Copied {Path(src).name}")
+
+        # Copy OpenMM Python runner scripts
+        self.logger.info("Copying OpenMM Python scripts...")
+        if self.scripts_dir.exists():
+            for script in sorted(self.scripts_dir.glob("*.py")):
+                shutil.copy2(script, openmm_dir / script.name)
+                self.logger.info(f"  Copied {script.name}")
+        else:
+            self.logger.warning(f"Scripts directory not found: {self.scripts_dir}")
+
+        # Generate restraint index files before configs (configs need has_custom flag)
+        system_pdb_path = openmm_dir / Path(system_files.get("pdb", "system.pdb")).name
+        restraint_files: Dict[str, Any] = {}
+        has_custom_restraints = False
+        if system_pdb_path.exists():
+            restraint_files = self.generate_openmm_restraint_files(
+                system_pdb=system_pdb_path,
+                stage_params_list=stage_params_list,
+                output_dir=openmm_dir,
+                selections=selections,
+            )
+            has_custom_restraints = restraint_files.get("custom_pos") is not None
+        else:
+            self.logger.warning(
+                f"System PDB not found at {system_pdb_path}; skipping restraint index generation."
+            )
+
+        config_files: List[Path] = []
+        stage_config_names: List[str] = []
+
+        for stage_index, stage_params in enumerate(stage_params_list, start=1):
+            stage_name = stage_params.get("name", f"Stage {stage_index}")
+            self.logger.info(f"Processing stage {stage_index}: {stage_name}")
+
+            config_content = self.generate_openmm_config(
+                stage_name=stage_name,
+                stage_params=stage_params,
+                stage_index=stage_index,
+                scheme_type=scheme_type,
+                has_custom_restraints=has_custom_restraints,
+            )
+
+            config_filename = self._get_config_filename(stage_index)
+            config_path = openmm_dir / config_filename
+            config_path.write_text(config_content)
+            config_files.append(config_path)
+            stage_config_names.append(config_filename.replace(".inp", ""))
+            self.logger.info(f"  Written: {config_filename}")
+
+        prmtop_name = Path(system_files.get("prmtop", "system.prmtop")).name
+        inpcrd_name = Path(system_files.get("inpcrd", "system.inpcrd")).name
+        bilayer_pdb_src = system_files.get("bilayer_pdb")
+        bilayer_pdb_name = Path(bilayer_pdb_src).name if bilayer_pdb_src else None
+        run_script_path = self.generate_run_script(
+            stage_config_names=stage_config_names,
+            openmm_dir=openmm_dir,
+            prmtop_name=prmtop_name,
+            inpcrd_name=inpcrd_name,
+            bilayer_pdb_name=bilayer_pdb_name,
+        )
+        self.logger.info(f"Run script: {run_script_path.name}")
+        self.logger.info("=== OpenMM equilibration setup complete ===")
+
+        return {
+            "openmm_dir": openmm_dir,
+            "config_files": config_files,
+            "run_script": run_script_path,
+            "system_files": system_files,
+            "restraint_files": restraint_files,
+        }
+
+    def generate_openmm_config(
+        self,
+        stage_name: str,
+        stage_params: Dict[str, Any],
+        stage_index: int,
+        scheme_type: str,
+        has_custom_restraints: bool = False,
+    ) -> str:
+        """
+        Generate an OpenMM .inp configuration file for a single equilibration stage.
+
+        Loads the CHARMM-GUI template for the given ensemble and stage, then
+        substitutes runtime parameters including force constants derived from
+        the ``constraints`` dict (converted from kcal/mol/Å² to kJ/mol/nm²).
+
+        Args:
+            stage_name: Label used for logging only.
+            stage_params: Stage parameter dict (see setup_openmm_equilibration).
+            stage_index: 1-based position of this stage in the protocol.
+            scheme_type: Ensemble type (NVT, NPT, NPAT, or NPgT).
+            has_custom_restraints: When True, ``rest = yes`` is set even if all
+                standard force constants are zero (used when ``custom_pos.txt``
+                has been generated for this stage).
+
+        Returns:
+            String content of the generated .inp file.
+        """
+        template_key = self.STAGE_INDEX_TO_KEY.get(stage_index, "step7_production")
+        scheme_folder = self.SCHEME_MAPPING[scheme_type]
+        template_filename = self.TEMPLATE_MAPPING[template_key]
+        template_path = self.templates_dir / scheme_folder / template_filename
+
+        if not template_path.exists():
+            raise FileNotFoundError(
+                f"OpenMM template not found: {template_path}. "
+                f"Expected in equilibration/openmm/{scheme_folder}/"
+            )
+
+        content = template_path.read_text()
+
+        temperature = float(stage_params.get("temperature", 310.15))
+        timestep_fs = float(stage_params.get("timestep", 2.0))
+        dt_ps = timestep_fs / 1000.0
+        time_ns = float(stage_params.get("time_ns", 0.5))
+        nstep = max(1, int(round(time_ns * 1000.0 / dt_ps)))
+
+        is_production = template_key == "step7_production"
+        dcd_freq_default = 50000 if is_production else 5000
+        dcd_freq = int(stage_params.get("dcd_freq", dcd_freq_default))
+
+        # Compute OpenMM force constants from constraints dict
+        # Conversion: 1 kcal/mol/Å² = 418.4 kJ/mol/nm²
+        _KCAL_TO_KJ = 418.4
+        _STD_KEYS = frozenset(
+            {
+                "protein_backbone",
+                "protein_sidechain",
+                "lipid_head",
+                "lipid_tail",
+                "water",
+                "ions",
+            }
+        )
+        constraints = stage_params.get("constraints", {})
+        fc_bb_kj = float(constraints.get("protein_backbone", 0.0)) * _KCAL_TO_KJ
+        fc_sc_kj = float(constraints.get("protein_sidechain", 0.0)) * _KCAL_TO_KJ
+        fc_lpos_kj = (
+            max(
+                float(constraints.get("lipid_head", 0.0)),
+                float(constraints.get("lipid_tail", 0.0)),
+            )
+            * _KCAL_TO_KJ
+        )
+        # Check whether this stage uses any custom (non-standard) restraint
+        stage_has_custom = has_custom_restraints and any(
+            float(v) > 0 for k, v in constraints.items() if k not in _STD_KEYS
+        )
+        rest = (
+            "yes"
+            if (fc_bb_kj > 0 or fc_sc_kj > 0 or fc_lpos_kj > 0 or stage_has_custom)
+            else "no"
+        )
+
+        is_first_stage = stage_index == 1
+        minimize_steps = (
+            int(stage_params.get("minimize_steps", 5000)) if is_first_stage else 0
+        )
+
+        content = content.replace("{TEMPERATURE}", f"{temperature:.2f}")
+        content = content.replace("{NSTEP}", str(nstep))
+        content = content.replace("{DT}", f"{dt_ps:.3f}")
+        content = content.replace("{NSTDCD}", str(dcd_freq))
+        content = content.replace("{REST}", rest)
+        # Override CHARMM-GUI template force constants with user-specified values
+        content = re.sub(
+            r"fc_bb\s*=\s*[\d.]+", f"fc_bb       = {fc_bb_kj:.4f}", content
+        )
+        content = re.sub(
+            r"fc_sc\s*=\s*[\d.]+", f"fc_sc       = {fc_sc_kj:.4f}", content
+        )
+        content = re.sub(
+            r"fc_lpos\s*=\s*[\d.]+", f"fc_lpos     = {fc_lpos_kj:.4f}", content
+        )
+        if is_first_stage:
+            content = content.replace("{MINI_NSTEP}", str(minimize_steps))
+            content = content.replace("{GEN_VEL}", "yes")
+
+        self.logger.debug(
+            f"Stage {stage_index} ({stage_name}): template={template_filename}, "
+            f"T={temperature:.2f}K, nstep={nstep}, dt={dt_ps:.3f}ps, rest={rest}, "
+            f"fc_bb={fc_bb_kj:.1f}, fc_sc={fc_sc_kj:.1f}, fc_lpos={fc_lpos_kj:.1f} kJ/mol/nm²"
+        )
+        return content
+
+    def generate_run_script(
+        self,
+        stage_config_names: List[str],
+        openmm_dir: Path,
+        prmtop_name: str,
+        inpcrd_name: str,
+        bilayer_pdb_name: Optional[str] = None,
+    ) -> Path:
+        """
+        Generate a bash script that runs all equilibration stages sequentially.
+
+        Each stage restarts from the previous stage's .rst file. The script
+        exits with an error message if any stage fails.
+
+        When ``bilayer_pdb_name`` is provided it is passed as ``-b`` to every
+        ``openmm_run.py`` invocation.  This allows openmm_run.py to recover
+        the periodic box dimensions from the CRYST1 record when the prmtop has
+        IFBOX=0 (common in membrane-system preparations).
+
+        Args:
+            stage_config_names: List of config base names (without .inp extension).
+            openmm_dir: Directory where the script is written.
+            prmtop_name: Filename of the AMBER topology.
+            inpcrd_name: Filename of the AMBER coordinates.
+            bilayer_pdb_name: Filename of bilayer PDB with CRYST1 box record (optional).
+
+        Returns:
+            Path to the generated ``run_equilibration.sh`` script.
+        """
+        lines = [
+            "#!/bin/bash",
+            "## OpenMM Equilibration Run Script",
+            "## Generated by GateWizard - run from the directory containing this file",
+            "",
+            "# --- Platform selection ---",
+            "# Auto-detects CUDA > OpenCL > CPU by default.",
+            "# Override with: PLATFORM=CPU bash run_equilibration.sh",
+            "# Override with: PLATFORM=OpenCL bash run_equilibration.sh",
+            'PLATFORM="${PLATFORM:-}"',
+            "",
+            "# Override Python interpreter with: PYTHON=python3 bash run_equilibration.sh",
+            'PYTHON="${PYTHON:-python}"',
+            f'PRMTOP="{prmtop_name}"',
+            f'INPCRD="{inpcrd_name}"',
+        ]
+        if bilayer_pdb_name:
+            lines.append(
+                f'BILAYER_PDB="{bilayer_pdb_name}"  # CRYST1 box source when prmtop IFBOX=0'
+            )
+        lines += [
+            "",
+            'echo "Starting OpenMM equilibration protocol..."',
+            "",
+        ]
+
+        for i, config_name in enumerate(stage_config_names):
+            stage_num = i + 1
+            inp_file = f"{config_name}.inp"
+            rst_out = f"{config_name}.rst"
+            dcd_out = f"{config_name}.dcd"
+            log_out = f"{config_name}.log"
+
+            lines.append(f"# Stage {stage_num}: {config_name}")
+            cmd = f"$PYTHON openmm_run.py -i {inp_file} -ff amber -p $PRMTOP -c $INPCRD"
+            if bilayer_pdb_name:
+                cmd += " -b $BILAYER_PDB"
+            if i > 0:
+                prev_rst = f"{stage_config_names[i - 1]}.rst"
+                cmd += f" -irst {prev_rst}"
+            cmd += (
+                f" -orst {rst_out} -odcd {dcd_out} ${{PLATFORM:+--platform $PLATFORM}}"
+            )
+            # pipe through tee so output goes to both terminal and log file
+            lines.append(f"({cmd}) 2>&1 | tee {log_out}")
+            lines.append(
+                f'if [ ${{PIPESTATUS[0]}} -ne 0 ]; then echo "Stage {stage_num} ({config_name}) failed"; exit 1; fi'
+            )
+            lines.append("")
+
+        lines.append('echo "Equilibration complete."')
+        lines.append("")
+
+        script_path = openmm_dir / "run_equilibration.sh"
+        script_path.write_text("\n".join(lines))
+        script_path.chmod(0o755)
+        return script_path
+
+    def generate_openmm_restraint_files(
+        self,
+        system_pdb: Path,
+        stage_params_list: List[Dict[str, Any]],
+        output_dir: Path,
+        selections: Optional[Dict[str, str]] = None,
+    ) -> Dict[str, Optional[Path]]:
+        """
+        Generate OpenMM restraint index files for all active equilibration stages.
+
+        Creates a ``restraints/`` subdirectory under *output_dir* and writes:
+
+        - ``prot_pos.txt`` — 0-based atom indices labelled ``BB`` (backbone) or
+          ``SC`` (sidechain); consumed by ``omm_restraints.py`` with ``fc_bb``
+          and ``fc_sc``.
+        - ``lipid_pos.txt`` — 0-based atom indices for lipid atoms; consumed with
+          ``fc_lpos``.
+        - ``custom_pos.txt`` — 0-based atom indices with per-atom force constants
+          (kJ/mol/nm²) for ligands and any non-standard constraint categories;
+          consumed by the GateWizard extension in ``omm_restraints.py``.
+
+        Only files that are needed (i.e. the corresponding constraint force is > 0
+        in at least one stage) are created.  MDAnalysis is used when available
+        for accurate atom selection; a name-based fallback handles standard
+        categories when it is absent.  Custom categories always require MDAnalysis.
+
+        Args:
+            system_pdb: Path to the system PDB file.  Atom order must match the
+                topology file (prmtop/psf) used by OpenMM.
+            stage_params_list: List of stage parameter dicts; the ``constraints``
+                sub-dict determines which categories need index files.
+            output_dir: Top-level equilibration output directory.  A
+                ``restraints/`` sub-directory is created here.
+            selections: Optional ``{key: mda_selection_string}`` dict that
+                overrides auto-detected MDAnalysis selections.  Keys must match
+                the ``constraints`` dict keys (e.g. ``\"protein_backbone\"``,
+                ``\"ligand_ABC\"``).
+
+        Returns:
+            ``{"prot_pos": Path|None, "lipid_pos": Path|None,
+            "custom_pos": Path|None}``
+        """
+        _KCAL_TO_KJ = 418.4  # 1 kcal/mol/Å² = 418.4 kJ/mol/nm²
+        _STD_KEYS = frozenset(
+            {
+                "protein_backbone",
+                "protein_sidechain",
+                "lipid_head",
+                "lipid_tail",
+                "water",
+                "ions",
+            }
+        )
+
+        # Collect the maximum force per constraint key across all stages
+        max_forces: Dict[str, float] = {}
+        for sp in stage_params_list:
+            for key, force in sp.get("constraints", {}).items():
+                if float(force) > max_forces.get(key, 0.0):
+                    max_forces[key] = float(force)
+
+        needs_prot = (
+            max_forces.get("protein_backbone", 0.0) > 0
+            or max_forces.get("protein_sidechain", 0.0) > 0
+        )
+        needs_lipid = (
+            max_forces.get("lipid_head", 0.0) > 0
+            or max_forces.get("lipid_tail", 0.0) > 0
+        )
+        custom_keys: Dict[str, float] = {
+            k: v for k, v in max_forces.items() if k not in _STD_KEYS and v > 0
+        }
+
+        result: Dict[str, Optional[Path]] = {
+            "prot_pos": None,
+            "lipid_pos": None,
+            "custom_pos": None,
+        }
+
+        if not (needs_prot or needs_lipid or custom_keys):
+            self.logger.info(
+                "No active restraints found; skipping index file generation."
+            )
+            return result
+
+        restraints_dir = output_dir / "restraints"
+        restraints_dir.mkdir(exist_ok=True)
+        self.logger.info(f"Generating OpenMM restraint index files → {restraints_dir}")
+
+        try:
+            import MDAnalysis as mda
+            import warnings
+
+            if selections is None:
+                selections = NAMDEquilibrationManager.get_default_selections(
+                    str(system_pdb)
+                )
+
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                u = mda.Universe(str(system_pdb))
+
+            # --- prot_pos.txt ---
+            if needs_prot:
+                bb_sel = selections.get(
+                    "protein_backbone",
+                    NAMDEquilibrationManager.DEFAULT_SELECTIONS["protein_backbone"],
+                )
+                sc_sel = selections.get(
+                    "protein_sidechain",
+                    NAMDEquilibrationManager.DEFAULT_SELECTIONS["protein_sidechain"],
+                )
+                bb_atoms = u.select_atoms(bb_sel)
+                sc_atoms = u.select_atoms(sc_sel)
+                if len(bb_atoms) + len(sc_atoms) > 0:
+                    prot_path = restraints_dir / "prot_pos.txt"
+                    with open(prot_path, "w") as fh:
+                        for atom in bb_atoms:
+                            fh.write(f"{atom.index}  BB\n")
+                        for atom in sc_atoms:
+                            fh.write(f"{atom.index}  SC\n")
+                    result["prot_pos"] = prot_path
+                    self.logger.info(
+                        f"  prot_pos.txt: {len(bb_atoms)} BB + {len(sc_atoms)} SC atoms"
+                    )
+                else:
+                    self.logger.warning(
+                        "  prot_pos.txt skipped: no protein atoms matched"
+                    )
+
+            # --- lipid_pos.txt ---
+            if needs_lipid:
+                lh_sel = selections.get(
+                    "lipid_head",
+                    NAMDEquilibrationManager.DEFAULT_SELECTIONS["lipid_head"],
+                )
+                head_atoms = u.select_atoms(lh_sel)
+                if max_forces.get("lipid_tail", 0.0) > 0:
+                    lt_sel = selections.get(
+                        "lipid_tail",
+                        NAMDEquilibrationManager.DEFAULT_SELECTIONS["lipid_tail"],
+                    )
+                    all_lipid = head_atoms | u.select_atoms(lt_sel)
+                else:
+                    all_lipid = head_atoms
+                if len(all_lipid) > 0:
+                    lipid_path = restraints_dir / "lipid_pos.txt"
+                    with open(lipid_path, "w") as fh:
+                        for atom in all_lipid:
+                            fh.write(f"{atom.index}\n")
+                    result["lipid_pos"] = lipid_path
+                    self.logger.info(f"  lipid_pos.txt: {len(all_lipid)} atoms")
+                else:
+                    self.logger.warning(
+                        "  lipid_pos.txt skipped: no lipid atoms matched"
+                    )
+
+            # --- custom_pos.txt ---
+            if custom_keys:
+                custom_lines: List[str] = [
+                    "# GateWizard custom positional restraints\n",
+                    "# Format: atom_index(0-based)  force_kJ_mol_nm2\n",
+                ]
+                any_written = False
+                for key in sorted(custom_keys):
+                    force_kcal = custom_keys[key]
+                    sel_str = selections.get(key)
+                    if sel_str is None and key == "other":
+                        sel_str = NAMDEquilibrationManager.DEFAULT_SELECTIONS["other"]
+                    if sel_str is None:
+                        self.logger.warning(
+                            f"  custom_pos.txt: no selection for '{key}'. "
+                            f"Add selections['{key}'] = 'resname ...' to include it."
+                        )
+                        continue
+                    try:
+                        ag = u.select_atoms(sel_str)
+                    except Exception as exc:
+                        self.logger.warning(
+                            f"  custom_pos.txt: selection for '{key}' failed: {exc}"
+                        )
+                        continue
+                    if len(ag) == 0:
+                        self.logger.warning(
+                            f"  custom_pos.txt: '{key}' matched 0 atoms (sel='{sel_str}')"
+                        )
+                        continue
+                    force_kj = force_kcal * _KCAL_TO_KJ
+                    custom_lines.append(
+                        f"# {key}: {force_kcal} kcal/mol/\u00c5\u00b2 = {force_kj:.2f} kJ/mol/nm\u00b2\n"
+                    )
+                    for atom in ag:
+                        custom_lines.append(f"{atom.index}  {force_kj:.4f}\n")
+                    any_written = True
+                    self.logger.info(
+                        f"  custom_pos.txt: {len(ag)} atoms for '{key}' "
+                        f"@ {force_kj:.2f} kJ/mol/nm\u00b2"
+                    )
+                if any_written:
+                    custom_path = restraints_dir / "custom_pos.txt"
+                    with open(custom_path, "w") as fh:
+                        fh.writelines(custom_lines)
+                    result["custom_pos"] = custom_path
+
+        except ImportError:
+            self.logger.warning(
+                "MDAnalysis not available — using PDB name-based heuristic for "
+                "prot_pos.txt / lipid_pos.txt.  Install MDAnalysis for accurate "
+                "selections: conda install -c conda-forge mdanalysis"
+            )
+            if needs_prot or needs_lipid:
+                self._generate_openmm_restraints_fallback(
+                    system_pdb,
+                    restraints_dir,
+                    max_forces,
+                    result,
+                    needs_prot,
+                    needs_lipid,
+                )
+            if custom_keys:
+                self.logger.error(
+                    "MDAnalysis is required to generate restraints for custom "
+                    f"categories ({', '.join(sorted(custom_keys))}). "
+                    "Install it with: conda install -c conda-forge mdanalysis"
+                )
+
+        return result
+
+    def _generate_openmm_restraints_fallback(
+        self,
+        system_pdb: Path,
+        restraints_dir: Path,
+        max_forces: Dict[str, float],
+        result: Dict[str, Optional[Path]],
+        needs_prot: bool,
+        needs_lipid: bool,
+    ) -> None:
+        """PDB name-based fallback for prot_pos.txt / lipid_pos.txt (no MDAnalysis)."""
+        _BB_NAMES = frozenset({"N", "CA", "C", "O", "OXT", "H", "H1", "H2", "H3", "HA"})
+        _PROT_RESNAMES = frozenset(
+            {
+                "ALA",
+                "ARG",
+                "ASN",
+                "ASP",
+                "CYS",
+                "GLN",
+                "GLU",
+                "GLY",
+                "HIS",
+                "ILE",
+                "LEU",
+                "LYS",
+                "MET",
+                "PHE",
+                "PRO",
+                "SER",
+                "THR",
+                "TRP",
+                "TYR",
+                "VAL",
+                "HSE",
+                "HSD",
+                "HSP",
+                "CYX",
+                "HIE",
+                "HID",
+                "HIP",
+                "ASH",
+                "GLH",
+                "LYN",
+                "TYM",
+                "CYM",
+                "SEP",
+                "T2P",
+                "ACE",
+                "NHE",
+                "NME",
+                "COO",
+            }
+        )
+        _LIPID_RESNAMES = frozenset(
+            {
+                "POPC",
+                "POPE",
+                "POPS",
+                "DPPC",
+                "DMPC",
+                "DOPC",
+                "DSPC",
+                "CHOL",
+                "CHOLEST",
+                "PC",
+                "PE",
+                "PS",
+                "PA",
+                "PG",
+                "PI",
+                "SM",
+                "CHL",
+                "OL",
+                "LA",
+                "MY",
+                "ST",
+                "AR",
+                "OLE",
+                "PAL",
+                "STE",
+                "LIN",
+                "PALM",
+                "OLEO",
+                "STEROL",
+            }
+        )
+        _LIPID_HEAD_NAMES = frozenset(
+            {
+                "P",
+                "O11",
+                "O12",
+                "O13",
+                "O14",
+                "O21",
+                "O22",
+                "O31",
+                "O32",
+                "O33",
+                "O34",
+                "O1P",
+                "O2P",
+                "O3P",
+                "O4P",
+                "OP1",
+                "OP2",
+                "OP3",
+                "OP4",
+                "N",
+                "C11",
+                "C12",
+                "C13",
+                "C14",
+                "N31",
+                "C32",
+                "C33",
+                "C34",
+                "C35",
+                "C1",
+                "C2",
+                "C3",
+                "HN1",
+                "HN2",
+                "HN3",
+                "HO2",
+                "HO3",
+                "HS",
+            }
+        )
+
+        prot_lines: List[str] = []
+        lipid_lines: List[str] = []
+        atom_idx = 0
+        try:
+            with open(system_pdb, "r") as fh:
+                for line in fh:
+                    if not line.startswith(("ATOM", "HETATM")):
+                        continue
+                    atom_name = line[12:16].strip()
+                    resname = line[17:20].strip()
+                    if needs_prot and resname in _PROT_RESNAMES:
+                        label = "BB" if atom_name in _BB_NAMES else "SC"
+                        prot_lines.append(f"{atom_idx}  {label}\n")
+                    elif needs_lipid and resname in _LIPID_RESNAMES:
+                        is_head = atom_name in _LIPID_HEAD_NAMES
+                        include = (is_head and max_forces.get("lipid_head", 0) > 0) or (
+                            not is_head and max_forces.get("lipid_tail", 0) > 0
+                        )
+                        if include:
+                            lipid_lines.append(f"{atom_idx}\n")
+                    atom_idx += 1
+        except Exception as exc:
+            self.logger.error(
+                f"Fallback restraint generation failed reading PDB: {exc}"
+            )
+            return
+
+        if needs_prot and prot_lines:
+            prot_path = restraints_dir / "prot_pos.txt"
+            with open(prot_path, "w") as fh:
+                fh.writelines(prot_lines)
+            result["prot_pos"] = prot_path
+            self.logger.info(
+                f"  prot_pos.txt (fallback): {len(prot_lines)} protein atoms"
+            )
+
+        if needs_lipid and lipid_lines:
+            lipid_path = restraints_dir / "lipid_pos.txt"
+            with open(lipid_path, "w") as fh:
+                fh.writelines(lipid_lines)
+            result["lipid_pos"] = lipid_path
+            self.logger.info(
+                f"  lipid_pos.txt (fallback): {len(lipid_lines)} lipid atoms"
+            )
+
+    @staticmethod
+    def get_default_stage_params(
+        scheme_type: str = "NPT",
+        temperature: float = 310.15,
+        include_production: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """
+        Return default CHARMM-GUI-style equilibration stages for a membrane protein system.
+
+        Six stages with gradually decreasing positional restraints, following the
+        standard CHARMM-GUI membrane equilibration schedule. Suitable as a starting
+        point that can be further customised before passing to setup_openmm_equilibration.
+
+        Args:
+            scheme_type: Ensemble for all stages (NVT | NPT | NPAT | NPgT).
+            temperature: Simulation temperature in Kelvin (default 310.15).
+            include_production: When True, append a 50 ns unrestrained production
+                stage (default False).
+
+        Returns:
+            List of :class:`EquilibrationStage` objects ready to pass to
+            setup_openmm_equilibration.  Fields can be edited via attribute
+            assignment or the :meth:`~EquilibrationStage.replace` method.
+
+        Example::
+
+            >>> from dataclasses import replace
+            >>> stages = OpenMMEquilibrationManager.get_default_stage_params("NPT",
+            ...                                                               include_production=True)
+            >>> stages[-1].time_ns = 100.0          # mutable attribute set
+            >>> stages[0] = stages[0].replace(temperature=303.15)  # immutable copy
+            >>> manager = OpenMMEquilibrationManager(Path("/work/dir"))
+            >>> result = manager.setup_openmm_equilibration(stage_params_list=stages)
+        """
+        valid = {"NVT", "NPT", "NPAT", "NPgT"}
+        if scheme_type not in valid:
+            raise ValueError(
+                f"scheme_type must be one of {sorted(valid)}, got '{scheme_type}'"
+            )
+
+        def _stage(
+            name,
+            time_ns,
+            timestep,
+            minimize_steps=0,
+            dcd_freq=5000,
+            **constraints_overrides,
+        ):
+            base_constraints = {
+                "protein_backbone": 0.0,
+                "protein_sidechain": 0.0,
+                "lipid_head": 0.0,
+                "lipid_tail": 0.0,
+                "water": 0.0,
+                "ions": 0.0,
+                "other": 0.0,
+            }
+            base_constraints.update(constraints_overrides)
+            return EquilibrationStage(
+                name=name,
+                ensemble=scheme_type,
+                time_ns=time_ns,
+                timestep=timestep,
+                temperature=temperature,
+                minimize_steps=minimize_steps,
+                dcd_freq=dcd_freq,
+                constraints=base_constraints,
+            )
+
+        stages: List[EquilibrationStage] = [
+            _stage(
+                "Equilibration 1",
+                0.125,
+                1.0,
+                minimize_steps=5000,
+                protein_backbone=10.0,
+                protein_sidechain=5.0,
+                lipid_head=2.5,
+            ),
+            _stage(
+                "Equilibration 2",
+                0.125,
+                1.0,
+                protein_backbone=5.0,
+                protein_sidechain=2.5,
+                lipid_head=1.0,
+            ),
+            _stage(
+                "Equilibration 3",
+                0.125,
+                1.0,
+                protein_backbone=2.5,
+                protein_sidechain=1.0,
+                lipid_head=0.5,
+            ),
+            _stage(
+                "Equilibration 4",
+                0.25,
+                2.0,
+                protein_backbone=1.0,
+                protein_sidechain=0.5,
+            ),
+            _stage("Equilibration 5", 0.25, 2.0, protein_backbone=0.5),
+            _stage("Equilibration 6", 0.5, 2.0, protein_backbone=0.1),
+        ]
+
+        if include_production:
+            stages.append(_stage("Production", 50.0, 2.0, dcd_freq=50000))
+
+        return stages
+
+    def _get_config_filename(self, stage_index: int) -> str:
+        """Return the .inp filename for a given 1-based stage index."""
+        if stage_index <= 6:
+            return f"step{stage_index}_equilibration.inp"
+        return "step7_production.inp"
 
 
 class GromacsEquilibrationManager:

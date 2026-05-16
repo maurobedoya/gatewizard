@@ -22,6 +22,11 @@ from gatewizard.core.builder import Builder
 from gatewizard.core.job_monitor import JobMonitor
 from gatewizard.core.viewer import MolecularViewer
 from gatewizard.core.mempro import MemPrO
+from gatewizard.tools.equilibration import (
+    NAMDEquilibrationManager,
+    OpenMMEquilibrationManager,
+)
+from gatewizard.utils.openmm_analysis import OpenMMLogAnalyzer
 
 # GUI imports (optional, only if GUI dependencies are available)
 try:
@@ -45,6 +50,9 @@ __all__ = [
     "JobMonitor",
     "MolecularViewer",
     "MemPrO",
+    "NAMDEquilibrationManager",
+    "OpenMMEquilibrationManager",
+    "OpenMMLogAnalyzer",
     "GUI_AVAILABLE",
 ]
 
