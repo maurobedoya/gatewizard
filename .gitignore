@@ -142,3 +142,4 @@ logs/
 tests/equilibration_examples/popc_membrane/level*/
 tests/equilibration_examples/popc_membrane/openmm_example_*/
 *.tmp.*
+tests/equilibration_examples/popc_membrane/
