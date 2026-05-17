@@ -25,22 +25,222 @@ from openmm import *
 from openmm.app import *
 from openmm.unit import *
 
+
+class _StageProgressReporter(StateDataReporter):
+    """StateDataReporter that shows 0-100% progress scoped to the current stage.
+
+    OpenMM's built-in reporter computes progress as ``currentStep / totalSteps``
+    using the absolute step counter, which exceeds 100% when a simulation
+    resumes from a checkpoint.  This subclass captures the stage's starting
+    step on the first report and adjusts both the progress percentage (0→100%
+    for *this* stage) and the remaining-time estimate accordingly.
+    """
+
+    def __init__(self, file, reportInterval, *, stage_steps, **kwargs):
+        self._stage_steps = stage_steps
+        # Pass a placeholder; _totalSteps is corrected on the first report.
+        super().__init__(file, reportInterval, totalSteps=stage_steps, **kwargs)
+
+    def _constructReportValues(self, simulation, state):
+        # _initialSteps is set by report() before this method is called.
+        stage_start = self._initialSteps
+        # Keep totalSteps = stage_start + stage_steps so remainingTime is
+        # computed as (stage_steps - steps_done) / speed  (correct).
+        self._totalSteps = stage_start + self._stage_steps
+        values = super()._constructReportValues(simulation, state)
+        if self._progress:
+            steps_done = simulation.currentStep - stage_start
+            values[0] = "%.1f%%" % min(100.0, 100.0 * steps_done / self._stage_steps)
+        return values
+
+
+class _MembraneDCDReporter(DCDReporter):
+    """DCDReporter that keeps protein-membrane systems visually intact.
+
+    OpenMM's per-residue PBC wrapping (enforcePeriodicBox=True) can split a
+    lipid bilayer across a periodic boundary, placing one leaflet at z≈0 and
+    the other at z≈Lz.  This reporter instead:
+
+      1. Requests raw (un-wrapped) positions from the simulation context.
+      2. Translates the whole system so the protein geometric center (or, if
+         no protein residues are found, the non-solvent geometric center) lies
+         at the centre of the periodic box.
+      3. Wraps each residue as a rigid unit into the primary cell [0, L).
+
+    The result is a trajectory where the bilayer is always intact and the
+    protein is always near the box centre — ready for direct visualization
+    without post-processing.
+    """
+
+    _PROTEIN_RESIDUES = frozenset(
+        {
+            "ALA",
+            "ARG",
+            "ASN",
+            "ASP",
+            "CYS",
+            "GLN",
+            "GLU",
+            "GLY",
+            "HIS",
+            "HID",
+            "HIE",
+            "HIP",
+            "HSD",
+            "HSE",
+            "HSP",
+            "ILE",
+            "LEU",
+            "LYS",
+            "MET",
+            "PHE",
+            "PRO",
+            "SER",
+            "THR",
+            "TRP",
+            "TYR",
+            "VAL",
+            "ACE",
+            "NME",
+            "NHE",
+        }
+    )
+    _SOLVENT_RESIDUES = frozenset(
+        {
+            "WAT",
+            "HOH",
+            "TIP3",
+            "TIP4",
+            "TIP5",
+            "SOL",
+            "SPCE",
+            "SPC",
+            "NA",
+            "CL",
+            "K",
+            "MG",
+            "CA",
+            "ZN",
+            "NA+",
+            "CL-",
+            "K+",
+            "MG2+",
+            "CA2+",
+        }
+    )
+
+    def describeNextReport(self, simulation):
+        steps = self._reportInterval - simulation.currentStep % self._reportInterval
+        # Request raw (un-wrapped) positions so we apply our own wrapping below.
+        return {"steps": steps, "periodic": False, "include": ["positions"]}
+
+    def report(self, simulation, state):
+        import numpy as np
+
+        # ── Initialise the DCDFile writer on the first call (mirrors parent). ──
+        if self._dcd is None:
+            self._dcd = DCDFile(
+                self._out,
+                simulation.topology,
+                simulation.integrator.getStepSize(),
+                firstStep=self._reportInterval,
+                interval=self._reportInterval,
+                append=self._append,
+            )
+
+        positions = state.getPositions(asNumpy=True).value_in_unit(nanometer)
+        box_vecs = state.getPeriodicBoxVectors(asNumpy=True).value_in_unit(nanometer)
+        Lx = box_vecs[0, 0]
+        Ly = box_vecs[1, 1]
+        Lz = box_vecs[2, 2]
+        L = np.array([Lx, Ly, Lz])
+
+        # ── Step 1: find centering atoms (protein, else all non-solvent). ──────
+        all_atoms = list(simulation.topology.atoms())
+        center_idx = np.array(
+            [
+                a.index
+                for a in all_atoms
+                if a.residue.name.upper() in self._PROTEIN_RESIDUES
+            ],
+            dtype=int,
+        )
+        if center_idx.size == 0:
+            center_idx = np.array(
+                [
+                    a.index
+                    for a in all_atoms
+                    if a.residue.name.upper() not in self._SOLVENT_RESIDUES
+                ],
+                dtype=int,
+            )
+
+        # ── Step 2: translate so centering COM → box centre. ─────────────────
+        if center_idx.size > 0:
+            com = positions[center_idx].mean(axis=0)
+            positions += L / 2.0 - com
+
+        # ── Step 3: wrap each residue as a rigid unit into [0, L). ───────────
+        for residue in simulation.topology.residues():
+            idx = np.fromiter((a.index for a in residue.atoms()), dtype=int)
+            res_com = positions[idx].mean(axis=0)
+            shift = -np.floor(res_com / L) * L
+            positions[idx] += shift
+
+        # ── Write the modified frame. ─────────────────────────────────────────
+        self._dcd.writeModel(
+            Quantity(positions, nanometer),
+            periodicBoxVectors=state.getPeriodicBoxVectors(),
+        )
+
+
 parser = argparse.ArgumentParser()
-parser.add_argument('--platform', nargs=1, help='OpenMM platform (default: CUDA or OpenCL)')
-parser.add_argument('-i', dest='inpfile', help='Input parameter file', required=True)
-parser.add_argument('-p', dest='topfile', help='Input topology file', required=True)
-parser.add_argument('-c', dest='crdfile', help='Input coordinate file', required=True)
-parser.add_argument('-t', dest='toppar', help='Input CHARMM-GUI toppar stream file (optional)')
-parser.add_argument('-b', dest='sysinfo', help='Input CHARMM-GUI sysinfo stream file (optional)')
-parser.add_argument('-ff', dest='fftype', help='Input force field type (default: CHARMM)', default='CHARMM')
-parser.add_argument('-icrst', metavar='RSTFILE', dest='icrst', help='Input CHARMM RST file (optional)')
-parser.add_argument('-irst', metavar='RSTFILE', dest='irst', help='Input restart file (optional)')
-parser.add_argument('-ichk', metavar='CHKFILE', dest='ichk', help='Input checkpoint file (optional)')
-parser.add_argument('-opdb', metavar='PDBFILE', dest='opdb', help='Output PDB file (optional)')
-parser.add_argument('-orst', metavar='RSTFILE', dest='orst', help='Output restart file (optional)')
-parser.add_argument('-ochk', metavar='CHKFILE', dest='ochk', help='Output checkpoint file (optional)')
-parser.add_argument('-odcd', metavar='DCDFILE', dest='odcd', help='Output trajectory file (optional)')
-parser.add_argument('-rewrap', dest='rewrap', help='Re-wrap the coordinates in a molecular basis (optional)', action='store_true', default=False)
+parser.add_argument(
+    "--platform", nargs=1, help="OpenMM platform (default: CUDA or OpenCL)"
+)
+parser.add_argument("-i", dest="inpfile", help="Input parameter file", required=True)
+parser.add_argument("-p", dest="topfile", help="Input topology file", required=True)
+parser.add_argument("-c", dest="crdfile", help="Input coordinate file", required=True)
+parser.add_argument(
+    "-t", dest="toppar", help="Input CHARMM-GUI toppar stream file (optional)"
+)
+parser.add_argument(
+    "-b", dest="sysinfo", help="Input CHARMM-GUI sysinfo stream file (optional)"
+)
+parser.add_argument(
+    "-ff",
+    dest="fftype",
+    help="Input force field type (default: CHARMM)",
+    default="CHARMM",
+)
+parser.add_argument(
+    "-icrst", metavar="RSTFILE", dest="icrst", help="Input CHARMM RST file (optional)"
+)
+parser.add_argument(
+    "-irst", metavar="RSTFILE", dest="irst", help="Input restart file (optional)"
+)
+parser.add_argument(
+    "-ichk", metavar="CHKFILE", dest="ichk", help="Input checkpoint file (optional)"
+)
+parser.add_argument(
+    "-opdb", metavar="PDBFILE", dest="opdb", help="Output PDB file (optional)"
+)
+parser.add_argument(
+    "-orst", metavar="RSTFILE", dest="orst", help="Output restart file (optional)"
+)
+parser.add_argument(
+    "-ochk", metavar="CHKFILE", dest="ochk", help="Output checkpoint file (optional)"
+)
+parser.add_argument(
+    "-odcd", metavar="DCDFILE", dest="odcd", help="Output trajectory file (optional)"
+)
+parser.add_argument(
+    "-rewrap",
+    dest="rewrap",
+    help="Re-wrap the coordinates in a molecular basis (optional)",
+    action="store_true",
+    default=False,
+)
 args = parser.parse_args()
 
 # Load parameters
@@ -49,10 +249,10 @@ inputs = read_inputs(args.inpfile)
 
 top = read_top(args.topfile, args.fftype.upper())
 crd = read_crd(args.crdfile, args.fftype.upper())
-if args.fftype.upper() == 'CHARMM':
+if args.fftype.upper() == "CHARMM":
     params = read_params(args.toppar)
     top = read_box(top, args.sysinfo) if args.sysinfo else gen_box(top, crd)
-elif args.fftype.upper() == 'AMBER' and not top._prmtop.getIfBox():
+elif args.fftype.upper() == "AMBER" and not top._prmtop.getIfBox():
     # prmtop has IFBOX=0 (no periodic box recorded). Recover box vectors from:
     # 1. the inpcrd if it contains RST7 box dimensions, or
     # 2. the -b bilayer PDB file (CRYST1 record) supplied by GateWizard.
@@ -71,57 +271,83 @@ elif args.fftype.upper() == 'AMBER' and not top._prmtop.getIfBox():
         c_ang = bv[2][2].value_in_unit(angstroms)
         # Patch the AmberPrmtopFile internal data so createSystem() treats
         # this as a periodic system (IFBOX=1, rectangular box).
-        top._prmtop._raw_data['POINTERS'][27] = 1
-        top._prmtop._raw_data['BOX_DIMENSIONS'] = [90.0, a_ang, b_ang, c_ang]
+        top._prmtop._raw_data["POINTERS"][27] = 1
+        top._prmtop._raw_data["BOX_DIMENSIONS"] = [90.0, a_ang, b_ang, c_ang]
         top.topology.setPeriodicBoxVectors(bv)
-        print(f"INFO: IFBOX=0 in prmtop; box set from {'inpcrd' if crd.boxVectors is not None else args.sysinfo}: "
-              f"{a_ang:.3f} x {b_ang:.3f} x {c_ang:.3f} Å")
+        print(
+            f"INFO: IFBOX=0 in prmtop; box set from {'inpcrd' if crd.boxVectors is not None else args.sysinfo}: "
+            f"{a_ang:.3f} x {b_ang:.3f} x {c_ang:.3f} Å"
+        )
     else:
         print("WARNING: prmtop has IFBOX=0 and no box found in inpcrd or -b file.")
         print("         Periodic simulations (PME/CutoffPeriodic) will fail.")
         print("         Supply a bilayer PDB with CRYST1 via -b <bilayer.pdb>")
 
 # Build system
-nboptions = dict(nonbondedMethod=inputs.coulomb,
-                 nonbondedCutoff=inputs.r_off*nanometers,
-                 constraints=inputs.cons,
-                 ewaldErrorTolerance=inputs.ewald_Tol)
-if inputs.vdw == 'Switch': nboptions['switchDistance'] = inputs.r_on*nanometers
-if inputs.vdw == 'LJPME':  nboptions['nonbondedMethod'] = LJPME
+nboptions = dict(
+    nonbondedMethod=inputs.coulomb,
+    nonbondedCutoff=inputs.r_off * nanometers,
+    constraints=inputs.cons,
+    ewaldErrorTolerance=inputs.ewald_Tol,
+)
+if inputs.vdw == "Switch":
+    nboptions["switchDistance"] = inputs.r_on * nanometers
+if inputs.vdw == "LJPME":
+    nboptions["nonbondedMethod"] = LJPME
 if inputs.implicitSolvent:
-    nboptions['implicitSolvent'] = inputs.implicitSolvent
-    nboptions['implicitSolventSaltConc'] = inputs.implicit_salt*(moles/liter)
-    nboptions['temperature'] = inputs.temp*kelvin
-    nboptions['soluteDielectric'] = inputs.solut_diele
-    nboptions['solventDielectric'] = inputs.solve_diele
-    nboptions['gbsaModel'] = inputs.gbsamodel
+    nboptions["implicitSolvent"] = inputs.implicitSolvent
+    nboptions["implicitSolventSaltConc"] = inputs.implicit_salt * (moles / liter)
+    nboptions["temperature"] = inputs.temp * kelvin
+    nboptions["soluteDielectric"] = inputs.solut_diele
+    nboptions["solventDielectric"] = inputs.solve_diele
+    nboptions["gbsaModel"] = inputs.gbsamodel
 
-if   args.fftype.upper() == 'CHARMM': system = top.createSystem(params, **nboptions)
-elif args.fftype.upper() == 'AMBER':  system = top.createSystem(**nboptions)
+if args.fftype.upper() == "CHARMM":
+    system = top.createSystem(params, **nboptions)
+elif args.fftype.upper() == "AMBER":
+    system = top.createSystem(**nboptions)
 
-if inputs.vdw == 'Force-switch': system = vfswitch(system, top, inputs)
-if inputs.lj_lrc == 'yes':
+if inputs.vdw == "Force-switch":
+    system = vfswitch(system, top, inputs)
+if inputs.lj_lrc == "yes":
     for force in system.getForces():
-        if isinstance(force, NonbondedForce): force.setUseDispersionCorrection(True)
-        if isinstance(force, CustomNonbondedForce) and force.getNumTabulatedFunctions() != 1:
+        if isinstance(force, NonbondedForce):
+            force.setUseDispersionCorrection(True)
+        if (
+            isinstance(force, CustomNonbondedForce)
+            and force.getNumTabulatedFunctions() != 1
+        ):
             force.setUseLongRangeCorrection(True)
 if inputs.e14scale != 1.0:
     for force in system.getForces():
-        if isinstance(force, NonbondedForce): nonbonded = force; break
+        if isinstance(force, NonbondedForce):
+            nonbonded = force
+            break
     for i in range(nonbonded.getNumExceptions()):
         atom1, atom2, chg, sig, eps = nonbonded.getExceptionParameters(i)
-        nonbonded.setExceptionParameters(i, atom1, atom2, chg*inputs.e14scale, sig, eps)
+        nonbonded.setExceptionParameters(
+            i, atom1, atom2, chg * inputs.e14scale, sig, eps
+        )
 
-if inputs.pcouple == 'yes':      system = barostat(system, inputs)
-if inputs.rest == 'yes':         system = restraints(system, crd, inputs)
-integrator = LangevinIntegrator(inputs.temp*kelvin, inputs.fric_coeff/picosecond, inputs.dt*picoseconds)
+if inputs.pcouple == "yes":
+    system = barostat(system, inputs)
+if inputs.rest == "yes":
+    system = restraints(system, crd, inputs)
+integrator = LangevinIntegrator(
+    inputs.temp * kelvin, inputs.fric_coeff / picosecond, inputs.dt * picoseconds
+)
 
 # Set platform
-DEFAULT_PLATFORMS = 'CUDA', 'OpenCL', 'CPU'
-enabled_platforms = [Platform.getPlatform(i).getName() for i in range(Platform.getNumPlatforms())]
+DEFAULT_PLATFORMS = "CUDA", "OpenCL", "CPU"
+enabled_platforms = [
+    Platform.getPlatform(i).getName() for i in range(Platform.getNumPlatforms())
+]
 if args.platform:
     if not args.platform[0] in enabled_platforms:
-        print("Unable to find OpenMM platform '{}'; exiting".format(args.platform[0]), file=sys.stderr)
+        print(
+            "Unable to find OpenMM platform '{}'; exiting".format(args.platform[0]),
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     platform = Platform.getPlatformByName(args.platform[0])
@@ -131,11 +357,14 @@ else:
             platform = Platform.getPlatformByName(platform)
             break
     if isinstance(platform, str):
-        print("Unable to find any OpenMM platform; exiting".format(args.platform[0]), file=sys.stderr)
+        print(
+            "Unable to find any OpenMM platform; exiting".format(args.platform[0]),
+            file=sys.stderr,
+        )
         sys.exit(1)
 
 print("Using platform:", platform.getName())
-prop = dict(CudaPrecision='single') if platform.getName() == 'CUDA' else dict()
+prop = dict(CudaPrecision="single") if platform.getName() == "CUDA" else dict()
 
 # Build simulation context
 simulation = Simulation(top.topology, system, integrator, platform, prop)
@@ -144,12 +373,14 @@ if args.icrst:
     charmm_rst = read_charmm_rst(args.icrst)
     simulation.context.setPositions(charmm_rst.positions)
     simulation.context.setVelocities(charmm_rst.velocities)
-    simulation.context.setPeriodicBoxVectors(charmm_rst.box[0], charmm_rst.box[1], charmm_rst.box[2])
+    simulation.context.setPeriodicBoxVectors(
+        charmm_rst.box[0], charmm_rst.box[1], charmm_rst.box[2]
+    )
 if args.irst:
-    with open(args.irst, 'r') as f:
+    with open(args.irst, "r") as f:
         simulation.context.setState(XmlSerializer.deserialize(f.read()))
 if args.ichk:
-    with open(args.ichk, 'rb') as f:
+    with open(args.ichk, "rb") as f:
         simulation.context.loadCheckpoint(f.read())
 
 # Re-wrap
@@ -163,11 +394,14 @@ print(simulation.context.getState(getEnergy=True).getPotentialEnergy())
 # Energy minimization
 if inputs.mini_nstep > 0:
     print("\nEnergy minimization: %s steps" % inputs.mini_nstep)
-    simulation.minimizeEnergy(tolerance=inputs.mini_Tol*kilojoule/mole/nanometers, maxIterations=inputs.mini_nstep)
+    simulation.minimizeEnergy(
+        tolerance=inputs.mini_Tol * kilojoule / mole / nanometers,
+        maxIterations=inputs.mini_nstep,
+    )
     print(simulation.context.getState(getEnergy=True).getPotentialEnergy())
 
 # Generate initial velocities
-if inputs.gen_vel == 'yes':
+if inputs.gen_vel == "yes":
     print("\nGenerate initial velocities")
     if inputs.gen_seed:
         simulation.context.setVelocitiesToTemperature(inputs.gen_temp, inputs.gen_seed)
@@ -178,36 +412,49 @@ if inputs.gen_vel == 'yes':
 if inputs.nstep > 0:
     print("\nMD run: %s steps" % inputs.nstep)
     if inputs.nstdcd > 0:
-        if not args.odcd: args.odcd = 'output.dcd'
-        simulation.reporters.append(DCDReporter(args.odcd, inputs.nstdcd))
+        if not args.odcd:
+            args.odcd = "output.dcd"
+        simulation.reporters.append(_MembraneDCDReporter(args.odcd, inputs.nstdcd))
     simulation.reporters.append(
-        StateDataReporter(sys.stdout, inputs.nstout, step=True, time=True,
-                          potentialEnergy=True, kineticEnergy=True, totalEnergy=True,
-                          temperature=True, volume=True, density=True,
-                          progress=True, remainingTime=True, speed=True,
-                          totalSteps=inputs.nstep, separator='\t')
+        _StageProgressReporter(
+            sys.stdout,
+            inputs.nstout,
+            stage_steps=inputs.nstep,
+            step=True,
+            time=True,
+            potentialEnergy=True,
+            kineticEnergy=True,
+            totalEnergy=True,
+            temperature=True,
+            volume=True,
+            density=True,
+            progress=True,
+            remainingTime=True,
+            speed=True,
+            separator="\t",
+        )
     )
     # Simulated annealing?
-    if inputs.annealing == 'yes':
+    if inputs.annealing == "yes":
         interval = inputs.interval
         temp = inputs.temp_init
         for i in range(inputs.nstep):
-            integrator.setTemperature(temp*kelvin)
+            integrator.setTemperature(temp * kelvin)
             simulation.step(1)
             temp += interval
     else:
         simulation.step(inputs.nstep)
 
 # Write restart file
-if not (args.orst or args.ochk): args.orst = 'output.rst'
+if not (args.orst or args.ochk):
+    args.orst = "output.rst"
 if args.orst:
-    state = simulation.context.getState( getPositions=True, getVelocities=True )
-    with open(args.orst, 'w') as f:
+    state = simulation.context.getState(getPositions=True, getVelocities=True)
+    with open(args.orst, "w") as f:
         f.write(XmlSerializer.serialize(state))
 if args.ochk:
-    with open(args.ochk, 'wb') as f:
+    with open(args.ochk, "wb") as f:
         f.write(simulation.context.createCheckpoint())
 if args.opdb:
     crd = simulation.context.getState(getPositions=True).getPositions()
-    PDBFile.writeFile(top.topology, crd, open(args.opdb, 'w'))
-
+    PDBFile.writeFile(top.topology, crd, open(args.opdb, "w"))
