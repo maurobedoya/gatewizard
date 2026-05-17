@@ -2117,8 +2117,281 @@ print(result["restraint_files"])
 
 ---
 
+## Class: GROMACSEquilibrationManager
+
+Manager for GROMACS equilibration simulations using CHARMM-GUI-style MDP templates.
+Mirrors the NAMD and OpenMM manager APIs.
+
+- Accepts GROMACS-native (``.gro`` + ``topol.top``) **or** AMBER (``.prmtop`` + ``.inpcrd``) files.
+  AMBER files are automatically converted using **ParmEd**.
+- Position restraints are handled via MDP ``define`` macros (`POSRES_FC_BB`,
+  `POSRES_FC_SC`, `POSRES_FC_LIPID`) — identical to the CHARMM-GUI scheme.
+- Force constants are specified in **kcal/mol/Å²** and converted to kJ/mol/nm² internally.
+- COM restraints via GROMACS Colvars (``distanceX/Y/Z`` + optional ``orientation``).
+
+### Import
+
+```python
+from gatewizard.tools.equilibration import GROMACSEquilibrationManager
+```
+
+### Constructor
+
+```python
+GROMACSEquilibrationManager(working_dir: Path, gmx_executable: str = "gmx")
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `working_dir` | `Path` | Required | Directory containing system files |
+| `gmx_executable` | `str` | `"gmx"` | GROMACS executable name or full path |
+
+---
+
+### `get_default_stage_params` (static)
+
+```python
+GROMACSEquilibrationManager.get_default_stage_params(
+    scheme_type: str = "NPT",
+    temperature: float = 310.15,
+    include_production: bool = False,
+) -> List[EquilibrationStage]
+```
+
+Returns 7 (or 8) CHARMM-GUI-style equilibration stages with gradually decreasing
+positional restraints.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `scheme_type` | `str` | `"NPT"` | Ensemble: NVT, NPT, NPAT, or NPgT |
+| `temperature` | `float` | `310.15` | Temperature in Kelvin |
+| `include_production` | `bool` | `False` | Append a 50 ns unrestrained production stage |
+
+**Returns:** `List[EquilibrationStage]`
+
+**Example:**
+```python
+stages = GROMACSEquilibrationManager.get_default_stage_params("NPT", temperature=300.0)
+stages[-1].time_ns = 5.0   # extend last equilibration stage
+```
+
+---
+
+### `setup_gromacs_equilibration`
+
+```python
+manager.setup_gromacs_equilibration(
+    system_files: Optional[Dict[str, str]] = None,
+    stage_params_list: Optional[List] = None,
+    output_name: str = "equilibration",
+    scheme_type: Optional[str] = None,
+    selections: Optional[Dict[str, str]] = None,
+    gmx_executable: str = "gmx",
+    add_com_restraint: bool = False,
+    com_restraint_k: float = 10.0,
+    add_rotation_restraint: bool = False,
+    rotation_restraint_k: float = 2000.0,
+) -> Dict[str, Any]
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `system_files` | `dict` | Auto-detect | Keys: `gro`+`top` (GROMACS) **or** `prmtop`+`inpcrd`+`pdb`+`bilayer_pdb` (AMBER) |
+| `stage_params_list` | `list` | 7-stage default | List of `EquilibrationStage` objects or dicts |
+| `output_name` | `str` | `"equilibration"` | Subdirectory name under `working_dir` |
+| `scheme_type` | `str` | From first stage | Ensemble: NVT, NPT, NPAT, NPgT |
+| `gmx_executable` | `str` | `"gmx"` | GROMACS executable |
+| `add_com_restraint` | `bool` | `False` | Generate Colvars COM restraint file |
+| `com_restraint_k` | `float` | `10.0` | COM force constant in kcal/mol/Å² |
+| `add_rotation_restraint` | `bool` | `False` | Add orientation restraint in Colvars |
+| `rotation_restraint_k` | `float` | `2000.0` | Rotation force constant in kcal/mol/Å² |
+
+**Returns:**
+
+```python
+{
+    "gromacs_dir":   Path,          # output directory
+    "mdp_files":     List[Path],    # generated MDP files
+    "run_script":    Path,          # run_equilibration.sh
+    "system_files":  dict,          # detected input files
+    "posres_files":  dict,          # backbone/sidechain/lipid .itp files
+    "gro":           Path,
+    "top":           Path,
+    "ndx":           Path,
+    "com_colvars":   Path | None,   # com_restraint.dat (if requested)
+}
+```
+
+**Example — minimal (AMBER files, auto-detected):**
+```python
+from pathlib import Path
+from gatewizard.tools.equilibration import GROMACSEquilibrationManager
+
+manager = GROMACSEquilibrationManager(Path("popc_membrane"))
+stages = GROMACSEquilibrationManager.get_default_stage_params("NPT",
+                                                               include_production=True)
+stages[-1].time_ns = 100.0     # 100 ns production
+result = manager.setup_gromacs_equilibration(stage_params_list=stages)
+# cd result["gromacs_dir"] && bash run_equilibration.sh
+```
+
+**Example — with COM restraint:**
+```python
+result = manager.setup_gromacs_equilibration(
+    stage_params_list=stages,
+    add_com_restraint=True,
+    com_restraint_k=5.0,           # kcal/mol/Å²
+    add_rotation_restraint=True,
+    rotation_restraint_k=500.0,
+)
+# Activate Colvars in the desired MDP files:
+#   colvars-active         = yes
+#   colvars-configfile     = com_restraint.dat
+```
+
+---
+
+### `generate_mdp_file`
+
+```python
+manager.generate_mdp_file(
+    stage_name: str,
+    stage_params: Dict[str, Any],
+    stage_index: int,      # 0=minimization, 1-6=equilibration, 7=production
+    scheme_type: str,
+) -> str
+```
+
+Returns the contents of an MDP file for a single stage, generated by substituting
+runtime parameters (temperature, timestep, nsteps, force constants) into the
+appropriate template from `equilibration/gromacs/{ensemble}/`.
+
+---
+
+### `convert_from_amber`
+
+```python
+manager.convert_from_amber(
+    prmtop: Path,
+    inpcrd: Path,
+    output_dir: Path,
+    bilayer_pdb: Optional[Path] = None,
+) -> Dict[str, Path]   # {"gro": ..., "top": ...}
+```
+
+Converts AMBER topology + coordinates to GROMACS format using **ParmEd**.
+When the prmtop has no box information (common in membrane systems), the box
+is read from the CRYST1 record of `bilayer_pdb`.
+
+**Requires:** `conda install -c conda-forge parmed`
+
+---
+
+### `generate_com_colvars_file`
+
+```python
+manager.generate_com_colvars_file(
+    pdb_path: Path,
+    output_file: Path,
+    com_restraint_k: float = 10.0,
+    add_rotation_restraint: bool = False,
+    rotation_restraint_k: float = 2000.0,
+    selection: str = "name CA",
+) -> Optional[Path]
+```
+
+Generates a Colvars configuration (``.dat``) that restrains the geometric centre
+of the selected atoms to its initial position.  Uses `distanceX/Y/Z` CVs for
+translation and an `orientation` CV for rotation.
+
+To activate, add to the relevant MDP file:
+```
+colvars-active         = yes
+colvars-configfile     = com_restraint.dat
+```
+
+**Requires:** `conda install -c conda-forge mdanalysis`
+
+---
+
+## COM Restraints (all engines)
+
+GateWizard supports **centre-of-mass / centre-of-geometry restraints** for all
+three MD engines.  Unlike per-atom positional restraints, COM restraints act on
+the *centroid* of the selected group — they prevent rigid-body translation (and
+optionally rotation) of the protein without introducing bias on individual atoms.
+
+### Motivation
+
+In membrane simulations, proteins can undergo slow lateral drift or rotation
+within the membrane plane over long equilibration runs.  COM restraints counteract
+this while still allowing internal conformational flexibility.
+
+### API summary
+
+| Engine | Parameter | Effect |
+|--------|-----------|--------|
+| **NAMD** | `add_com_restraint=True` in `setup_namd_equilibration()` | Writes `com_restraint.col`; add `colvarsConfig com_restraint.col` to NAMD conf |
+| **OpenMM** | `add_com_restraint=True` in `setup_openmm_equilibration()` | Writes `com_restraint_params.json`; `omm_restraints.py` reads it automatically |
+| **GROMACS** | `add_com_restraint=True` in `setup_gromacs_equilibration()` | Writes `com_restraint.dat`; add `colvars-active = yes` to MDP |
+
+All engines use kcal/mol/Å² for `com_restraint_k` and `rotation_restraint_k`.
+
+### NAMD example
+
+```python
+from pathlib import Path
+from gatewizard.tools.equilibration import NAMDEquilibrationManager
+
+manager = NAMDEquilibrationManager(Path("popc_membrane"))
+result = manager.setup_namd_equilibration(
+    add_com_restraint=True,
+    com_restraint_k=5.0,
+    add_rotation_restraint=True,
+    rotation_restraint_k=200.0,
+)
+# Add to each .namd config:  colvarsConfig com_restraint.col
+```
+
+### OpenMM example
+
+```python
+from gatewizard.tools.equilibration import OpenMMEquilibrationManager
+
+manager = OpenMMEquilibrationManager(Path("popc_membrane"))
+result = manager.setup_openmm_equilibration(
+    add_com_restraint=True,
+    com_restraint_k=5.0,
+)
+# com_restraint_params.json is auto-loaded by omm_restraints.py
+```
+
+### GROMACS example
+
+```python
+from gatewizard.tools.equilibration import GROMACSEquilibrationManager
+
+manager = GROMACSEquilibrationManager(Path("popc_membrane"))
+stages = GROMACSEquilibrationManager.get_default_stage_params("NPT")
+result = manager.setup_gromacs_equilibration(
+    stage_params_list=stages,
+    add_com_restraint=True,
+    com_restraint_k=5.0,
+)
+# Enable in MDP (e.g. step6.1_equilibration.mdp):
+#   colvars-active         = yes
+#   colvars-configfile     = com_restraint.dat
+```
+
+---
+
 ## See Also
 
 - [User Guide](../user-guide.md) - Complete usage guide
 - [Examples](https://github.com/maurobedoya/gatewizard/tree/main/tests/analysis_examples) - Working code examples
+
 - [Troubleshooting](../troubleshooting.md) - Common issues
