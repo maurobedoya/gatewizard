@@ -179,4 +179,35 @@ def restraints(system, crd, inputs):
             posresCUSTOM.addParticle(atom1, [k, xpos, ypos, zpos])
         system.addForce(posresCUSTOM)
 
+    # GateWizard extension: COM (centre-of-mass / centre-of-geometry) restraint
+    # Restrains the centroid of selected atoms (Cα by default) to its initial
+    # position via CustomCentroidBondForce — no per-atom positional bias.
+    # Force constant: kcal/mol/Å² (converted to kJ/mol/nm² below).
+    # JSON keys: ca_indices, centroid_angstrom, force_constant_kcal_mol_A2
+    if os.path.exists("com_restraint_params.json"):
+        import json as _json
+
+        _KCAL_TO_KJ_NM2 = 418.4  # 1 kcal/mol/Å² = 418.4 kJ/mol/nm²
+        with open("com_restraint_params.json") as _f:
+            _com = _json.load(_f)
+        _indices = _com["ca_indices"]
+        _c = _com["centroid_angstrom"]  # Å
+        # centroid in nm (OpenMM native unit)
+        _x0_nm, _y0_nm, _z0_nm = _c[0] / 10.0, _c[1] / 10.0, _c[2] / 10.0
+        _fc_kj = _com["force_constant_kcal_mol_A2"] * _KCAL_TO_KJ_NM2
+        # Use CustomCentroidBondForce(1 group, energy expression).
+        # group1 centroid is (x1,y1,z1); the target is a global parameter.
+        _comForce = CustomCentroidBondForce(
+            1,
+            "0.5*k_com*((x1-x0_com)^2 + (y1-y0_com)^2 + (z1-z0_com)^2)",
+        )
+        _comForce.addGlobalParameter("k_com", _fc_kj)
+        _comForce.addGlobalParameter("x0_com", _x0_nm)
+        _comForce.addGlobalParameter("y0_com", _y0_nm)
+        _comForce.addGlobalParameter("z0_com", _z0_nm)
+        _comForce.addGroup(_indices)
+        _comForce.addBond([0])
+        _comForce.setUsesPeriodicBoundaryConditions(True)
+        system.addForce(_comForce)
+
     return system
