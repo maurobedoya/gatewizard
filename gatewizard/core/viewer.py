@@ -567,9 +567,19 @@ class ProteinStructure:
             serial = 1
             for atom in self.atoms:
                 rec = "HETATM" if atom.res_name not in AA_NAMES else "ATOM  "
+                # Clamp each field to its PDB column width to prevent column
+                # overflow that would corrupt the fixed-width coordinate columns
+                # and cause parsers (especially MDAnalysis) to fail.
+                name = str(atom.name)[:4]
+                res_name = str(atom.res_name)[:3]
+                chain_id = str(atom.chain_id)[:1]
+                # res_id must fit in 4 chars (-999 … 9999); wrap large values
+                res_id = atom.res_id % 10000
+                # serial must fit in 5 chars (1–99999); wrap if needed
+                ser = serial % 100000 or 100000
                 f.write(
-                    f"{rec}{serial:5d} {atom.name:<4s} {atom.res_name:>3s} "
-                    f"{atom.chain_id:1s}{atom.res_id:4d}    "
+                    f"{rec}{ser:5d} {name:<4s} {res_name:>3s} "
+                    f"{chain_id:1s}{res_id:4d}    "
                     f"{atom.coord[0]:8.3f}{atom.coord[1]:8.3f}{atom.coord[2]:8.3f}"
                     f"{atom.occupancy:6.2f}{atom.bfactor:6.2f}"
                     f"          {atom.element:>2s}\n"
