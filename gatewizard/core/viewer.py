@@ -755,14 +755,24 @@ def _parse_with_mdanalysis(filepath: str) -> ProteinStructure:
     cur_key = None
     cur_res: Optional[Residue] = None
     for ag_atom in u.atoms:
-        # MDAnalysis uses segids for chain identification
-        chain_id = ag_atom.segid if ag_atom.segid and ag_atom.segid.strip() else "A"
+        # MDAnalysis uses segids for chain identification.
+        # CHARMM/MemPrO files populate segid (e.g. "PROT", "MEMB");
+        # standard PDB files (e.g. packmol-memgen) leave segid empty and
+        # store the chain letter in chainID (col 22).  Fall back accordingly.
+        chain_id = (ag_atom.segid or "").strip()
         if len(chain_id) > 1:
-            # Some formats give long segids; use chainID if available
+            # Long segid (CHARMM style) – prefer the single-char chainID
             try:
                 chain_id = ag_atom.chainID
             except AttributeError:
                 chain_id = chain_id[0]
+        if not chain_id:
+            # segid was empty – try the PDB chainID column
+            try:
+                chain_id = (ag_atom.chainID or "").strip()
+            except AttributeError:
+                pass
+        chain_id = chain_id or "A"
         element = (
             ag_atom.element
             if hasattr(ag_atom, "element") and ag_atom.element
