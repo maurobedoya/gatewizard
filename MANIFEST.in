@@ -3,8 +3,8 @@ include gatewizard/
 recursive-include gatewizard *.py
 recursive-include gatewizard/crystal_analysis *.cr *.yml *.lock *.md
 include gatewizard/run_crystal_with_system_libs.sh
-# Include equilibration templates (required for MD equilibration)
-recursive-include equilibration *.inp
+# Include equilibration templates/scripts (required for MD equilibration)
+recursive-include equilibration *.inp *.mdp *.py
 global-exclude *.pyc
 global-exclude __pycache__
 global-exclude *.log
