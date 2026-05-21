@@ -1451,7 +1451,7 @@ generate_charmm_gui_config_file(
 1. If `custom_template` specified → use that template file
 2. If `force_scheme_type=True` → use `scheme_type` for folder selection
 3. If `force_scheme_type=False` → use stage's `ensemble` for folder selection
-4. Templates loaded from: `charmm_gui_templates/{scheme_folder}/{template_file}`
+4. Templates loaded from: `{scheme_folder}/{template_file}` under `equilibration/namd/`
 
 **Scheme to Folder Mapping:**
 

@@ -292,12 +292,9 @@ class NAMDEquilibrationManager:
         self.namd_executable = namd_executable
         self.logger = get_logger(self.__class__.__name__)
 
-        # Path to CHARMM-GUI templates
-        self.charmm_gui_templates_dir = (
-            Path(__file__).parent.parent.parent
-            / "equilibration"
-            / "namd"
-            / "charmm_gui_templates"
+        # Path to NAMD templates (homogeneous layout with other engines)
+        self.namd_templates_dir = (
+            Path(__file__).parent.parent.parent / "equilibration" / "namd"
         )
 
     def find_system_files(self) -> Optional[Dict[str, str]]:
@@ -2868,7 +2865,7 @@ colvarsRestartFrequency 5000
         else:
             raise ValueError(f"Invalid stage number: {stage_number}")
 
-        template_path = self.charmm_gui_templates_dir / scheme_folder / template_file
+        template_path = self.namd_templates_dir / scheme_folder / template_file
 
         if not template_path.exists():
             raise FileNotFoundError(f"CHARMM-GUI template not found: {template_path}")
@@ -3227,9 +3224,7 @@ colvarsRestartFrequency 5000
         }
 
         scheme_folder = scheme_mapping.get(scheme_type, "01_NVT")
-        template_path = (
-            self.charmm_gui_templates_dir / scheme_folder / template_filename
-        )
+        template_path = self.namd_templates_dir / scheme_folder / template_filename
 
         if not template_path.exists():
             raise FileNotFoundError(f"CHARMM-GUI template not found: {template_path}")
