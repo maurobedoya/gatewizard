@@ -3388,8 +3388,6 @@ class EquilibrationFrame(ctk.CTkFrame):
                             f"Generated restraints for {stage_key}: {restraints_file}"
                         )
 
-                    # Note: ABF/colvars generation removed as requested
-
                 # Also create a general restraints.pdb for backward compatibility
                 # Use constraints from first stage for this
                 first_stage = list(protocols.values())[0]

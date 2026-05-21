@@ -100,6 +100,15 @@ if success:
 
 ## Equilibration Setup
 
+### COM Restraints
+
+Use `add_com_restraint=True` when generating equilibration inputs to keep the
+protein centered in protein-membrane systems. GateWizard writes the colvars
+file and adds the activation block automatically:
+
+- NAMD: `colvars on` + `colvarsConfig ...`
+- GROMACS: `colvars-active = yes` + `colvars-configfile = ...`
+
 ### Basic Protocol
 ```python
 from gatewizard.tools.equilibration import NAMDEquilibrationManager
@@ -160,6 +169,19 @@ script = manager.generate_run_script(protocol, "namd3")
 with open("run_equilibration.sh", 'w') as f:
     f.write(script)
 Path("run_equilibration.sh").chmod(0o755)
+```
+
+### OpenMM Equilibration Example
+```python
+from gatewizard.tools.equilibration import OpenMMEquilibrationManager
+from pathlib import Path
+
+manager = OpenMMEquilibrationManager(Path("equilibration"))
+result = manager.setup_openmm_equilibration(
+    output_name="equilibration_openmm",
+    add_com_restraint=True,
+)
+print(result["openmm_dir"])
 ```
 
 ---

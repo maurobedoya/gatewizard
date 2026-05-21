@@ -286,15 +286,15 @@ After successful preparation, you'll find:
 
 *GUI: Equilibration tab.*
 
-The **Equilibration** tab automates the generation and execution of multi-stage equilibration protocols for molecular dynamics simulations using **NAMD**.
+The **Equilibration** tab automates the generation and execution of multi-stage equilibration protocols for molecular dynamics simulations using **NAMD**, **OpenMM**, and **GROMACS**.
 
 ### Overview
 
 Equilibration is critical before production MD simulations. This tab:
 
 1. Generates a series of equilibration stages with gradually relaxing restraints
-2. Creates NAMD input files based on CHARMM-GUI protocols
-3. Handles minimization, and equilibration
+2. Creates engine-specific input files based on CHARMM-GUI-style protocols
+3. Handles minimization and equilibration
 4. Supports NVT, NPT, NPAT, and NPγT ensembles
 5. Can run simulations in the background
 
@@ -309,22 +309,32 @@ Equilibration is critical before production MD simulations. This tab:
 
 - Default: "equilibration"
 - Creates a subfolder for equilibration files
-- Organized by engine: `equilibration/namd/`
 
 #### 3. Select MD Engine
 
-Currently supported: **NAMD**
+Currently supported: **NAMD**, **OpenMM**, and **GROMACS**
 
 - NAMD 2.x and NAMD 3 compatible
-- GPU acceleration supported
-- Future: GROMACS, AMBER, OpenMM support planned
+- OpenMM uses engine-specific Python runner scripts and DCD output
+- GROMACS equilibration uses CHARMM-GUI templates under the hood
+- GPU acceleration supported where the engine allows it
 
-#### 4. Configure NAMD Settings
+#### 4. Configure Engine Settings
 
 **NAMD Executable**:
 
 - Default: "namd3"
 - Change if using namd2 or custom path
+
+**OpenMM**:
+
+- Uses the generated `openmm_run.py` runner
+- DCD output is written with periodic wrapping enabled for periodic systems
+
+**GROMACS**:
+
+- Uses `gmx` for `grompp` / `mdrun`
+- Colvars activation lines are injected automatically when COM restraints are enabled
 
 #### 5. Select Equilibration Scheme
 
@@ -431,10 +441,14 @@ The equilibration protocol consists of 6 stages + production:
 
 This creates:
 
-- NAMD configuration files for each stage
+- Engine-specific configuration files for each stage
 - Restraint files (PDB format with beta factors)
 - Run script (`run_equilibration.sh`)
 - Protocol summary (`protocol_summary.json`)
+
+If COM restraints are enabled, GateWizard also writes the corresponding colvars
+file and injects the activation block into the generated NAMD or GROMACS input
+files automatically.
 
 **Output Structure:**
 ```
@@ -443,7 +457,7 @@ equilibration/namd/
 ├── step2_equilibration.conf
 ├── ...
 ├── step6_equilibration.conf
-├── production.conf
+├── step7_production.conf
 ├── step1_restraints.pdb
 ├── step2_restraints.pdb
 ├── ...
@@ -467,6 +481,20 @@ Options:
 - Check `.log` files for each stage
 - Review DCD trajectory files
 - Monitor energy output
+
+### COM Restraints
+
+GateWizard can generate centre-of-mass / centre-of-geometry restraints for
+protein-membrane systems.
+
+- NAMD writes `com_restraint.col` and adds `colvars on` / `colvarsConfig ...`
+   to the generated `.conf` files.
+- GROMACS writes `com_restraint.dat` and adds `colvars-active = yes` /
+   `colvars-configfile = ...` to the generated `.mdp` files.
+
+These restraints are intended to keep the protein centered and reduce the
+bilayer splitting effect in visualisation, without changing the simulation
+physics.
 
 ### Restraint System
 
@@ -496,6 +524,9 @@ Protocol: Default 6-stage + production
 GPU: Enabled for faster stages
 ```
 
+For membrane systems, enabling COM restraints is recommended when you want to
+reduce rigid-body drift in the output trajectories.
+
 **Case 2: Quick Test Equilibration**
 ```
 Reduce all stage times to 0.05 ns
@@ -519,6 +550,16 @@ For large conformational changes
 5. **Verify pressure**: Fluctuates but centered on target
 6. **Review trajectories**: Visual inspection for artifacts
 7. **Test on small system first**: Verify protocol before production
+
+### COM Restraints
+
+If your protein drifts within the membrane or the bilayer splits across the
+periodic boundary in a viewer, enable COM restraints in the equilibration setup.
+GateWizard will write the colvars file and inject the required activation lines
+into the generated engine inputs automatically.
+
+- NAMD: `com_restraint.col`, `colvars on`, `colvarsConfig ...`
+- GROMACS: `com_restraint.dat`, `colvars-active = yes`, `colvars-configfile = ...`
 
 ### Running on HPC Clusters
 

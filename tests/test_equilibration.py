@@ -41,13 +41,17 @@ import pytest
 import sys
 import os
 import tempfile
+from types import SimpleNamespace
 from pathlib import Path
 import importlib.util
 
 # Add gatewizard to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from gatewizard.tools.equilibration import NAMDEquilibrationManager
+from gatewizard.tools.equilibration import (
+    NAMDEquilibrationManager,
+    _build_com_colvars_activation_block,
+)
 
 # ============================================================================
 # SECTION 1: CORE FUNCTIONALITY TESTS
@@ -306,6 +310,63 @@ END
         content = output_file.read_text()
         assert len(content) > 0
         assert "ATOM" in content
+
+
+class TestComColvarsGeneration:
+    @pytest.fixture
+    def manager(self, tmp_path):
+        return NAMDEquilibrationManager(working_dir=tmp_path, namd_executable="namd3")
+
+    @pytest.fixture
+    def sample_pdb(self, tmp_path):
+        pdb_content = """ATOM      1  N   ALA A   1      10.000  20.000  30.000  1.00 20.00           N  
+ATOM      2  CA  ALA A   1      11.000  21.000  31.000  1.00 20.00           C  
+ATOM      3  C   ALA A   1      12.000  22.000  32.000  1.00 20.00           C  
+END
+"""
+        pdb_file = tmp_path / "system.pdb"
+        pdb_file.write_text(pdb_content)
+        return pdb_file
+
+    def test_activation_block(self):
+        result = _build_com_colvars_activation_block("namd", "com_restraint.col")
+        assert "colvars on" in result
+        assert "colvarsConfig com_restraint.col" in result
+
+    def test_generate_com_colvars_config(
+        self, manager, sample_pdb, tmp_path, monkeypatch
+    ):
+        fake_atoms = [
+            SimpleNamespace(index=0, position=(10.0, 20.0, 30.0)),
+            SimpleNamespace(index=1, position=(11.0, 21.0, 31.0)),
+            SimpleNamespace(index=2, position=(12.0, 22.0, 32.0)),
+        ]
+        fake_ag = SimpleNamespace(
+            atoms=fake_atoms,
+            center_of_geometry=lambda: (11.0, 21.0, 31.0),
+        )
+        fake_ag.__len__ = lambda: 3
+
+        fake_mda = SimpleNamespace(
+            Universe=lambda path: SimpleNamespace(
+                select_atoms=lambda selection: fake_ag
+            )
+        )
+        monkeypatch.setitem(sys.modules, "MDAnalysis", fake_mda)
+
+        output_file = tmp_path / "com_restraint.col"
+        result = manager.generate_com_colvars_config(
+            pdb_path=sample_pdb,
+            output_file=output_file,
+            com_restraint_k=5.0,
+            add_rotation_restraint=False,
+        )
+
+        assert result == output_file
+        text = output_file.read_text()
+        assert "# Colvars" in text
+        assert "distanceX" in text
+        assert "forceConstant 5.0000" in text
 
 
 # ============================================================================

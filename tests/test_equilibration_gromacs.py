@@ -6,7 +6,7 @@ These tests cover:
 - MDP file generation (force constant conversion, temperature, nsteps)
 - Template existence (all 4 ensembles × 8 files)
 - File discovery helpers
-- COM colvars helper (_build_com_colvars_namd_style)
+- COM colvars helpers (_build_com_colvars_config / _build_com_colvars_activation_block)
 - Integration tests that require gmx executable (skipped when not available)
 - AMBER → GROMACS conversion (skipped when ParmEd not available)
 """
@@ -24,7 +24,8 @@ import pytest
 from gatewizard.tools.equilibration import (
     EquilibrationStage,
     GROMACSEquilibrationManager,
-    _build_com_colvars_namd_style,
+    _build_com_colvars_activation_block,
+    _build_com_colvars_config,
 )
 
 # ---------------------------------------------------------------------------
@@ -411,11 +412,11 @@ class TestFindSystemFiles:
 
 
 # ---------------------------------------------------------------------------
-# COM colvars helper (module-level function)
+# COM colvars helpers (module-level functions)
 # ---------------------------------------------------------------------------
 
 
-class TestBuildComColvarsNamdStyle:
+class TestBuildComColvarsConfig:
     @pytest.fixture
     def mock_ag(self):
         """Mock MDAnalysis AtomGroup with 3 fake atoms."""
@@ -431,7 +432,7 @@ class TestBuildComColvarsNamdStyle:
         return ag
 
     def test_returns_string(self, mock_ag):
-        result = _build_com_colvars_namd_style(
+        result = _build_com_colvars_config(
             atom_numbers="1 2 3",
             x0=1.0,
             y0=2.0,
@@ -445,7 +446,7 @@ class TestBuildComColvarsNamdStyle:
         assert len(result) > 50
 
     def test_contains_distance_cvs(self, mock_ag):
-        result = _build_com_colvars_namd_style(
+        result = _build_com_colvars_config(
             atom_numbers="1 2 3",
             x0=1.0,
             y0=2.0,
@@ -460,7 +461,7 @@ class TestBuildComColvarsNamdStyle:
         assert "distanceZ" in result
 
     def test_contains_harmonic_block(self, mock_ag):
-        result = _build_com_colvars_namd_style(
+        result = _build_com_colvars_config(
             atom_numbers="1 2 3",
             x0=1.0,
             y0=2.0,
@@ -474,7 +475,7 @@ class TestBuildComColvarsNamdStyle:
         assert "forceConstant 5.0000" in result
 
     def test_atom_numbers_present(self, mock_ag):
-        result = _build_com_colvars_namd_style(
+        result = _build_com_colvars_config(
             atom_numbers="42 99 101",
             x0=0.0,
             y0=0.0,
@@ -487,7 +488,7 @@ class TestBuildComColvarsNamdStyle:
         assert "42 99 101" in result
 
     def test_rotation_cv_added_when_requested(self, mock_ag):
-        result = _build_com_colvars_namd_style(
+        result = _build_com_colvars_config(
             atom_numbers="1 2 3",
             x0=0.0,
             y0=0.0,
@@ -501,7 +502,7 @@ class TestBuildComColvarsNamdStyle:
         assert "1.0 0.0 0.0 0.0" in result  # identity quaternion
 
     def test_rotation_cv_absent_by_default(self, mock_ag):
-        result = _build_com_colvars_namd_style(
+        result = _build_com_colvars_config(
             atom_numbers="1 2 3",
             x0=0.0,
             y0=0.0,
@@ -514,7 +515,7 @@ class TestBuildComColvarsNamdStyle:
         assert "orientation" not in result
 
     def test_gromacs_engine_uses_semicolons(self, mock_ag):
-        result = _build_com_colvars_namd_style(
+        result = _build_com_colvars_config(
             atom_numbers="1 2",
             x0=0.0,
             y0=0.0,
@@ -525,10 +526,10 @@ class TestBuildComColvarsNamdStyle:
             ag=mock_ag,
             engine="gromacs",
         )
-        assert "; GROMACS" in result
+        assert "; Colvars" in result
 
     def test_namd_engine_uses_hash(self, mock_ag):
-        result = _build_com_colvars_namd_style(
+        result = _build_com_colvars_config(
             atom_numbers="1 2",
             x0=0.0,
             y0=0.0,
@@ -539,7 +540,19 @@ class TestBuildComColvarsNamdStyle:
             ag=mock_ag,
             engine="namd",
         )
-        assert "# NAMD" in result
+        assert "# Colvars" in result
+
+
+class TestBuildComColvarsActivationBlock:
+    def test_namd_activation_block(self):
+        result = _build_com_colvars_activation_block("namd", "com_restraint.col")
+        assert "colvars on" in result
+        assert "colvarsConfig com_restraint.col" in result
+
+    def test_gromacs_activation_block(self):
+        result = _build_com_colvars_activation_block("gromacs", "com_restraint.dat")
+        assert "colvars-active         = yes" in result
+        assert "colvars-configfile     = com_restraint.dat" in result
 
 
 # ---------------------------------------------------------------------------

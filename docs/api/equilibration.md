@@ -1,11 +1,17 @@
 # Equilibration Module
 
-Module for setting up NAMD equilibration protocols for membrane protein systems. Generates configuration files, restraint files, and run scripts for multi-stage equilibration simulations using AMBER force fields.
+Module for setting up NAMD, OpenMM, and GROMACS equilibration protocols for membrane protein systems. Generates configuration files, restraint files, and run scripts for multi-stage equilibration simulations using AMBER force fields.
+
+The three engine managers share a similar user-facing API, with engine-specific file formats and run scripts.
 
 ## Import
 
 ```python
-from gatewizard.tools.equilibration import NAMDEquilibrationManager
+from gatewizard.tools.equilibration import (
+    NAMDEquilibrationManager,
+    OpenMMEquilibrationManager,
+    GROMACSEquilibrationManager,
+)
 ```
 
 ## Class: NAMDEquilibrationManager
@@ -2291,10 +2297,10 @@ is read from the CRYST1 record of `bilayer_pdb`.
 
 ---
 
-### `generate_com_colvars_file`
+### `generate_com_colvars_config`
 
 ```python
-manager.generate_com_colvars_file(
+manager.generate_com_colvars_config(
     pdb_path: Path,
     output_file: Path,
     com_restraint_k: float = 10.0,
@@ -2304,15 +2310,16 @@ manager.generate_com_colvars_file(
 ) -> Optional[Path]
 ```
 
-Generates a Colvars configuration (``.dat``) that restrains the geometric centre
-of the selected atoms to its initial position.  Uses `distanceX/Y/Z` CVs for
-translation and an `orientation` CV for rotation.
+Generates a Colvars configuration file that restrains the geometric centre of
+the selected atoms to its initial position.  Uses ``distanceX/Y/Z`` CVs for
+translation and an ``orientation`` CV for rotation.
 
-To activate, add to the relevant MDP file:
-```
-colvars-active         = yes
-colvars-configfile     = com_restraint.dat
-```
+When COM restraints are enabled through ``setup_namd_equilibration()`` or
+``setup_gromacs_equilibration()``, GateWizard writes the corresponding colvars
+activation block directly into the generated input files:
+
+- NAMD: ``colvars on`` + ``colvarsConfig com_restraint.col``
+- GROMACS: ``colvars-active = yes`` + ``colvars-configfile = com_restraint.dat``
 
 **Requires:** `conda install -c conda-forge mdanalysis`
 
@@ -2335,9 +2342,9 @@ this while still allowing internal conformational flexibility.
 
 | Engine | Parameter | Effect |
 |--------|-----------|--------|
-| **NAMD** | `add_com_restraint=True` in `setup_namd_equilibration()` | Writes `com_restraint.col`; add `colvarsConfig com_restraint.col` to NAMD conf |
+| **NAMD** | `add_com_restraint=True` in `setup_namd_equilibration()` | Writes `com_restraint.col` and injects `colvars on` / `colvarsConfig ...` into the generated `.conf` files |
 | **OpenMM** | `add_com_restraint=True` in `setup_openmm_equilibration()` | Writes `com_restraint_params.json`; `omm_restraints.py` reads it automatically |
-| **GROMACS** | `add_com_restraint=True` in `setup_gromacs_equilibration()` | Writes `com_restraint.dat`; add `colvars-active = yes` to MDP |
+| **GROMACS** | `add_com_restraint=True` in `setup_gromacs_equilibration()` | Writes `com_restraint.dat` and injects `colvars-active = yes` / `colvars-configfile = ...` into the generated `.mdp` files |
 
 All engines use kcal/mol/Å² for `com_restraint_k` and `rotation_restraint_k`.
 
@@ -2354,7 +2361,7 @@ result = manager.setup_namd_equilibration(
     add_rotation_restraint=True,
     rotation_restraint_k=200.0,
 )
-# Add to each .namd config:  colvarsConfig com_restraint.col
+# The generated .conf files already include the colvars activation block.
 ```
 
 ### OpenMM example
@@ -2382,9 +2389,7 @@ result = manager.setup_gromacs_equilibration(
     add_com_restraint=True,
     com_restraint_k=5.0,
 )
-# Enable in MDP (e.g. step6.1_equilibration.mdp):
-#   colvars-active         = yes
-#   colvars-configfile     = com_restraint.dat
+# The generated .mdp files already include the colvars activation block.
 ```
 
 ---
