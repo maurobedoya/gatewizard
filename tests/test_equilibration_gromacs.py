@@ -557,6 +557,96 @@ class TestBuildComColvarsActivationBlock:
         assert "colvars-configfile     = com_restraint.dat" in result
 
 
+class TestComColvarsSetupPaths:
+    def test_setup_gromacs_com_colvars_uses_restraints_path(
+        self, tmp_path, monkeypatch
+    ):
+        manager = _make_manager(tmp_path)
+
+        prmtop = tmp_path / "system.prmtop"
+        inpcrd = tmp_path / "system.inpcrd"
+        pdb = tmp_path / "system.pdb"
+        prmtop.write_text("dummy")
+        inpcrd.write_text("dummy")
+        pdb.write_text(
+            "ATOM      1  CA  ALA A   1      11.000  21.000  31.000  1.00 20.00           C\nEND\n"
+        )
+
+        def _fake_convert_from_amber(prmtop, inpcrd, output_dir, bilayer_pdb=None):
+            gro = output_dir / "system.gro"
+            top = output_dir / "topol.top"
+            gro.write_text(
+                "test\n1\n    1ALA     CA    1   0.000   0.000   0.000\n   1.0   1.0   1.0\n"
+            )
+            top.write_text("[ moleculetype ]\nProtein 3\n")
+            return {"gro": gro, "top": top}
+
+        monkeypatch.setattr(manager, "convert_from_amber", _fake_convert_from_amber)
+
+        monkeypatch.setattr(
+            manager,
+            "generate_index_ndx",
+            lambda gro_path, index_path: index_path.write_text("[ System ]\n1\n"),
+        )
+        monkeypatch.setattr(
+            manager,
+            "generate_mdp_file",
+            lambda **kwargs: "integrator = md\n",
+        )
+
+        def _fake_run_script(
+            gromacs_dir, gro_name, top_name, ndx_name, n_stages, gmx_executable
+        ):
+            run_script = gromacs_dir / "run_equilibration.sh"
+            run_script.write_text("#!/bin/bash\n")
+            return run_script
+
+        monkeypatch.setattr(manager, "generate_run_script", _fake_run_script)
+
+        captured = {}
+
+        def _fake_generate_com_colvars_config(**kwargs):
+            output_file = kwargs["output_file"]
+            captured["output_file"] = output_file
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text("; mock colvars\n")
+            return output_file
+
+        monkeypatch.setattr(
+            manager,
+            "generate_com_colvars_config",
+            _fake_generate_com_colvars_config,
+        )
+
+        out_dir = tmp_path / "gmx_out"
+        result = manager.setup_gromacs_equilibration(
+            system_files={
+                "prmtop": str(prmtop),
+                "inpcrd": str(inpcrd),
+                "pdb": str(pdb),
+            },
+            stage_params_list=[
+                {
+                    "name": "Equilibration 1",
+                    "ensemble": "NPT",
+                    "time_ns": 0.01,
+                    "timestep": 1.0,
+                    "temperature": 310.15,
+                    "constraints": {},
+                }
+            ],
+            output_name=str(out_dir),
+            add_com_restraint=True,
+        )
+
+        expected_colvars = out_dir / "restraints" / "com_restraint.dat"
+        assert captured["output_file"] == expected_colvars
+        assert result["com_colvars"] == expected_colvars
+
+        mdp_text = result["mdp_files"][0].read_text()
+        assert "colvars-configfile     = restraints/com_restraint.dat" in mdp_text
+
+
 # ---------------------------------------------------------------------------
 # Integration: AMBER conversion (requires ParmEd + test data)
 # ---------------------------------------------------------------------------

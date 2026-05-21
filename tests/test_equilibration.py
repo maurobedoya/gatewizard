@@ -369,6 +369,74 @@ END
         assert "distance {" in text
         assert "forceConstant 5.0000" in text
 
+    def test_setup_namd_com_colvars_uses_restraints_path(
+        self, manager, sample_pdb, tmp_path, monkeypatch
+    ):
+        prmtop = tmp_path / "system.prmtop"
+        inpcrd = tmp_path / "system.inpcrd"
+        bilayer = tmp_path / "bilayer_lipid.pdb"
+        prmtop.write_text("dummy")
+        inpcrd.write_text("dummy")
+        bilayer.write_text(
+            "CRYST1   70.335   70.833   85.067  90.00  90.00  90.00 P 1\nEND\n"
+        )
+
+        stage = {
+            "name": "Equilibration 1",
+            "ensemble": "NPT",
+            "time_ns": 0.01,
+            "steps": 100,
+            "timestep": 1.0,
+            "temperature": 310.15,
+            "constraints": {},
+        }
+
+        monkeypatch.setattr(
+            manager,
+            "generate_charmm_gui_config_file",
+            lambda **kwargs: "# test config\n",
+        )
+        monkeypatch.setattr(
+            manager,
+            "generate_run_script",
+            lambda protocols, namd_executable: "#!/bin/bash\n",
+        )
+
+        captured = {}
+
+        def _fake_generate_com_colvars_config(**kwargs):
+            output_file = kwargs["output_file"]
+            captured["output_file"] = output_file
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text("# mock colvars\n")
+            return output_file
+
+        monkeypatch.setattr(
+            manager,
+            "generate_com_colvars_config",
+            _fake_generate_com_colvars_config,
+        )
+
+        out_dir = tmp_path / "namd_out"
+        result = manager.setup_namd_equilibration(
+            system_files={
+                "prmtop": str(prmtop),
+                "inpcrd": str(inpcrd),
+                "pdb": str(sample_pdb),
+                "bilayer_pdb": str(bilayer),
+            },
+            stage_params_list=[stage],
+            output_name=str(out_dir),
+            add_com_restraint=True,
+        )
+
+        expected_colvars = out_dir / "restraints" / "com_restraint.col"
+        assert captured["output_file"] == expected_colvars
+        assert result["com_colvars"] == expected_colvars
+
+        cfg_text = result["config_files"][0].read_text()
+        assert "colvarsConfig restraints/com_restraint.col" in cfg_text
+
 
 # ============================================================================
 # SECTION 3: AUTO-DETECTION TESTS

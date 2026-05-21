@@ -2085,16 +2085,17 @@ class NAMDEquilibrationManager:
             pdb_src = system_files.get("pdb") if system_files else None
             if pdb_src and Path(pdb_src).exists():
                 dest_pdb = namd_dir / Path(pdb_src).name
+                com_colvars_relpath = Path("restraints") / "com_restraint.col"
                 com_colvars_path = self.generate_com_colvars_config(
                     pdb_path=dest_pdb if dest_pdb.exists() else Path(pdb_src),
-                    output_file=namd_dir / "com_restraint.col",
+                    output_file=namd_dir / com_colvars_relpath,
                     com_restraint_k=com_restraint_k,
                     add_rotation_restraint=add_rotation_restraint,
                     rotation_restraint_k=rotation_restraint_k,
                 )
                 if com_colvars_path:
                     activation_block = _build_com_colvars_activation_block(
-                        "namd", com_colvars_path.name
+                        "namd", str(com_colvars_relpath)
                     )
                     for config_file in config_files:
                         config_text = config_file.read_text()
@@ -3774,6 +3775,7 @@ class OpenMMEquilibrationManager:
         add_com_restraint: bool = False,
         com_restraint_k: float = 10.0,
         add_rotation_restraint: bool = False,
+        rotation_restraint_k: float = 2000.0,
     ) -> Dict[str, Any]:
         """
         Complete OpenMM equilibration setup.
@@ -3948,6 +3950,7 @@ class OpenMMEquilibrationManager:
                     output_dir=openmm_dir,
                     com_restraint_k=com_restraint_k,
                     add_rotation_restraint=add_rotation_restraint,
+                    rotation_restraint_k=rotation_restraint_k,
                 )
             else:
                 self.logger.warning(
@@ -4083,18 +4086,22 @@ class OpenMMEquilibrationManager:
         output_dir: Path,
         com_restraint_k: float = 10.0,
         add_rotation_restraint: bool = False,
+        rotation_restraint_k: float = 2000.0,
     ) -> Optional[Path]:
         """Write ``com_restraint_params.json`` for the OpenMM runtime script.
 
         The JSON contains the 0-based Cα atom indices and their initial centroid
         so ``omm_restraints.py`` can apply a ``CustomCentroidBondForce`` to
-        restrain the protein centre of mass.
+        restrain the protein centre of mass. When rotation restraint is enabled,
+        three anchor Cα atoms and their reference coordinates are also stored so
+        ``omm_restraints.py`` can apply a rotational restraint.
 
         Args:
             pdb_path: System PDB file.
             output_dir: Directory to write ``com_restraint_params.json``.
             com_restraint_k: Force constant in kcal/mol/Å².
-            add_rotation_restraint: Stored in the JSON (for future use).
+            add_rotation_restraint: Whether to enable rotational restraint.
+            rotation_restraint_k: Rotation force constant in kcal/mol/Å².
 
         Returns:
             Path to the written JSON, or ``None`` on failure.
@@ -4109,11 +4116,52 @@ class OpenMMEquilibrationManager:
                 return None
 
             com = ag.center_of_geometry()
+            rotation_anchor_indices: list[int] = []
+            rotation_ref_positions_angstrom: list[list[float]] = []
+
+            if add_rotation_restraint and len(ag) >= 3:
+                import numpy as np
+
+                coords = np.asarray(ag.positions, dtype=float)
+                centered = coords - coords.mean(axis=0)
+                _, _, vh = np.linalg.svd(centered, full_matrices=False)
+                pc1 = vh[0]
+                pc2 = vh[1] if vh.shape[0] > 1 else np.array([0.0, 1.0, 0.0])
+
+                proj1 = centered @ pc1
+                idx_a = int(np.argmin(proj1))
+                idx_b = int(np.argmax(proj1))
+
+                proj2 = np.abs(centered @ pc2)
+                proj2[[idx_a, idx_b]] = -1.0
+                idx_c = int(np.argmax(proj2))
+
+                # Fallback when all points collapse onto the first principal axis.
+                if idx_c in (idx_a, idx_b):
+                    for i in range(len(ag)):
+                        if i not in (idx_a, idx_b):
+                            idx_c = i
+                            break
+
+                anchor_atoms = [ag[idx_a], ag[idx_b], ag[idx_c]]
+                rotation_anchor_indices = [int(a.index) for a in anchor_atoms]
+                rotation_ref_positions_angstrom = [
+                    [float(a.position[0]), float(a.position[1]), float(a.position[2])]
+                    for a in anchor_atoms
+                ]
+            elif add_rotation_restraint:
+                self.logger.warning(
+                    "Rotation restraint requested for OpenMM but fewer than 3 Cα atoms were found."
+                )
+
             params = {
                 "ca_indices": [int(a.index) for a in ag],
                 "centroid_angstrom": [float(com[0]), float(com[1]), float(com[2])],
                 "force_constant_kcal_mol_A2": com_restraint_k,
                 "add_rotation_restraint": add_rotation_restraint,
+                "rotation_force_constant_kcal_mol_A2": rotation_restraint_k,
+                "rotation_anchor_indices": rotation_anchor_indices,
+                "rotation_ref_positions_angstrom": rotation_ref_positions_angstrom,
             }
             out = output_dir / "com_restraint_params.json"
             out.write_text(json.dumps(params, indent=2))
@@ -5979,6 +6027,8 @@ class GROMACSEquilibrationManager:
             else self.working_dir / output_name
         )
         gromacs_dir.mkdir(parents=True, exist_ok=True)
+        restraints_dir = gromacs_dir / "restraints"
+        restraints_dir.mkdir(parents=True, exist_ok=True)
         self.logger.info(f"Output directory: {gromacs_dir}")
 
         # --- Obtain GRO + TOP ---
@@ -6099,16 +6149,17 @@ class GROMACSEquilibrationManager:
                 pdbs = list(gromacs_dir.glob("*.pdb"))
                 pdb_for_com = pdbs[0] if pdbs else None
             if pdb_for_com and pdb_for_com.exists():
+                com_colvars_relpath = Path("restraints") / "com_restraint.dat"
                 com_colvars_path = self.generate_com_colvars_config(
                     pdb_path=pdb_for_com,
-                    output_file=gromacs_dir / "com_restraint.dat",
+                    output_file=gromacs_dir / com_colvars_relpath,
                     com_restraint_k=com_restraint_k,
                     add_rotation_restraint=add_rotation_restraint,
                     rotation_restraint_k=rotation_restraint_k,
                 )
                 if com_colvars_path:
                     activation_block = _build_com_colvars_activation_block(
-                        "gromacs", com_colvars_path.name
+                        "gromacs", str(com_colvars_relpath)
                     )
                     for mdp_path in mdp_files:
                         mdp_text = mdp_path.read_text()

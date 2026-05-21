@@ -210,4 +210,47 @@ def restraints(system, crd, inputs):
         _comForce.setUsesPeriodicBoundaryConditions(True)
         system.addForce(_comForce)
 
+        # Optional rotational restraint: use three C-alpha anchor atoms and
+        # restrain two reference vectors to keep the rigid-body orientation.
+        if _com.get("add_rotation_restraint", False):
+            _anchor = _com.get("rotation_anchor_indices", [])
+            _ref = _com.get("rotation_ref_positions_angstrom", [])
+            _rot_k_kcal = _com.get("rotation_force_constant_kcal_mol_A2", 2000.0)
+
+            if len(_anchor) == 3 and len(_ref) == 3:
+                _r1 = [_ref[0][0] / 10.0, _ref[0][1] / 10.0, _ref[0][2] / 10.0]
+                _r2 = [_ref[1][0] / 10.0, _ref[1][1] / 10.0, _ref[1][2] / 10.0]
+                _r3 = [_ref[2][0] / 10.0, _ref[2][1] / 10.0, _ref[2][2] / 10.0]
+
+                _dx12 = _r1[0] - _r2[0]
+                _dy12 = _r1[1] - _r2[1]
+                _dz12 = _r1[2] - _r2[2]
+                _dx13 = _r1[0] - _r3[0]
+                _dy13 = _r1[1] - _r3[1]
+                _dz13 = _r1[2] - _r3[2]
+
+                _rotForce = CustomCompoundBondForce(
+                    3,
+                    "0.5*krot*((x1-x2-dx12)^2 + (y1-y2-dy12)^2 + (z1-z2-dz12)^2 + "
+                    "(x1-x3-dx13)^2 + (y1-y3-dy13)^2 + (z1-z3-dz13)^2)",
+                )
+                _rotForce.addGlobalParameter("krot", _rot_k_kcal * _KCAL_TO_KJ_NM2)
+                _rotForce.addPerBondParameter("dx12")
+                _rotForce.addPerBondParameter("dy12")
+                _rotForce.addPerBondParameter("dz12")
+                _rotForce.addPerBondParameter("dx13")
+                _rotForce.addPerBondParameter("dy13")
+                _rotForce.addPerBondParameter("dz13")
+                _rotForce.addBond(
+                    [int(_anchor[0]), int(_anchor[1]), int(_anchor[2])],
+                    [_dx12, _dy12, _dz12, _dx13, _dy13, _dz13],
+                )
+                _rotForce.setUsesPeriodicBoundaryConditions(True)
+                system.addForce(_rotForce)
+            else:
+                print(
+                    "WARNING: OpenMM rotation restraint requested but anchor atoms "
+                    "are missing in com_restraint_params.json"
+                )
+
     return system
