@@ -445,7 +445,7 @@ class TestBuildComColvarsConfig:
         assert isinstance(result, str)
         assert len(result) > 50
 
-    def test_contains_distance_cvs(self, mock_ag):
+    def test_contains_center_distance_cv(self, mock_ag):
         result = _build_com_colvars_config(
             atom_numbers="1 2 3",
             x0=1.0,
@@ -456,9 +456,9 @@ class TestBuildComColvarsConfig:
             rot_k=2000.0,
             ag=mock_ag,
         )
-        assert "distanceX" in result
-        assert "distanceY" in result
-        assert "distanceZ" in result
+        assert "name center" in result
+        assert "distance {" in result
+        assert "dummyAtom" in result
 
     def test_contains_harmonic_block(self, mock_ag):
         result = _build_com_colvars_config(
@@ -472,6 +472,7 @@ class TestBuildComColvarsConfig:
             ag=mock_ag,
         )
         assert "harmonic" in result
+        assert "colvars center" in result
         assert "forceConstant 5.0000" in result
 
     def test_atom_numbers_present(self, mock_ag):
@@ -498,8 +499,9 @@ class TestBuildComColvarsConfig:
             rot_k=500.0,
             ag=mock_ag,
         )
+        assert "name rotation" in result
         assert "orientation" in result
-        assert "1.0 0.0 0.0 0.0" in result  # identity quaternion
+        assert "centers (1.0, 0.0, 0.0, 0.0)" in result
 
     def test_rotation_cv_absent_by_default(self, mock_ag):
         result = _build_com_colvars_config(

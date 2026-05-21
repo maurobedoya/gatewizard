@@ -365,7 +365,8 @@ END
         assert result == output_file
         text = output_file.read_text()
         assert "# Colvars" in text
-        assert "distanceX" in text
+        assert "name center" in text
+        assert "distance {" in text
         assert "forceConstant 5.0000" in text
 
 

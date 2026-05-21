@@ -40,17 +40,17 @@ def _build_com_colvars_config(
     ag: Any,
     engine: str = "namd",
 ) -> str:
-    """Return Colvars configuration text for COM translation (+ optional rotation).
+    """Return Colvars configuration text for translation (+ optional rotation).
 
-    Generates three 1-D harmonic CVs (distanceX/Y/Z) that restrain the
-    geometric centre of *atom_numbers* to (x0, y0, z0) — a pure centre-of-mass /
-    centre-of-geometry restraint with no per-atom bias.
+    Generates a ``center`` CV (``distance`` to a dummy atom at the initial
+    centroid) to restrain translation, and optionally a ``rotation`` CV
+    (``orientation``) to restrain rigid-body rotation.
 
     Args:
         atom_numbers: Space-separated 1-based atom serial numbers.
         x0, y0, z0: Initial centroid in Ångströms.
         com_k: Translation force constant in kcal/mol/Å².
-        add_rotation: Also add an ``orientation`` CV.
+        add_rotation: Also add a ``rotation``/``orientation`` CV.
         rot_k: Rotation force constant in kcal/mol/Å².
         ag: MDAnalysis AtomGroup (used to write ``refPositions`` for rotation).
         engine: ``"namd"`` or ``"gromacs"`` (only affects header comment).
@@ -73,52 +73,79 @@ def _build_com_colvars_config(
         "",
     ]
 
-    atom_block = f"atomNumbers {atom_numbers}"
+    atom_numbers_list = atom_numbers.split()
 
-    for axis, val in [("X", x0), ("Y", y0), ("Z", z0)]:
-        lines += [
-            f"colvar {{",
-            f"  name com_{axis.lower()}",
-            f"  distance{axis} {{",
-            f"    group1 {{ {atom_block} }}",
-            f"    group2 {{ dummyAtom ({x0:.4f} {y0:.4f} {z0:.4f}) }}",
-            f"  }}",
-            f"}}",
-            "",
-        ]
+    def _atom_number_lines(indent: str = "                ") -> List[str]:
+        rows: List[str] = []
+        for i in range(0, len(atom_numbers_list), 20):
+            rows.append(indent + " ".join(atom_numbers_list[i : i + 20]))
+        return rows
 
     lines += [
+        "colvar {",
+        "   name center",
+        "   outputValue",
+        "",
+        "   distance {",
+        "      group1 {",
+        "         atoms {",
+        "            atomNumbers {",
+    ]
+    lines += _atom_number_lines()
+    lines += [
+        "            }",
+        "         }",
+        "      }",
+        "",
+        "      group2 {",
+        "         dummyAtom {",
+        f"            ({x0:.6f}, {y0:.6f}, {z0:.6f})",
+        "         }",
+        "      }",
+        "   }",
+        "}",
+        "",
         "harmonic {",
-        "  colvars com_x com_y com_z",
-        "  centers 0.0 0.0 0.0",
-        f"  forceConstant {com_k:.4f}",
+        "   name center",
+        "   colvars center",
+        "   centers 0",
+        f"   forceConstant {com_k:.4f}",
         "}",
         "",
     ]
 
     if add_rotation:
-        # Build refPositions block from initial Cα coordinates
+        # Build refPositions block from initial selected-atom coordinates
         ref_lines = []
         for atom in ag.atoms:
             pos = atom.position
-            ref_lines.append(f"    ({pos[0]:.4f}, {pos[1]:.4f}, {pos[2]:.4f})")
+            ref_lines.append(f"            ({pos[0]:.4f}, {pos[1]:.4f}, {pos[2]:.4f})")
         ref_block = "\n".join(ref_lines)
         lines += [
-            f"{comment} Rotation restraint (orientation CV — identity quaternion = no rotation).",
+            f"{comment} Rotation restraint (identity quaternion = no rotation).",
             "colvar {",
-            "  name protein_orient",
-            "  orientation {",
-            f"    atoms {{ {atom_block} }}",
-            "    refPositions {",
+            "   name rotation",
+            "   outputValue",
+            "",
+            "   orientation {",
+            "      atoms {",
+            "         atomNumbers {",
+        ]
+        lines += _atom_number_lines()
+        lines += [
+            "         }",
+            "      }",
+            "      refPositions {",
             ref_block,
-            "    }",
-            "  }",
+            "      }",
+            "   }",
             "}",
             "",
             "harmonic {",
-            "  colvars protein_orient",
-            "  centers 1.0 0.0 0.0 0.0",
-            f"  forceConstant {rot_k:.4f}",
+            "   name rotation",
+            "   colvars rotation",
+            "   centers (1.0, 0.0, 0.0, 0.0)",
+            f"   forceConstant {rot_k:.4f}",
             "}",
             "",
         ]
@@ -1788,7 +1815,7 @@ class NAMDEquilibrationManager:
         selections: Optional[Dict[str, str]] = None,
         add_com_restraint: bool = False,
         com_restraint_k: float = 10.0,
-        add_rotation_restraint: bool = False,
+        add_rotation_restraint: bool = True,
         rotation_restraint_k: float = 2000.0,
     ) -> Dict[str, Any]:
         """
@@ -2105,7 +2132,7 @@ class NAMDEquilibrationManager:
         pdb_path: Path,
         output_file: Path,
         com_restraint_k: float = 10.0,
-        add_rotation_restraint: bool = False,
+        add_rotation_restraint: bool = True,
         rotation_restraint_k: float = 2000.0,
         selection: str = "name CA",
     ) -> Optional[Path]:
@@ -5773,7 +5800,7 @@ class GROMACSEquilibrationManager:
         pdb_path: Path,
         output_file: Path,
         com_restraint_k: float = 10.0,
-        add_rotation_restraint: bool = False,
+        add_rotation_restraint: bool = True,
         rotation_restraint_k: float = 2000.0,
         selection: str = "name CA",
     ) -> Optional[Path]:
@@ -5863,7 +5890,7 @@ class GROMACSEquilibrationManager:
         gmx_executable: str = "gmx",
         add_com_restraint: bool = False,
         com_restraint_k: float = 10.0,
-        add_rotation_restraint: bool = False,
+        add_rotation_restraint: bool = True,
         rotation_restraint_k: float = 2000.0,
     ) -> Dict[str, Any]:
         """Complete GROMACS equilibration setup.
