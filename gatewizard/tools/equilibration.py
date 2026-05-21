@@ -2169,7 +2169,8 @@ class NAMDEquilibrationManager:
 
             u = mda.Universe(str(pdb_path))
             ag = u.select_atoms(selection)
-            if len(ag) == 0:
+            atoms = getattr(ag, "atoms", ag)
+            if len(atoms) == 0:
                 self.logger.warning(
                     f"No atoms matched '{selection}' in {pdb_path.name}; "
                     "COM colvars file not generated."
@@ -2178,7 +2179,7 @@ class NAMDEquilibrationManager:
 
             com = ag.center_of_geometry()
             x0, y0, z0 = float(com[0]), float(com[1]), float(com[2])
-            atom_nums = " ".join(str(int(a.index) + 1) for a in ag)
+            atom_nums = " ".join(str(int(a.index) + 1) for a in atoms)
 
             content = _build_com_colvars_config(
                 atom_numbers=atom_nums,
@@ -2194,7 +2195,7 @@ class NAMDEquilibrationManager:
 
             output_file.write_text(content)
             self.logger.info(
-                f"  COM colvars config ({len(ag)} atoms, centroid "
+                f"  COM colvars config ({len(atoms)} atoms, centroid "
                 f"[{x0:.2f},{y0:.2f},{z0:.2f}] Å): {output_file.name}"
             )
             return output_file
@@ -3135,7 +3136,10 @@ colvarsRestartFrequency 5000
             stage_ensemble = scheme_type
         else:
             # API mode: allow per-stage ensemble customization
-            stage_ensemble = stage_params.get("ensemble", scheme_type)
+            stage_ensemble = stage_params.get("ensemble") or scheme_type
+
+        if isinstance(stage_ensemble, str):
+            stage_ensemble = stage_ensemble.upper()
 
         # Check if user explicitly specified a custom template
         custom_template = stage_params.get("custom_template", None)
@@ -3168,7 +3172,8 @@ colvarsRestartFrequency 5000
             )
 
             # Determine which ensemble scheme to use for template folder selection
-            if stage_ensemble != scheme_type:
+            explicit_stage_ensemble = stage_params.get("ensemble")
+            if explicit_stage_ensemble and stage_ensemble != scheme_type:
                 # Stage uses different ensemble than the protocol default
                 self.logger.warning(
                     f"Stage {stage_index + 1} ({stage_name}) uses ensemble '{stage_ensemble}' "
