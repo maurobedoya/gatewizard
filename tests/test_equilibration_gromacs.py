@@ -616,6 +616,22 @@ class TestBuildComColvarsConfig:
         )
         assert "; Colvars" in result
 
+    def test_gromacs_engine_uses_direct_atomnumbers_blocks(self, mock_ag):
+        result = _build_com_colvars_config(
+            atom_numbers="1 2 3",
+            x0=0.0,
+            y0=0.0,
+            z0=0.0,
+            com_k=1.0,
+            add_rotation=True,
+            rot_k=500.0,
+            ag=mock_ag,
+            engine="gromacs",
+        )
+        assert "group1 {\n         atomNumbers {" in result
+        assert "orientation {\n      atomNumbers {" in result
+        assert "atoms {" not in result
+
     def test_namd_engine_uses_hash(self, mock_ag):
         result = _build_com_colvars_config(
             atom_numbers="1 2",
