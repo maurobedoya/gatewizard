@@ -498,10 +498,96 @@ class TestBuildComColvarsConfig:
             add_rotation=True,
             rot_k=500.0,
             ag=mock_ag,
+            ref_positions_file="system.pdb",
         )
         assert "name rotation" in result
         assert "orientation" in result
+        assert "refPositionsFile system.pdb" in result
         assert "centers (1.0, 0.0, 0.0, 0.0)" in result
+
+    def test_namd_rotation_uses_inline_refpositions_when_requested(self, mock_ag):
+        result = _build_com_colvars_config(
+            atom_numbers="1 2 3",
+            x0=0.0,
+            y0=0.0,
+            z0=0.0,
+            com_k=1.0,
+            add_rotation=True,
+            rot_k=500.0,
+            ag=mock_ag,
+            engine="namd",
+            rotation_ref_positions_mode="refPositions",
+        )
+        assert "refPositions {" in result
+        assert "refPositionsFile" not in result
+
+    def test_file_mode_requires_refpositionsfile(self, mock_ag):
+        with pytest.raises(ValueError, match="requires ref_positions_file"):
+            _build_com_colvars_config(
+                atom_numbers="1 2 3",
+                x0=0.0,
+                y0=0.0,
+                z0=0.0,
+                com_k=1.0,
+                add_rotation=True,
+                rot_k=500.0,
+                ag=mock_ag,
+                engine="namd",
+                rotation_ref_positions_mode="refPositionsFile",
+                ref_positions_file=None,
+            )
+
+    def test_refpositionscol_and_value_emitted_in_file_mode(self, mock_ag):
+        result = _build_com_colvars_config(
+            atom_numbers="1 2 3",
+            x0=0.0,
+            y0=0.0,
+            z0=0.0,
+            com_k=1.0,
+            add_rotation=True,
+            rot_k=500.0,
+            ag=mock_ag,
+            engine="namd",
+            rotation_ref_positions_mode="refPositionsFile",
+            ref_positions_file="system.pdb",
+            ref_positions_col="B",
+            ref_positions_col_value=2.0,
+        )
+        assert "refPositionsFile system.pdb" in result
+        assert "refPositionsCol B" in result
+        assert "refPositionsColValue 2" in result
+
+    def test_refpositionscolvalue_requires_refpositionscol(self, mock_ag):
+        with pytest.raises(ValueError, match="requires ref_positions_col"):
+            _build_com_colvars_config(
+                atom_numbers="1 2 3",
+                x0=0.0,
+                y0=0.0,
+                z0=0.0,
+                com_k=1.0,
+                add_rotation=True,
+                rot_k=500.0,
+                ag=mock_ag,
+                rotation_ref_positions_mode="refPositionsFile",
+                ref_positions_file="system.pdb",
+                ref_positions_col_value=1.0,
+            )
+
+    def test_gromacs_can_use_refpositionsfile_mode(self, mock_ag):
+        result = _build_com_colvars_config(
+            atom_numbers="1 2 3",
+            x0=0.0,
+            y0=0.0,
+            z0=0.0,
+            com_k=1.0,
+            add_rotation=True,
+            rot_k=500.0,
+            ag=mock_ag,
+            engine="gromacs",
+            rotation_ref_positions_mode="refPositionsFile",
+            ref_positions_file="ref.pdb",
+        )
+        assert "refPositionsFile ref.pdb" in result
 
     def test_rotation_cv_absent_by_default(self, mock_ag):
         result = _build_com_colvars_config(

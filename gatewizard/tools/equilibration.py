@@ -39,6 +39,10 @@ def _build_com_colvars_config(
     rot_k: float,
     ag: Any,
     engine: str = "namd",
+    ref_positions_file: Optional[str] = None,
+    rotation_ref_positions_mode: str = "auto",
+    ref_positions_col: Optional[str] = None,
+    ref_positions_col_value: Optional[float] = None,
 ) -> str:
     """Return Colvars configuration text for translation (+ optional rotation).
 
@@ -52,8 +56,19 @@ def _build_com_colvars_config(
         com_k: Translation force constant in kcal/mol/Å².
         add_rotation: Also add a ``rotation``/``orientation`` CV.
         rot_k: Rotation force constant in kcal/mol/Å².
-        ag: MDAnalysis AtomGroup (used to write ``refPositions`` for rotation).
+        ag: MDAnalysis AtomGroup (used to write ``refPositions`` for GROMACS
+            rotation blocks).
         engine: ``"namd"`` or ``"gromacs"`` (only affects header comment).
+        ref_positions_file: Optional ``refPositionsFile`` path for the
+            orientation CV.
+        rotation_ref_positions_mode: How to encode orientation reference
+            coordinates: ``"auto"`` (default: file for NAMD, inline for
+            GROMACS), ``"refPositions"`` (inline), or
+            ``"refPositionsFile"`` (external file).
+        ref_positions_col: Optional PDB column flag for selecting atoms from
+            ``refPositionsFile`` (one of ``O``, ``B``, ``X``, ``Y``, ``Z``).
+        ref_positions_col_value: Optional numeric value used together with
+            ``refPositionsCol``.
 
     Returns:
         Multi-line Colvars config string.
@@ -115,12 +130,36 @@ def _build_com_colvars_config(
     ]
 
     if add_rotation:
-        # Build refPositions block from initial selected-atom coordinates
-        ref_lines = []
-        for atom in ag.atoms:
-            pos = atom.position
-            ref_lines.append(f"            ({pos[0]:.4f}, {pos[1]:.4f}, {pos[2]:.4f})")
-        ref_block = "\n".join(ref_lines)
+        mode_norm = str(rotation_ref_positions_mode).strip().lower()
+        if mode_norm == "auto":
+            use_ref_positions_file = engine == "namd"
+        elif mode_norm in {"refpositions", "inline"}:
+            use_ref_positions_file = False
+        elif mode_norm in {"refpositionsfile", "file"}:
+            use_ref_positions_file = True
+        else:
+            raise ValueError(
+                "Invalid rotation_ref_positions_mode. "
+                "Use 'auto', 'refPositions', or 'refPositionsFile'."
+            )
+
+        if use_ref_positions_file and not ref_positions_file:
+            raise ValueError(
+                "Rotation restraint with refPositionsFile mode requires "
+                "ref_positions_file."
+            )
+        if ref_positions_col_value is not None and not ref_positions_col:
+            raise ValueError("ref_positions_col_value requires ref_positions_col.")
+
+        ref_block = ""
+        if not use_ref_positions_file:
+            ref_lines = []
+            for atom in ag.atoms:
+                pos = atom.position
+                ref_lines.append(
+                    f"            ({pos[0]:.4f}, {pos[1]:.4f}, {pos[2]:.4f})"
+                )
+            ref_block = "\n".join(ref_lines)
         lines += [
             f"{comment} Rotation restraint (identity quaternion = no rotation).",
             "colvar {",
@@ -135,9 +174,20 @@ def _build_com_colvars_config(
         lines += [
             "         }",
             "      }",
-            "      refPositions {",
-            ref_block,
-            "      }",
+        ]
+        if use_ref_positions_file:
+            lines += [f"      refPositionsFile {ref_positions_file}"]
+            if ref_positions_col:
+                lines += [f"      refPositionsCol {ref_positions_col}"]
+            if ref_positions_col_value is not None:
+                lines += [f"      refPositionsColValue {ref_positions_col_value:g}"]
+        else:
+            lines += [
+                "      refPositions {",
+                ref_block,
+                "      }",
+            ]
+        lines += [
             "   }",
             "}",
             "",
@@ -1814,6 +1864,10 @@ class NAMDEquilibrationManager:
         com_restraint_k: float = 10.0,
         add_rotation_restraint: bool = True,
         rotation_restraint_k: float = 2000.0,
+        com_selection: str = "name CA",
+        rotation_ref_positions_mode: str = "auto",
+        ref_positions_col: Optional[str] = None,
+        ref_positions_col_value: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
         Complete NAMD equilibration setup - replicates GUI workflow.
@@ -2092,6 +2146,10 @@ class NAMDEquilibrationManager:
                     com_restraint_k=com_restraint_k,
                     add_rotation_restraint=add_rotation_restraint,
                     rotation_restraint_k=rotation_restraint_k,
+                    selection=com_selection,
+                    rotation_ref_positions_mode=rotation_ref_positions_mode,
+                    ref_positions_col=ref_positions_col,
+                    ref_positions_col_value=ref_positions_col_value,
                 )
                 if com_colvars_path:
                     activation_block = _build_com_colvars_activation_block(
@@ -2133,6 +2191,9 @@ class NAMDEquilibrationManager:
         add_rotation_restraint: bool = True,
         rotation_restraint_k: float = 2000.0,
         selection: str = "name CA",
+        rotation_ref_positions_mode: str = "auto",
+        ref_positions_col: Optional[str] = None,
+        ref_positions_col_value: Optional[float] = None,
     ) -> Optional[Path]:
         """Generate NAMD Colvars configuration to restrain protein centre of mass.
 
@@ -2159,6 +2220,13 @@ class NAMDEquilibrationManager:
             rotation_restraint_k: Rotation force constant in kcal/mol/Å².
             selection: MDAnalysis selection string for the reference atoms
                 (default: ``"name CA"`` for Cα atoms).
+            rotation_ref_positions_mode: Orientation reference mode:
+                ``"auto"``, ``"refPositions"``, or ``"refPositionsFile"``.
+                ``"auto"`` defaults to ``"refPositionsFile"`` for NAMD.
+            ref_positions_col: Optional PDB column (``O/B/X/Y/Z``) to select
+                reference atoms from ``refPositionsFile``.
+            ref_positions_col_value: Optional numeric value paired with
+                ``ref_positions_col``.
 
         Returns:
             Path to the written config file, or ``None`` if MDAnalysis is
@@ -2191,6 +2259,10 @@ class NAMDEquilibrationManager:
                 rot_k=rotation_restraint_k,
                 ag=ag,
                 engine="namd",
+                ref_positions_file=Path(pdb_path).name,
+                rotation_ref_positions_mode=rotation_ref_positions_mode,
+                ref_positions_col=ref_positions_col,
+                ref_positions_col_value=ref_positions_col_value,
             )
 
             output_file.write_text(content)
@@ -3781,6 +3853,7 @@ class OpenMMEquilibrationManager:
         com_restraint_k: float = 10.0,
         add_rotation_restraint: bool = False,
         rotation_restraint_k: float = 2000.0,
+        com_selection: str = "name CA",
     ) -> Dict[str, Any]:
         """
         Complete OpenMM equilibration setup.
@@ -3956,6 +4029,7 @@ class OpenMMEquilibrationManager:
                     com_restraint_k=com_restraint_k,
                     add_rotation_restraint=add_rotation_restraint,
                     rotation_restraint_k=rotation_restraint_k,
+                    selection=com_selection,
                 )
             else:
                 self.logger.warning(
@@ -4092,6 +4166,7 @@ class OpenMMEquilibrationManager:
         com_restraint_k: float = 10.0,
         add_rotation_restraint: bool = False,
         rotation_restraint_k: float = 2000.0,
+        selection: str = "name CA",
     ) -> Optional[Path]:
         """Write ``com_restraint_params.json`` for the OpenMM runtime script.
 
@@ -4107,6 +4182,8 @@ class OpenMMEquilibrationManager:
             com_restraint_k: Force constant in kcal/mol/Å².
             add_rotation_restraint: Whether to enable rotational restraint.
             rotation_restraint_k: Rotation force constant in kcal/mol/Å².
+            selection: MDAnalysis selection string for atoms used to define
+                COM translation and optional rotation anchors.
 
         Returns:
             Path to the written JSON, or ``None`` on failure.
@@ -4115,9 +4192,11 @@ class OpenMMEquilibrationManager:
             import MDAnalysis as mda  # type: ignore
 
             u = mda.Universe(str(pdb_path))
-            ag = u.select_atoms("name CA")
+            ag = u.select_atoms(selection)
             if len(ag) == 0:
-                self.logger.warning("No Cα atoms found for OpenMM COM restraint.")
+                self.logger.warning(
+                    f"No atoms matched '{selection}' for OpenMM COM restraint."
+                )
                 return None
 
             com = ag.center_of_geometry()
@@ -5851,6 +5930,10 @@ class GROMACSEquilibrationManager:
         add_rotation_restraint: bool = True,
         rotation_restraint_k: float = 2000.0,
         selection: str = "name CA",
+        rotation_ref_positions_mode: str = "auto",
+        ref_positions_file: Optional[str] = None,
+        ref_positions_col: Optional[str] = None,
+        ref_positions_col_value: Optional[float] = None,
     ) -> Optional[Path]:
         """Generate a GROMACS Colvars configuration to restrain protein COM.
 
@@ -5874,6 +5957,15 @@ class GROMACSEquilibrationManager:
             rotation_restraint_k: Rotation force constant in kcal/mol/Å².
             selection: MDAnalysis selection string for the reference atoms
                 (default: Cα atoms).
+            rotation_ref_positions_mode: Orientation reference mode:
+                ``"auto"``, ``"refPositions"``, or ``"refPositionsFile"``.
+                ``"auto"`` defaults to inline ``refPositions`` for GROMACS.
+            ref_positions_file: Optional file path used when mode is
+                ``"refPositionsFile"``.
+            ref_positions_col: Optional PDB column (``O/B/X/Y/Z``) to select
+                reference atoms from ``refPositionsFile``.
+            ref_positions_col_value: Optional numeric value paired with
+                ``ref_positions_col``.
 
         Returns:
             Path to the written config file, or ``None`` on failure.
@@ -5905,6 +5997,10 @@ class GROMACSEquilibrationManager:
                 rot_k=rotation_restraint_k,
                 ag=ag,
                 engine="gromacs",
+                ref_positions_file=ref_positions_file,
+                rotation_ref_positions_mode=rotation_ref_positions_mode,
+                ref_positions_col=ref_positions_col,
+                ref_positions_col_value=ref_positions_col_value,
             )
 
             output_file.write_text(content)
@@ -5940,6 +6036,11 @@ class GROMACSEquilibrationManager:
         com_restraint_k: float = 10.0,
         add_rotation_restraint: bool = True,
         rotation_restraint_k: float = 2000.0,
+        com_selection: str = "name CA",
+        rotation_ref_positions_mode: str = "auto",
+        ref_positions_file: Optional[str] = None,
+        ref_positions_col: Optional[str] = None,
+        ref_positions_col_value: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Complete GROMACS equilibration setup.
 
@@ -6161,6 +6262,11 @@ class GROMACSEquilibrationManager:
                     com_restraint_k=com_restraint_k,
                     add_rotation_restraint=add_rotation_restraint,
                     rotation_restraint_k=rotation_restraint_k,
+                    selection=com_selection,
+                    rotation_ref_positions_mode=rotation_ref_positions_mode,
+                    ref_positions_file=ref_positions_file,
+                    ref_positions_col=ref_positions_col,
+                    ref_positions_col_value=ref_positions_col_value,
                 )
                 if com_colvars_path:
                     activation_block = _build_com_colvars_activation_block(
