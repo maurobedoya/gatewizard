@@ -802,10 +802,4 @@ def get_equilibration_progress(
 
         progress[stage_name] = stage
 
-    # Trim trailing not_started stages
-    keys = list(progress.keys())
-    while keys and progress[keys[-1]].status == "not_started":
-        del progress[keys[-1]]
-        keys.pop()
-
     return progress

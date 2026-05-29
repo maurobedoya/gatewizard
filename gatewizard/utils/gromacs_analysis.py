@@ -176,11 +176,4 @@ def get_equilibration_progress(
 
         progress[stage_name] = stage
 
-    # Trim trailing not_started stages so we don't clutter the UI when the
-    # user hasn't configured all 8 stages (e.g. no production stage yet).
-    keys = list(progress.keys())
-    while keys and progress[keys[-1]].status == "not_started":
-        del progress[keys[-1]]
-        keys.pop()
-
     return progress
