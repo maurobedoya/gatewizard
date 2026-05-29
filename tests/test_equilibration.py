@@ -365,8 +365,8 @@ END
         assert result == output_file
         text = output_file.read_text()
         assert "# Colvars" in text
-        assert "name center" in text
-        assert "distance {" in text
+        assert "name center_x" in text
+        assert "distanceZ {" in text
         assert "forceConstant 5.0000" in text
 
     def test_setup_namd_com_colvars_uses_restraints_path(

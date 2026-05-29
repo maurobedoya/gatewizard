@@ -456,8 +456,8 @@ class TestBuildComColvarsConfig:
             rot_k=2000.0,
             ag=mock_ag,
         )
-        assert "name center" in result
-        assert "distance {" in result
+        assert "name center_x" in result
+        assert "distanceZ {" in result
         assert "dummyAtom" in result
 
     def test_contains_harmonic_block(self, mock_ag):
@@ -472,7 +472,7 @@ class TestBuildComColvarsConfig:
             ag=mock_ag,
         )
         assert "harmonic" in result
-        assert "colvars center" in result
+        assert "colvars center_x" in result
         assert "forceConstant 5.0000" in result
 
     def test_atom_numbers_present(self, mock_ag):
@@ -602,7 +602,7 @@ class TestBuildComColvarsConfig:
         )
         assert "orientation" not in result
 
-    def test_gromacs_engine_uses_semicolons(self, mock_ag):
+    def test_gromacs_engine_uses_hash_comments(self, mock_ag):
         result = _build_com_colvars_config(
             atom_numbers="1 2",
             x0=0.0,
@@ -614,7 +614,8 @@ class TestBuildComColvarsConfig:
             ag=mock_ag,
             engine="gromacs",
         )
-        assert "; Colvars" in result
+        assert "# Colvars" in result
+        assert "; Colvars" not in result
 
     def test_gromacs_engine_uses_direct_atomnumbers_blocks(self, mock_ag):
         result = _build_com_colvars_config(
@@ -627,10 +628,12 @@ class TestBuildComColvarsConfig:
             rot_k=500.0,
             ag=mock_ag,
             engine="gromacs",
+            ref_positions_file="system.pdb",
         )
-        assert "group1 {\n         atomNumbers {" in result
-        assert "orientation {\n      atomNumbers {" in result
-        assert "atoms {" not in result
+        assert "group1 {\n         atomNumbers {" not in result
+        assert "main {\n         atomNumbers {" in result
+        assert "orientation {\n      atoms {" in result
+        assert "group1 {\n         atoms {" not in result
 
     def test_namd_engine_uses_hash(self, mock_ag):
         result = _build_com_colvars_config(
