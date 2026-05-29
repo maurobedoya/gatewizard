@@ -44,7 +44,16 @@ _COLUMN_MAP: Dict[str, str] = {
     "Total Energy (kJ/mol)": "total",
 }
 
-_NUMERIC_KEYS = {"step", "time_ps", "potential", "kinetic", "total", "temp", "volume", "density"}
+_NUMERIC_KEYS = {
+    "step",
+    "time_ps",
+    "potential",
+    "kinetic",
+    "total",
+    "temp",
+    "volume",
+    "density",
+}
 
 
 class OpenMMLogAnalyzer:
@@ -143,6 +152,7 @@ class OpenMMLogAnalyzer:
                             elif data[key] or key == "step":
                                 # Keep arrays aligned: pad with NaN for missing cols
                                 import math
+
                                 data[key].append(math.nan)
 
             except Exception as exc:
@@ -152,7 +162,12 @@ class OpenMMLogAnalyzer:
             end_idx = len(data["step"])
             first_step = int(data["step"][start_idx]) if start_idx < end_idx else 0
             last_step = int(data["step"][end_idx - 1]) if start_idx < end_idx else 0
-            self._file_ranges[str(log_file)] = (start_idx, end_idx, first_step, last_step)
+            self._file_ranges[str(log_file)] = (
+                start_idx,
+                end_idx,
+                first_step,
+                last_step,
+            )
 
         return data
 
@@ -215,16 +230,21 @@ class OpenMMLogAnalyzer:
                     n_points = end_idx - start_idx
                     if duration is not None and n_points > 0:
                         time_ns_adj[start_idx:end_idx] = (
-                            np.linspace(0, duration, n_points, endpoint=False) + cumulative
+                            np.linspace(0, duration, n_points, endpoint=False)
+                            + cumulative
                         )
                         cumulative += duration
                     else:
                         segment = time_ns[start_idx:end_idx]
                         if len(segment):
-                            offset = cumulative - (segment[0] if start_idx == 0 else segment[0])
+                            offset = cumulative - (
+                                segment[0] if start_idx == 0 else segment[0]
+                            )
                             time_ns_adj[start_idx:end_idx] = segment + offset
                             cumulative = float(time_ns_adj[end_idx - 1]) + (
-                                (segment[-1] - segment[-2]) / 1000.0 if len(segment) > 1 else 0
+                                (segment[-1] - segment[-2]) / 1000.0
+                                if len(segment) > 1
+                                else 0
                             )
                 return time_ns_adj
             return time_ns
@@ -288,7 +308,11 @@ class OpenMMLogAnalyzer:
             return
 
         if properties is None:
-            properties = [k for k in _NUMERIC_KEYS if k not in ("step", "time_ps") and self.data[k]]
+            properties = [
+                k
+                for k in _NUMERIC_KEYS
+                if k not in ("step", "time_ps") and self.data[k]
+            ]
 
         time_ns = self._calculate_time_array()
         plot_time, time_label = _convert_time(time_ns, time_units)
@@ -296,8 +320,16 @@ class OpenMMLogAnalyzer:
         energy_keys = {"potential", "kinetic", "total"}
 
         _tc = _auto_text_color(text_color, bg_color)
-        default_colors = ["#61afef", "#98c379", "#e06c75", "#e5c07b", "#c678dd",
-                          "#56b6c2", "#d19a66", "#abb2bf"]
+        default_colors = [
+            "#61afef",
+            "#98c379",
+            "#e06c75",
+            "#e5c07b",
+            "#c678dd",
+            "#56b6c2",
+            "#d19a66",
+            "#abb2bf",
+        ]
 
         def _plot_one(ax, key, color):
             raw = np.array(self.data.get(key, []), dtype=float)
@@ -305,7 +337,7 @@ class OpenMMLogAnalyzer:
                 return
             y = raw * energy_factor if key in energy_keys else raw
             y_label = _property_label(key, energy_label)
-            ax.plot(plot_time[:len(y)], y, color=color, linewidth=0.8)
+            ax.plot(plot_time[: len(y)], y, color=color, linewidth=0.8)
             ax.set_xlabel(f"Time ({time_label})", color=_tc)
             ax.set_ylabel(y_label, color=_tc)
             ax.set_title(key.replace("_", " ").title(), color=_tc)
@@ -326,12 +358,19 @@ class OpenMMLogAnalyzer:
                 fig, ax = plt.subplots(figsize=figsize or (10, 4))
                 if fig_bg_color != "none":
                     fig.patch.set_facecolor(fig_bg_color)
-                color = (colors[prop_i] if colors and prop_i < len(colors)
-                         else default_colors[prop_i % len(default_colors)])
+                color = (
+                    colors[prop_i]
+                    if colors and prop_i < len(colors)
+                    else default_colors[prop_i % len(default_colors)]
+                )
                 _plot_one(ax, key, color)
                 plt.tight_layout()
                 if save:
-                    fname = f"{save}_{key}.png" if not save.endswith(".png") else f"{key}_{save}"
+                    fname = (
+                        f"{save}_{key}.png"
+                        if not save.endswith(".png")
+                        else f"{key}_{save}"
+                    )
                     plt.savefig(fname, dpi=dpi, bbox_inches="tight")
                 if show:
                     plt.show()
@@ -340,14 +379,18 @@ class OpenMMLogAnalyzer:
             n = len(properties)
             cols = min(n, 2)
             rows = (n + cols - 1) // cols
-            fig, axes_arr = plt.subplots(rows, cols, figsize=figsize or (12, 4 * rows),
-                                         squeeze=False)
+            fig, axes_arr = plt.subplots(
+                rows, cols, figsize=figsize or (12, 4 * rows), squeeze=False
+            )
             if fig_bg_color != "none":
                 fig.patch.set_facecolor(fig_bg_color)
             for prop_i, key in enumerate(properties):
                 r, c = divmod(prop_i, cols)
-                color = (colors[prop_i] if colors and prop_i < len(colors)
-                         else default_colors[prop_i % len(default_colors)])
+                color = (
+                    colors[prop_i]
+                    if colors and prop_i < len(colors)
+                    else default_colors[prop_i % len(default_colors)]
+                )
                 _plot_one(axes_arr[r][c], key, color)
             # Hide unused subplots
             for prop_i in range(len(properties), rows * cols):
@@ -436,39 +479,62 @@ class OpenMMLogAnalyzer:
         ax = axes[0, 0]
         if self.data["total"]:
             y = np.array(self.data["total"], dtype=float) * energy_factor
-            ax.plot(plot_time[:len(y)], y, color="#61afef", linewidth=0.8,
-                    label="Total")
+            ax.plot(
+                plot_time[: len(y)], y, color="#61afef", linewidth=0.8, label="Total"
+            )
         _setup(ax, tl, f"Total Energy ({energy_label})", "Total Energy")
 
         # ── top-right: Potential + Kinetic ──────────────────────────────
         ax = axes[0, 1]
         if self.data["potential"]:
             y = np.array(self.data["potential"], dtype=float) * energy_factor
-            ax.plot(plot_time[:len(y)], y, color="#e06c75", linewidth=0.8,
-                    label="Potential")
+            ax.plot(
+                plot_time[: len(y)],
+                y,
+                color="#e06c75",
+                linewidth=0.8,
+                label="Potential",
+            )
         if self.data["kinetic"]:
             y = np.array(self.data["kinetic"], dtype=float) * energy_factor
-            ax.plot(plot_time[:len(y)], y, color="#98c379", linewidth=0.8,
-                    label="Kinetic")
-        ax.legend(fontsize=8, facecolor=bg_color if bg_color != "none" else "white",
-                  labelcolor=_tc)
+            ax.plot(
+                plot_time[: len(y)], y, color="#98c379", linewidth=0.8, label="Kinetic"
+            )
+        ax.legend(
+            fontsize=8,
+            facecolor=bg_color if bg_color != "none" else "white",
+            labelcolor=_tc,
+        )
         _setup(ax, tl, f"Energy ({energy_label})", "Potential & Kinetic Energy")
 
         # ── bottom-left: Temperature ────────────────────────────────────
         ax = axes[1, 0]
         if self.data["temp"]:
             y = np.array(self.data["temp"], dtype=float)
-            ax.plot(plot_time[:len(y)], y, color="#e5c07b", linewidth=0.8)
+            ax.plot(plot_time[: len(y)], y, color="#e5c07b", linewidth=0.8)
             if target_temperature is not None:
-                ax.axhline(target_temperature, color="#abb2bf", linestyle="--",
-                           linewidth=0.8, label=f"Target {target_temperature} K")
+                ax.axhline(
+                    target_temperature,
+                    color="#abb2bf",
+                    linestyle="--",
+                    linewidth=0.8,
+                    label=f"Target {target_temperature} K",
+                )
             elif len(y) > 0:
                 n50 = max(1, len(y) // 2)
                 avg_t = float(np.nanmean(y[-n50:]))
-                ax.axhline(avg_t, color="#abb2bf", linestyle="--", linewidth=0.8,
-                           label=f"Avg {avg_t:.1f} K")
-            ax.legend(fontsize=8, facecolor=bg_color if bg_color != "none" else "white",
-                      labelcolor=_tc)
+                ax.axhline(
+                    avg_t,
+                    color="#abb2bf",
+                    linestyle="--",
+                    linewidth=0.8,
+                    label=f"Avg {avg_t:.1f} K",
+                )
+            ax.legend(
+                fontsize=8,
+                facecolor=bg_color if bg_color != "none" else "white",
+                labelcolor=_tc,
+            )
         _setup(ax, tl, "Temperature (K)", "Temperature")
 
         # ── bottom-right: Volume or Density ────────────────────────────
@@ -477,17 +543,24 @@ class OpenMMLogAnalyzer:
             __import__("math").isnan(v) for v in self.data["volume"]
         ):
             y = np.array(self.data["volume"], dtype=float)
-            ax.plot(plot_time[:len(y)], y, color="#c678dd", linewidth=0.8)
+            ax.plot(plot_time[: len(y)], y, color="#c678dd", linewidth=0.8)
             _setup(ax, tl, "Volume (nm³)", "Box Volume")
         elif self.data["density"] and not all(
             __import__("math").isnan(v) for v in self.data["density"]
         ):
             y = np.array(self.data["density"], dtype=float)
-            ax.plot(plot_time[:len(y)], y, color="#c678dd", linewidth=0.8)
+            ax.plot(plot_time[: len(y)], y, color="#c678dd", linewidth=0.8)
             _setup(ax, tl, "Density (g/mL)", "Density")
         else:
-            ax.text(0.5, 0.5, "No volume/density data\n(NVT ensemble)",
-                    ha="center", va="center", transform=ax.transAxes, color=_tc)
+            ax.text(
+                0.5,
+                0.5,
+                "No volume/density data\n(NVT ensemble)",
+                ha="center",
+                va="center",
+                transform=ax.transAxes,
+                color=_tc,
+            )
             _setup(ax, tl, "", "Box Volume / Density")
 
         main_title = title or f"OpenMM Energy Analysis ({energy_units})"
@@ -495,8 +568,12 @@ class OpenMMLogAnalyzer:
         plt.tight_layout()
 
         if save:
-            plt.savefig(save, dpi=dpi, bbox_inches="tight",
-                        facecolor=fig_bg_color if fig_bg_color != "none" else "white")
+            plt.savefig(
+                save,
+                dpi=dpi,
+                bbox_inches="tight",
+                facecolor=fig_bg_color if fig_bg_color != "none" else "white",
+            )
         if show:
             plt.show()
         plt.close(fig)
@@ -505,6 +582,7 @@ class OpenMMLogAnalyzer:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _convert_time(time_ns: "np.ndarray", units: str):
     if units == "ps":
@@ -546,3 +624,188 @@ def _property_label(key: str, energy_label: str) -> str:
         "time_ps": "Time (ps)",
     }
     return labels.get(key, key.replace("_", " ").title())
+
+
+# ---------------------------------------------------------------------------
+# Equilibration progress tracking (mirrors gromacs_analysis interface)
+# ---------------------------------------------------------------------------
+
+from dataclasses import dataclass
+
+
+@dataclass
+class OpenMMTimingInfo:
+    """Progress/timing container — field names match NAMDTiming used by app.py."""
+
+    steps_completed: int = 0
+    total_steps: int = 0
+    timestep_fs: float = 0.0  # femtoseconds per step
+    ns_per_day: float = 0.0
+    completed: bool = False
+    has_error: bool = False
+
+
+@dataclass
+class OpenMMStageProgress:
+    """Stage progress container — field names match NAMDProgress used by app.py."""
+
+    stage_name: str = ""
+    status: str = "not_started"  # not_started | running | completed | error
+    timing: Optional[OpenMMTimingInfo] = None
+    log_file: Optional[Path] = None
+
+
+def _parse_openmm_inp(inp_file: Path) -> tuple[int, float]:
+    """Return (nstep, dt_fs) from an OpenMM .inp parameter file."""
+    nstep = 0
+    dt_fs = 0.0
+    if not inp_file.exists():
+        return nstep, dt_fs
+    try:
+        content = inp_file.read_text(encoding="utf-8", errors="ignore")
+        m = re.search(r"\bnstep\s*=\s*(\d+)", content)
+        if m:
+            nstep = int(m.group(1))
+        m = re.search(r"\bdt\s*=\s*([\d.]+)", content)
+        if m:
+            dt_fs = float(m.group(1)) * 1000.0  # ps → fs
+    except Exception:
+        pass
+    return nstep, dt_fs
+
+
+def parse_openmm_log(
+    log_file: Path, inp_file: Optional[Path] = None
+) -> OpenMMTimingInfo:
+    """
+    Parse an OpenMM StateDataReporter log file and return timing/progress info.
+
+    The log format (written by openmm_run.py via StateDataReporter) is:
+        #"Progress (%)"\\t"Step"\\t"Time (ps)"\\t...\\t"Speed (ns/day)"\\t"Time Remaining"
+        0.8%\\t1000\\t1.0\\t...\\t1.41\\t2:06:13
+
+    ``nstep`` and ``dt`` are read from the companion ``.inp`` file when available.
+    """
+    info = OpenMMTimingInfo()
+
+    if not log_file.exists():
+        return info
+
+    try:
+        content = log_file.read_text(encoding="utf-8", errors="ignore")
+
+        # ── Total steps & timestep from .inp file ────────────────────────────────
+        if inp_file is None:
+            inp_file = log_file.with_suffix(".inp")
+        nstep, dt_fs = _parse_openmm_inp(inp_file)
+        info.total_steps = nstep
+        info.timestep_fs = dt_fs
+
+        # ── Parse header to find column positions ────────────────────────────────
+        # Header line starts with '#"Progress'
+        header_m = re.search(r'^#"Progress[^\n]*', content, re.MULTILINE)
+        if not header_m:
+            return info
+
+        header_cols = [
+            c.strip().strip('"') for c in header_m.group().lstrip("#").split("\t")
+        ]
+        try:
+            step_idx = header_cols.index("Step")
+        except ValueError:
+            step_idx = 1  # fallback: second column
+        try:
+            speed_idx = header_cols.index("Speed (ns/day)")
+        except ValueError:
+            speed_idx = len(header_cols) - 2  # second to last
+
+        # ── Parse data rows ──────────────────────────────────────────────────────
+        # Data rows start with a percentage like "0.8%"
+        data_rows = re.findall(r"^\d+\.?\d*%\t[^\n]+", content, re.MULTILINE)
+        if not data_rows:
+            return info
+
+        last_row = data_rows[-1].split("\t")
+
+        try:
+            info.steps_completed = int(last_row[step_idx])
+        except (IndexError, ValueError):
+            pass
+
+        try:
+            speed_val = float(last_row[speed_idx])
+            if speed_val > 0:
+                info.ns_per_day = speed_val
+        except (IndexError, ValueError):
+            pass
+
+        # ── Completion / error markers ───────────────────────────────────────────
+        if "Equilibration complete" in content or (
+            info.total_steps > 0 and info.steps_completed >= info.total_steps
+        ):
+            info.completed = True
+
+        if re.search(r"(Error|Traceback|failed)", content, re.IGNORECASE):
+            # Avoid false positives from log messages that mention 'error' casually
+            if re.search(r"^(Error|Traceback)", content, re.MULTILINE | re.IGNORECASE):
+                info.has_error = True
+
+    except Exception as exc:
+        logger.debug(f"Error parsing OpenMM log {log_file}: {exc}")
+
+    return info
+
+
+def get_equilibration_progress(
+    equilibration_dir: Path,
+) -> Dict[str, OpenMMStageProgress]:
+    """
+    Return a progress dict for all standard OpenMM equilibration stages.
+
+    Looks for ``step1_equilibration.log`` … ``step6_equilibration.log`` and
+    ``step7_production.log`` directly in *equilibration_dir*.
+
+    Returns:
+        Ordered mapping of stage-name → :class:`OpenMMStageProgress`.
+        Trailing ``not_started`` stages are trimmed so the GUI stays clean.
+    """
+    stage_log_map: Dict[str, str] = {
+        "equilibration_1": "step1_equilibration",
+        "equilibration_2": "step2_equilibration",
+        "equilibration_3": "step3_equilibration",
+        "equilibration_4": "step4_equilibration",
+        "equilibration_5": "step5_equilibration",
+        "equilibration_6": "step6_equilibration",
+        "production": "step7_production",
+    }
+
+    progress: Dict[str, OpenMMStageProgress] = {}
+
+    for stage_name, stem in stage_log_map.items():
+        stage = OpenMMStageProgress(stage_name=stage_name)
+        log_file = equilibration_dir / f"{stem}.log"
+        inp_file = equilibration_dir / f"{stem}.inp"
+
+        if log_file.exists():
+            stage.log_file = log_file
+            timing = parse_openmm_log(log_file, inp_file)
+            stage.timing = timing
+
+            if timing.has_error:
+                stage.status = "error"
+            elif timing.completed:
+                stage.status = "completed"
+            elif timing.steps_completed > 0:
+                stage.status = "running"
+            else:
+                stage.status = "running"  # log exists but no output yet
+
+        progress[stage_name] = stage
+
+    # Trim trailing not_started stages
+    keys = list(progress.keys())
+    while keys and progress[keys[-1]].status == "not_started":
+        del progress[keys[-1]]
+        keys.pop()
+
+    return progress
