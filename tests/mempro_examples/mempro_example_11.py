@@ -1,5 +1,7 @@
+from pathlib import Path
 from gatewizard.core.mempro import MemPrO, MemProError
 
+pdb_file = str(Path(__file__).parent.parent / "6RV3_AB.pdb")
 mp = MemPrO()
 
 # Check availability
@@ -8,7 +10,7 @@ if not MemPrO.is_available():
 else:
     # Run orientation
     try:
-        results = mp.run("protein.pdb", n_cpus=4)
+        results = mp.run(pdb_file, n_cpus=4)
         print(f"Found {len(results)} orientations\n")
 
         # Display results table

@@ -29,6 +29,7 @@ Usage:
 import pytest
 import sys
 import os
+import shutil
 import tempfile
 from pathlib import Path
 import importlib.util
@@ -213,6 +214,22 @@ class TestMemProExamples:
         os.chdir(tmp_path)
         yield tmp_path
         os.chdir(orig)
+
+    @pytest.fixture(autouse=True)
+    def cleanup_orient_dirs(self):
+        """Clean up Orient and my_orient directories created by mempro examples."""
+        yield
+        for dir_name in ("Orient", "my_orient"):
+            target = Path(dir_name)
+            if target.exists():
+                for attempt in range(3):
+                    try:
+                        shutil.rmtree(target)
+                        break
+                    except (PermissionError, OSError):
+                        import time as _time
+
+                        _time.sleep(1)
 
     def test_run_example_scripts(self, temp_dir):
         """Test running actual example scripts from mempro_examples directory."""
