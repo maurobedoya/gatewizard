@@ -28,7 +28,6 @@ classifiers = [
 ]
 requires-python = ">=3.8"
 dependencies = [
-    "customtkinter>=5.0.0",
     "numpy>=1.21.0",
     "matplotlib>=3.5.0",
     "requests>=2.25.0",
@@ -36,7 +35,6 @@ dependencies = [
     "propka>=3.2.0",
     "Pillow>=9.0.0",
     "rdkit>=2023.3.1",
-    "vtk>=9.0.0",
     "psique>=1.2.1",
 ]
 
@@ -72,8 +70,6 @@ filterwarnings = [
     "ignore:`np.compat`:DeprecationWarning:parmed.utils.netcdf",
     # Ignore matplotlib deprecation warning (will be fixed in future matplotlib update)
     "ignore:The 'labels' parameter of boxplot.*:DeprecationWarning",
-    # Ignore distutils deprecation from customtkinter
-    "ignore:distutils Version classes are deprecated:DeprecationWarning:customtkinter",
 ]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

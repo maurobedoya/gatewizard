@@ -1,5 +1,4 @@
 # Core dependencies
-customtkinter>=5.0.0
 numpy>=1.21.0
 matplotlib>=3.5.0
 requests>=2.25.0
@@ -7,7 +6,6 @@ MDAnalysis>=2.0.0
 propka>=3.2.0
 Pillow>=9.0.0
 rdkit>=2023.3.1  # Or install via conda: conda install -c conda-forge rdkit
-vtk>=9.0.0
 psique>=1.2.1
 # mempro: install manually with: pip install git+https://github.com/pstansfeld/MemPrO.git
 

@@ -94,7 +94,6 @@ def get_optional_dependencies_status() -> Dict[str, bool]:
     """
     dependencies = {
         "parmed": "ParmEd for NAMD conversion functionality",
-        "customtkinter": "CustomTkinter for modern GUI",
         "matplotlib": "Matplotlib for plotting and visualization",
     }
 

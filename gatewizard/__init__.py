@@ -28,15 +28,6 @@ from gatewizard.tools.equilibration import (
 )
 from gatewizard.utils.openmm_analysis import OpenMMLogAnalyzer
 
-# GUI imports (optional, only if GUI dependencies are available)
-try:
-    from gatewizard.gui.app import ProteinViewerApp
-
-    GUI_AVAILABLE = True
-except ImportError:
-    GUI_AVAILABLE = False
-    ProteinViewerApp = None
-
 __all__ = [
     "__version__",
     "__author__",
@@ -53,9 +44,4 @@ __all__ = [
     "NAMDEquilibrationManager",
     "OpenMMEquilibrationManager",
     "OpenMMLogAnalyzer",
-    "GUI_AVAILABLE",
 ]
-
-# Add ProteinViewerApp to __all__ if GUI is available
-if GUI_AVAILABLE:
-    __all__.append("ProteinViewerApp")
