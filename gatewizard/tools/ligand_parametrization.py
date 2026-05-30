@@ -532,6 +532,7 @@ def parametrize_ligand(
         )
 
         # Save log
+        log_dir.mkdir(parents=True, exist_ok=True)
         with open(log_dir / "antechamber.log", "w") as f:
             f.write(f"COMMAND: {' '.join(antechamber_cmd)}\n\n")
             f.write(f"STDOUT:\n{result.stdout}\n\n")
@@ -576,6 +577,7 @@ def parametrize_ligand(
             env=get_clean_env(),
         )
 
+        log_dir.mkdir(parents=True, exist_ok=True)
         with open(log_dir / "parmchk2.log", "w") as f:
             f.write(f"COMMAND: {' '.join(parmchk_cmd)}\n\n")
             f.write(f"STDOUT:\n{result.stdout}\n\n")
@@ -622,6 +624,7 @@ quit
             env=get_clean_env(),
         )
 
+        log_dir.mkdir(parents=True, exist_ok=True)
         with open(log_dir / "tleap.log", "w") as f:
             f.write(f"COMMAND: tleap -f tleap.in\n\n")
             f.write(f"INPUT:\n{tleap_content}\n\n")

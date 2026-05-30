@@ -1168,211 +1168,6 @@ class EnergyAnalyzer:
         else:
             plt.close()
 
-
-def _to_path_list(paths: List[Union[str, Path]]) -> List[Path]:
-    """Normalize a list of filesystem paths to resolved Path objects."""
-    return [Path(p).expanduser().resolve() for p in paths]
-
-
-def list_namd_energy_properties(
-    log_files: List[Union[str, Path]],
-    file_times: Optional[Dict[str, float]] = None,
-) -> List[str]:
-    """Return available NAMD ENERGY properties detected from log files."""
-    logs = _to_path_list(log_files)
-    analyzer = EnergyAnalyzer(logs, file_times=file_times)
-    return analyzer.get_available_properties()
-
-
-def run_energetic_analysis(
-    log_files: List[Union[str, Path]],
-    properties: Optional[List[str]] = None,
-    file_times: Optional[Dict[str, float]] = None,
-    time_units: str = "ns",
-    energy_units: str = "kcal/mol",
-    pressure_units: str = "atm",
-    temperature_units: str = "K",
-    volume_units: str = "Å³",
-) -> Dict[str, Any]:
-    """
-    Run NAMD log energetic analysis and return JSON-serializable arrays.
-
-    Returns:
-        Dict with `x`, `x_label`, and `series` entries, where each series has
-        `name`, `key`, `unit`, and `y`.
-    """
-    import numpy as np
-
-    logs = _to_path_list(log_files)
-    analyzer = EnergyAnalyzer(logs, file_times=file_times)
-
-    # Time in ns from analyzer, then convert for display
-    x = analyzer._calculate_time_array()
-    x_label = "Time (ns)"
-    if time_units == "ps":
-        x = x * 1000.0
-        x_label = "Time (ps)"
-    elif time_units in {"us", "µs"}:
-        x = x / 1000.0
-        x_label = "Time (µs)"
-
-    selected = properties or analyzer.get_available_properties()
-    series = []
-    for prop in selected:
-        key = analyzer._normalize_property_name(prop)
-        if key is None:
-            continue
-        raw = analyzer.data.get(key, [])
-        if not raw:
-            continue
-        values, unit = analyzer._convert_property_units(
-            key,
-            np.asarray(raw, dtype=float),
-            energy_units,
-            pressure_units,
-            temperature_units,
-            volume_units,
-        )
-        series.append(
-            {
-                "name": prop,
-                "key": key,
-                "unit": unit,
-                "y": values.tolist(),
-            }
-        )
-
-    return {
-        "x": x.tolist(),
-        "x_label": x_label,
-        "series": series,
-        "statistics": analyzer.get_statistics(),
-    }
-
-
-def run_structural_analysis(
-    topology_file: Union[str, Path],
-    trajectory_files: List[Union[str, Path]],
-    analysis_type: str,
-    selection: str = "protein and backbone",
-    selection2: str = "",
-    reference_frame: int = 0,
-    align: bool = True,
-    file_times: Optional[Dict[str, float]] = None,
-    rmsf_xaxis_type: str = "residue_number",
-) -> Dict[str, Any]:
-    """
-    Run trajectory structural analysis and return JSON-serializable arrays.
-
-    Supported analysis types: `rmsd`, `rmsf`, `distance`, `radius_of_gyration`.
-    """
-    import numpy as np
-
-    top = Path(topology_file).expanduser().resolve()
-    trajs = _to_path_list(trajectory_files)
-    analyzer = TrajectoryAnalyzer(top, trajs, file_times=file_times)
-
-    atype = analysis_type.strip().lower().replace(" ", "_")
-    if atype in {"rmsd"}:
-        data = analyzer.calculate_rmsd(
-            selection=selection,
-            reference_frame=reference_frame,
-            align=align,
-        )
-        y = np.asarray(data["rmsd"], dtype=float)
-        return {
-            "analysis_type": "rmsd",
-            "x": np.asarray(data["time"], dtype=float).tolist(),
-            "y": y.tolist(),
-            "x_label": "Time (ns)",
-            "y_label": "RMSD (Å)",
-            "series_name": "RMSD",
-            "stats": {
-                "mean": float(np.mean(y)),
-                "std": float(np.std(y)),
-                "min": float(np.min(y)),
-                "max": float(np.max(y)),
-            },
-        }
-
-    if atype in {"rmsf"}:
-        data = analyzer.calculate_rmsf(selection=selection)
-        resids = np.asarray(data["resids"]).tolist()
-        resnames = np.asarray(data.get("resnames", [])).tolist()
-        atom_indices = list(range(len(resids)))
-
-        if rmsf_xaxis_type == "residue_type_number":
-            x_values = list(range(len(resids)))
-            labels = []
-            for i, rid in enumerate(resids):
-                rname = resnames[i] if i < len(resnames) else ""
-                labels.append(f"{rname}{rid}")
-        elif rmsf_xaxis_type == "atom_index":
-            x_values = atom_indices
-            labels = [str(v) for v in atom_indices]
-        else:  # residue_number (default)
-            x_values = resids
-            labels = [str(rid) for rid in resids]
-
-        y = np.asarray(data["rmsf"], dtype=float)
-        return {
-            "analysis_type": "rmsf",
-            "x": x_values,
-            "x_labels": labels,
-            "y": y.tolist(),
-            "x_label": "Residue" if rmsf_xaxis_type != "atom_index" else "Atom index",
-            "y_label": "RMSF (Å)",
-            "series_name": "RMSF",
-            "stats": {
-                "mean": float(np.mean(y)),
-                "std": float(np.std(y)),
-                "min": float(np.min(y)),
-                "max": float(np.max(y)),
-            },
-        }
-
-    if atype in {"distance", "distances"}:
-        if not selection2.strip():
-            raise ValueError("selection2 is required for distance analysis")
-        data = analyzer.calculate_distances({"distance": (selection, selection2)})[
-            "distance"
-        ]
-        y = np.asarray(data["distance"], dtype=float)
-        return {
-            "analysis_type": "distance",
-            "x": np.asarray(data["time"], dtype=float).tolist(),
-            "y": y.tolist(),
-            "x_label": "Time (ns)",
-            "y_label": "Distance (Å)",
-            "series_name": "Distance",
-            "stats": {
-                "mean": float(np.mean(y)),
-                "std": float(np.std(y)),
-                "min": float(np.min(y)),
-                "max": float(np.max(y)),
-            },
-        }
-
-    if atype in {"radius_of_gyration", "rg", "radius"}:
-        data = analyzer.calculate_radius_of_gyration(selection=selection)
-        y = np.asarray(data["rg"], dtype=float)
-        return {
-            "analysis_type": "radius_of_gyration",
-            "x": np.asarray(data["time"], dtype=float).tolist(),
-            "y": y.tolist(),
-            "x_label": "Time (ns)",
-            "y_label": "Radius of Gyration (Å)",
-            "series_name": "Radius of Gyration",
-            "stats": {
-                "mean": float(np.mean(y)),
-                "std": float(np.std(y)),
-                "min": float(np.min(y)),
-                "max": float(np.max(y)),
-            },
-        }
-
-    raise ValueError(f"Unsupported structural analysis type: {analysis_type}")
-
     def _plot_combined_properties(
         self,
         properties,
@@ -1699,6 +1494,211 @@ def run_structural_analysis(
             plt.show()
         else:
             plt.close()
+
+
+def _to_path_list(paths: List[Union[str, Path]]) -> List[Path]:
+    """Normalize a list of filesystem paths to resolved Path objects."""
+    return [Path(p).expanduser().resolve() for p in paths]
+
+
+def list_namd_energy_properties(
+    log_files: List[Union[str, Path]],
+    file_times: Optional[Dict[str, float]] = None,
+) -> List[str]:
+    """Return available NAMD ENERGY properties detected from log files."""
+    logs = _to_path_list(log_files)
+    analyzer = EnergyAnalyzer(logs, file_times=file_times)
+    return analyzer.get_available_properties()
+
+
+def run_energetic_analysis(
+    log_files: List[Union[str, Path]],
+    properties: Optional[List[str]] = None,
+    file_times: Optional[Dict[str, float]] = None,
+    time_units: str = "ns",
+    energy_units: str = "kcal/mol",
+    pressure_units: str = "atm",
+    temperature_units: str = "K",
+    volume_units: str = "Å³",
+) -> Dict[str, Any]:
+    """
+    Run NAMD log energetic analysis and return JSON-serializable arrays.
+
+    Returns:
+        Dict with `x`, `x_label`, and `series` entries, where each series has
+        `name`, `key`, `unit`, and `y`.
+    """
+    import numpy as np
+
+    logs = _to_path_list(log_files)
+    analyzer = EnergyAnalyzer(logs, file_times=file_times)
+
+    # Time in ns from analyzer, then convert for display
+    x = analyzer._calculate_time_array()
+    x_label = "Time (ns)"
+    if time_units == "ps":
+        x = x * 1000.0
+        x_label = "Time (ps)"
+    elif time_units in {"us", "µs"}:
+        x = x / 1000.0
+        x_label = "Time (µs)"
+
+    selected = properties or analyzer.get_available_properties()
+    series = []
+    for prop in selected:
+        key = analyzer._normalize_property_name(prop)
+        if key is None:
+            continue
+        raw = analyzer.data.get(key, [])
+        if not raw:
+            continue
+        values, unit = analyzer._convert_property_units(
+            key,
+            np.asarray(raw, dtype=float),
+            energy_units,
+            pressure_units,
+            temperature_units,
+            volume_units,
+        )
+        series.append(
+            {
+                "name": prop,
+                "key": key,
+                "unit": unit,
+                "y": values.tolist(),
+            }
+        )
+
+    return {
+        "x": x.tolist(),
+        "x_label": x_label,
+        "series": series,
+        "statistics": analyzer.get_statistics(),
+    }
+
+
+def run_structural_analysis(
+    topology_file: Union[str, Path],
+    trajectory_files: List[Union[str, Path]],
+    analysis_type: str,
+    selection: str = "protein and backbone",
+    selection2: str = "",
+    reference_frame: int = 0,
+    align: bool = True,
+    file_times: Optional[Dict[str, float]] = None,
+    rmsf_xaxis_type: str = "residue_number",
+) -> Dict[str, Any]:
+    """
+    Run trajectory structural analysis and return JSON-serializable arrays.
+
+    Supported analysis types: `rmsd`, `rmsf`, `distance`, `radius_of_gyration`.
+    """
+    import numpy as np
+
+    top = Path(topology_file).expanduser().resolve()
+    trajs = _to_path_list(trajectory_files)
+    analyzer = TrajectoryAnalyzer(top, trajs, file_times=file_times)
+
+    atype = analysis_type.strip().lower().replace(" ", "_")
+    if atype in {"rmsd"}:
+        data = analyzer.calculate_rmsd(
+            selection=selection,
+            reference_frame=reference_frame,
+            align=align,
+        )
+        y = np.asarray(data["rmsd"], dtype=float)
+        return {
+            "analysis_type": "rmsd",
+            "x": np.asarray(data["time"], dtype=float).tolist(),
+            "y": y.tolist(),
+            "x_label": "Time (ns)",
+            "y_label": "RMSD (Å)",
+            "series_name": "RMSD",
+            "stats": {
+                "mean": float(np.mean(y)),
+                "std": float(np.std(y)),
+                "min": float(np.min(y)),
+                "max": float(np.max(y)),
+            },
+        }
+
+    if atype in {"rmsf"}:
+        data = analyzer.calculate_rmsf(selection=selection)
+        resids = np.asarray(data["resids"]).tolist()
+        resnames = np.asarray(data.get("resnames", [])).tolist()
+        atom_indices = list(range(len(resids)))
+
+        if rmsf_xaxis_type == "residue_type_number":
+            x_values = list(range(len(resids)))
+            labels = []
+            for i, rid in enumerate(resids):
+                rname = resnames[i] if i < len(resnames) else ""
+                labels.append(f"{rname}{rid}")
+        elif rmsf_xaxis_type == "atom_index":
+            x_values = atom_indices
+            labels = [str(v) for v in atom_indices]
+        else:  # residue_number (default)
+            x_values = resids
+            labels = [str(rid) for rid in resids]
+
+        y = np.asarray(data["rmsf"], dtype=float)
+        return {
+            "analysis_type": "rmsf",
+            "x": x_values,
+            "x_labels": labels,
+            "y": y.tolist(),
+            "x_label": "Residue" if rmsf_xaxis_type != "atom_index" else "Atom index",
+            "y_label": "RMSF (Å)",
+            "series_name": "RMSF",
+            "stats": {
+                "mean": float(np.mean(y)),
+                "std": float(np.std(y)),
+                "min": float(np.min(y)),
+                "max": float(np.max(y)),
+            },
+        }
+
+    if atype in {"distance", "distances"}:
+        if not selection2.strip():
+            raise ValueError("selection2 is required for distance analysis")
+        data = analyzer.calculate_distances({"distance": (selection, selection2)})[
+            "distance"
+        ]
+        y = np.asarray(data["distance"], dtype=float)
+        return {
+            "analysis_type": "distance",
+            "x": np.asarray(data["time"], dtype=float).tolist(),
+            "y": y.tolist(),
+            "x_label": "Time (ns)",
+            "y_label": "Distance (Å)",
+            "series_name": "Distance",
+            "stats": {
+                "mean": float(np.mean(y)),
+                "std": float(np.std(y)),
+                "min": float(np.min(y)),
+                "max": float(np.max(y)),
+            },
+        }
+
+    if atype in {"radius_of_gyration", "rg", "radius"}:
+        data = analyzer.calculate_radius_of_gyration(selection=selection)
+        y = np.asarray(data["rg"], dtype=float)
+        return {
+            "analysis_type": "radius_of_gyration",
+            "x": np.asarray(data["time"], dtype=float).tolist(),
+            "y": y.tolist(),
+            "x_label": "Time (ns)",
+            "y_label": "Radius of Gyration (Å)",
+            "series_name": "Radius of Gyration",
+            "stats": {
+                "mean": float(np.mean(y)),
+                "std": float(np.std(y)),
+                "min": float(np.min(y)),
+                "max": float(np.max(y)),
+            },
+        }
+
+    raise ValueError(f"Unsupported structural analysis type: {analysis_type}")
 
 
 class TrajectoryAnalyzer:
