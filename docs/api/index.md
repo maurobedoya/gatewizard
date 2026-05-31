@@ -44,26 +44,33 @@ Module for orienting membrane proteins using MemPrO.
 ---
 
 ### [Equilibration Module](equilibration.md)
-Module for managing equilibration protocols and workflows.
+Module for managing equilibration protocols and workflows for NAMD, GROMACS, and OpenMM.
 
 **Key Features:**
-- NAMD equilibration protocol generation
-- Configuration file management
-- CHARMM-GUI template integration
+- NAMD equilibration protocol generation (CHARMM-GUI template integration)
+- GROMACS equilibration protocol generation
+- OpenMM equilibration protocol generation
+- Flexible restraint system (protein backbone/sidechain, lipid head/tail, ligand, ions)
+- MDAnalysis-based atom selection for restraint files
+- Progressive force-constant schedule across stages
+- Custom stage parameters via `EquilibrationStage` dataclass
 
-**Main Classes:** `NAMDEquilibrationManager`
+**Main Classes:** `NAMDEquilibrationManager`, `GROMACSEquilibrationManager`, `OpenMMEquilibrationManager`, `EquilibrationStage`
 
 ---
 
 ### [Analysis Module](analysis.md)
-Module for analyzing simulation results and monitoring progress.
+Module for analyzing simulation results and monitoring equilibration progress.
 
 **Key Features:**
-- Equilibration progress monitoring
-- NAMD log file parsing
-- Result analysis and reporting
+- NAMD log file parsing and energy analysis
+- OpenMM StateDataReporter log parsing
+- MDAnalysis-based trajectory analysis (RMSD, RMSF, distances, radius of gyration)
+- Dark-theme matplotlib plots
+- Multi-stage log concatenation with per-file time override
+- Comprehensive 2×2 energy summary plots
 
-**Main Functions:** `get_equilibration_progress()`, `parse_namd_log()`
+**Main Classes:** `EnergyAnalyzer`, `TrajectoryAnalyzer`, `OpenMMLogAnalyzer`
 
 ---
 

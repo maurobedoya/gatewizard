@@ -1631,6 +1631,299 @@ print(f"  - High resolution (300 DPI)")
 
 ---
 
+## Class: OpenMMLogAnalyzer
+
+Parse and analyze **OpenMM StateDataReporter** log files. The interface mirrors
+[EnergyAnalyzer](#class-energyanalyzer) so the two can be used interchangeably
+in analysis workflows.
+
+```python
+from gatewizard.utils.openmm_analysis import OpenMMLogAnalyzer
+```
+
+**Constructor**
+
+```python
+OpenMMLogAnalyzer(
+    log_file: Union[Path, str, List[Union[Path, str]]],
+    file_times: Optional[Dict[str, float]] = None,
+)
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `log_file` | `str \| Path \| list` | Path to a single OpenMM log file, or a list of paths for multi-stage analysis (times are concatenated). |
+| `file_times` | `dict` | Optional `{filename: duration_ns}` mapping that overrides the time axis from the log's `"Time (ps)"` column. Useful when logs lack the time column or have restarted counters. |
+
+**Key differences from EnergyAnalyzer:**
+
+| Feature | `EnergyAnalyzer` (NAMD) | `OpenMMLogAnalyzer` (OpenMM) |
+|---------|------------------------|------------------------------|
+| Native energy units | kcal/mol | **kJ/mol** |
+| Color kwarg in `plot_properties` | `line_colors` | **`colors`** |
+| Log format | space-delimited `.log` | tab-delimited (StateDataReporter) |
+
+**Available property keys** (depend on what StateDataReporter reports):
+
+| Key | Description |
+|-----|-------------|
+| `potential` | Potential energy (kJ/mol) |
+| `kinetic` | Kinetic energy (kJ/mol) |
+| `total` | Total energy (kJ/mol) |
+| `temp` | Temperature (K) |
+| `volume` | Box volume (nm³) |
+| `density` | Density (g/mL) |
+
+---
+
+### Method: get_statistics()
+
+```python
+analyzer.get_statistics() -> Dict[str, Dict[str, float]]
+```
+
+Returns mean / std / min / max / initial / final for every numeric column
+that contains data.
+
+**Returns** `{key: {"mean", "std", "min", "max", "initial", "final"}}`
+
+---
+
+### Method: plot_energy()
+
+```python
+analyzer.plot_energy(
+    energy_units: str = "kJ/mol",
+    time_units: str = "ns",
+    bg_color: str = "#2b2b2b",
+    fig_bg_color: str = "#212121",
+    text_color: str = "Auto",
+    show_grid: bool = True,
+    title: Optional[str] = None,
+    target_temperature: Optional[float] = None,
+    target_pressure: Optional[float] = None,
+    save: Optional[str] = None,
+    show: bool = False,
+    figsize: tuple = (12, 10),
+    dpi: int = 300,
+)
+```
+
+2×2 energy summary plot — total energy, potential + kinetic, temperature,
+volume / density.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `energy_units` | `'kJ/mol'` | `'kJ/mol'` or `'kcal/mol'` |
+| `time_units` | `'ns'` | `'ps'`, `'ns'`, or `'µs'` |
+| `target_temperature` | `None` | Reference temperature (K) drawn as a horizontal dashed line |
+| `save` | `None` | Filename for saved figure |
+| `show` | `False` | Display interactively |
+
+---
+
+### Method: plot_properties()
+
+```python
+analyzer.plot_properties(
+    properties: Optional[List[str]] = None,
+    energy_units: str = "kJ/mol",
+    time_units: str = "ns",
+    bg_color: str = "#2b2b2b",
+    fig_bg_color: str = "#212121",
+    text_color: str = "Auto",
+    show_grid: bool = True,
+    separate_plots: bool = False,
+    save: Optional[str] = None,
+    show: bool = False,
+    figsize: Optional[tuple] = None,
+    dpi: int = 300,
+    xlim: Optional[tuple] = None,
+    ylim: Optional[tuple] = None,
+    colors: Optional[List[str]] = None,
+)
+```
+
+Plot selected properties vs time. If `properties` is not provided, all
+non-empty numeric columns are plotted automatically.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `properties` | `None` (all) | List of keys to plot, e.g. `["potential", "temp", "volume"]` |
+| `energy_units` | `'kJ/mol'` | `'kJ/mol'` or `'kcal/mol'` |
+| `separate_plots` | `False` | Save/show each property as its own figure |
+| `colors` | `None` | Line color list (one per property). Unlike `EnergyAnalyzer`, the kwarg is `colors`, not `line_colors`. |
+| `save` | `None` | Filename (or prefix when `separate_plots=True`) |
+| `show` | `False` | Display interactively |
+
+---
+
+### Example 11: Basic Energy Analysis
+
+```python
+from pathlib import Path
+from gatewizard.utils.openmm_analysis import OpenMMLogAnalyzer
+
+# Get the directory where this script is located
+script_dir = Path(__file__).parent
+data_dir = script_dir / "equilibration_folder"
+
+# Single OpenMM log file (StateDataReporter output)
+log_file = data_dir / "step7_production.log"
+
+# Initialize the analyzer
+analyzer = OpenMMLogAnalyzer(log_file)
+
+# ------------------------------------------------------------------
+# 1. Get statistics for all properties
+# ------------------------------------------------------------------
+stats = analyzer.get_statistics()
+
+for key, s in stats.items():
+    print(
+        f"  {key:20s}  mean={s['mean']:12.3f}  std={s['std']:10.3f}"
+        f"  min={s['min']:12.3f}  max={s['max']:12.3f}"
+    )
+# → All values in kJ/mol (energies) or native units (temperature in K,
+#   volume in nm³, density in g/mL)
+
+# ------------------------------------------------------------------
+# 2. 2×2 summary plot: total energy, potential + kinetic, temperature,
+#    volume / density
+# ------------------------------------------------------------------
+analyzer.plot_energy(
+    save="energy_summary_example_11.png",
+    show=False,
+    target_temperature=303.15,
+)
+
+print("Energy summary saved: energy_summary_example_11.png")
+
+# ------------------------------------------------------------------
+# 3. Same plot converted to kcal/mol
+# ------------------------------------------------------------------
+analyzer.plot_energy(
+    energy_units="kcal/mol",
+    save="energy_summary_kcal_example_11.png",
+    show=False,
+)
+
+print("Energy summary (kcal/mol) saved: energy_summary_kcal_example_11.png")
+```
+
+---
+
+### Example 12: Multi-Stage Analysis
+
+```python
+from pathlib import Path
+from gatewizard.utils.openmm_analysis import OpenMMLogAnalyzer
+
+script_dir = Path(__file__).parent
+data_dir = script_dir / "equilibration_folder"
+
+# Pass a list of log files — time axis is concatenated automatically
+log_files = [
+    data_dir / "step1_equilibration.log",
+    data_dir / "step2_equilibration.log",
+    data_dir / "step3_equilibration.log",
+    data_dir / "step4_equilibration.log",
+    data_dir / "step5_equilibration.log",
+    data_dir / "step6_equilibration.log",
+    data_dir / "step7_production.log",
+]
+
+# Provide real stage durations (ns) to override the "Time (ps)" column
+# — useful when logs lack the time column or have restarted counters.
+file_times = {
+    "step1_equilibration.log": 0.125,
+    "step2_equilibration.log": 0.125,
+    "step3_equilibration.log": 0.125,
+    "step4_equilibration.log": 0.25,
+    "step5_equilibration.log": 0.25,
+    "step6_equilibration.log": 0.5,
+    "step7_production.log": 50.0,
+}
+
+analyzer = OpenMMLogAnalyzer(log_files, file_times=file_times)
+
+# ------------------------------------------------------------------
+# 1. Print key statistics
+# ------------------------------------------------------------------
+stats = analyzer.get_statistics()
+
+print("=== Multi-stage OpenMM analysis ===")
+for key in ("potential", "kinetic", "total", "temp", "volume", "density"):
+    if key not in stats:
+        continue
+    s = stats[key]
+    print(
+        f"  {key:12s}  mean={s['mean']:12.3f}"
+        f"  initial={s['initial']:12.3f}  final={s['final']:12.3f}"
+    )
+
+# ------------------------------------------------------------------
+# 2. Energy summary over the full trajectory
+# ------------------------------------------------------------------
+analyzer.plot_energy(
+    save="energy_multistage_example_12.png",
+    show=False,
+    title="Full equilibration + production (51.375 ns)",
+    target_temperature=303.15,
+)
+
+print("Saved: energy_multistage_example_12.png")
+```
+
+---
+
+### Example 13: Custom Property Plots
+
+```python
+from pathlib import Path
+from gatewizard.utils.openmm_analysis import OpenMMLogAnalyzer
+
+script_dir = Path(__file__).parent
+data_dir = script_dir / "equilibration_folder"
+
+log_file = data_dir / "step7_production.log"
+analyzer = OpenMMLogAnalyzer(log_file)
+
+# ------------------------------------------------------------------
+# 1. Plot all available properties (auto-detected)
+# ------------------------------------------------------------------
+analyzer.plot_properties(
+    save="all_properties_example_13.png",
+    show=False,
+)
+print("All-properties plot saved: all_properties_example_13.png")
+
+# ------------------------------------------------------------------
+# 2. Plot only energies, converted to kcal/mol
+# ------------------------------------------------------------------
+analyzer.plot_properties(
+    properties=["potential", "kinetic", "total"],
+    energy_units="kcal/mol",
+    save="energies_kcal_example_13.png",
+    show=False,
+    colors=["#61afef", "#98c379", "#e06c75"],
+)
+print("Energy plots (kcal/mol) saved: energies_kcal_example_13.png")
+
+# ------------------------------------------------------------------
+# 3. Temperature and density as separate figures
+# ------------------------------------------------------------------
+analyzer.plot_properties(
+    properties=["temp", "density"],
+    separate_plots=True,
+    save="temp_density_example_13",
+    show=False,
+)
+print("Separate figures saved: temp_density_example_13_temp.png, temp_density_example_13_density.png")
+```
+
+---
+
 ## See Also
 
 - [User Guide](../user-guide.md) - Complete usage guide

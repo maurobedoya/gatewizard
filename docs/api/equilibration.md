@@ -833,81 +833,6 @@ print(f"  Total equilibration: {sum(s['time_ns'] for s in stages[:-1]):.3f} ns")
 print(f"  Production: {stages[-1]['time_ns']:.1f} ns")
 ```
 
-### Example 8: MDAnalysis Selections for Restraints
-
-This example demonstrates the MDAnalysis-based selection system for precise atom counting and restraint generation, including auto-detection of non-standard residues (ligands, ions):
-
-```python
-from pathlib import Path
-from gatewizard.tools.equilibration import NAMDEquilibrationManager
-
-# Point to the system folder
-work_dir = Path("popc_membrane")
-system_pdb = work_dir / "bilayer_protein_protonated_prepared_lipid.pdb"
-
-manager = NAMDEquilibrationManager(work_dir)
-
-# 1. Inspect default selections and atom counts
-for name, sel in NAMDEquilibrationManager.DEFAULT_SELECTIONS.items():
-    count = NAMDEquilibrationManager.count_selection_atoms(str(system_pdb), sel)
-    print(f"  {name:25s}  →  {count:>7d} atoms")
-
-# 2. Auto-detect ligands / non-standard residues
-all_sels = NAMDEquilibrationManager.get_default_selections(str(system_pdb))
-for name, sel in all_sels.items():
-    if name.startswith("ligand_"):
-        count = NAMDEquilibrationManager.count_selection_atoms(str(system_pdb), sel)
-        print(f"  {name:25s}  →  {count:>7d} atoms  |  {sel}")
-
-# 3. Count all selections at once
-counts = NAMDEquilibrationManager.count_all_selections(str(system_pdb))
-
-# 4. Generate restraints PDB via MDAnalysis selections
-output_file = work_dir / "namd" / "restraints" / "step1_restraints.pdb"
-selections_with_forces = {
-    "protein_backbone":  ("protein and backbone", 10.0),
-    "protein_sidechain": ("protein and not backbone", 5.0),
-    "lipid_head":        (NAMDEquilibrationManager.DEFAULT_SELECTIONS["lipid_head"], 2.5),
-    "lipid_tail":        (NAMDEquilibrationManager.DEFAULT_SELECTIONS["lipid_tail"], 2.5),
-    "water":             (NAMDEquilibrationManager.DEFAULT_SELECTIONS["water"], 0.0),
-    "ions":              (NAMDEquilibrationManager.DEFAULT_SELECTIONS["ions"], 10.0),
-}
-# Add any auto-detected ligand with force 1.0
-for name, sel in all_sels.items():
-    if name.startswith("ligand_"):
-        selections_with_forces[name] = (sel, 1.0)
-
-manager.generate_restraints_file_mda(
-    system_pdb, selections_with_forces, output_file,
-    stage_name="Equilibration 1",
-)
-
-# 5. Or use the high-level API with selections parameter
-constraints = {"protein_backbone": 10.0, "protein_sidechain": 5.0, "lipid_head": 2.5,
-               "lipid_tail": 2.5, "water": 0.0, "ions": 10.0}
-selections = {name: sel for name, (sel, _) in selections_with_forces.items()}
-
-manager.generate_restraints_file(
-    system_pdb, constraints, output_file,
-    stage_name="Eq1", selections=selections,
-)
-```
-
-**Output:**
-```
-  protein_backbone            →      204 atoms
-  protein_sidechain           →      488 atoms
-  lipid_head                  →     2904 atoms
-  lipid_tail                  →    13310 atoms
-  water                       →    14685 atoms
-  ions                        →        0 atoms
-  other                       →       21 atoms
-  ligand_Cl-                  →       10 atoms  |  resname Cl-
-  ligand_K+                   →       11 atoms  |  resname K+
-```
-
----
-
 ### Example 7: Custom Template Selection
 
 This example demonstrates explicit template control for advanced workflows:
@@ -1007,6 +932,174 @@ print(f"  Stage 3: Using template step6.5 (skipped step6.4)")
 - **Repeat a stage**: Use step6.2 multiple times with different parameters
 - **Mix templates**: Combine templates from different equilibration phases
 - **Test protocols**: Experiment with different template combinations
+
+---
+
+### Example 8: MDAnalysis Selections for Restraints
+
+This example demonstrates the MDAnalysis-based selection system for precise atom counting and restraint generation, including auto-detection of non-standard residues (ligands, ions):
+
+```python
+from pathlib import Path
+from gatewizard.tools.equilibration import NAMDEquilibrationManager
+
+# Point to the system folder
+work_dir = Path("popc_membrane")
+system_pdb = work_dir / "bilayer_protein_protonated_prepared_lipid.pdb"
+
+manager = NAMDEquilibrationManager(work_dir)
+
+# 1. Inspect default selections and atom counts
+for name, sel in NAMDEquilibrationManager.DEFAULT_SELECTIONS.items():
+    count = NAMDEquilibrationManager.count_selection_atoms(str(system_pdb), sel)
+    print(f"  {name:25s}  →  {count:>7d} atoms")
+
+# 2. Auto-detect ligands / non-standard residues
+all_sels = NAMDEquilibrationManager.get_default_selections(str(system_pdb))
+for name, sel in all_sels.items():
+    if name.startswith("ligand_"):
+        count = NAMDEquilibrationManager.count_selection_atoms(str(system_pdb), sel)
+        print(f"  {name:25s}  →  {count:>7d} atoms  |  {sel}")
+
+# 3. Count all selections at once
+counts = NAMDEquilibrationManager.count_all_selections(str(system_pdb))
+
+# 4. Generate restraints PDB via MDAnalysis selections
+output_file = work_dir / "namd" / "restraints" / "step1_restraints.pdb"
+selections_with_forces = {
+    "protein_backbone":  ("protein and backbone", 10.0),
+    "protein_sidechain": ("protein and not backbone", 5.0),
+    "lipid_head":        (NAMDEquilibrationManager.DEFAULT_SELECTIONS["lipid_head"], 2.5),
+    "lipid_tail":        (NAMDEquilibrationManager.DEFAULT_SELECTIONS["lipid_tail"], 2.5),
+    "water":             (NAMDEquilibrationManager.DEFAULT_SELECTIONS["water"], 0.0),
+    "ions":              (NAMDEquilibrationManager.DEFAULT_SELECTIONS["ions"], 10.0),
+}
+# Add any auto-detected ligand with force 1.0
+for name, sel in all_sels.items():
+    if name.startswith("ligand_"):
+        selections_with_forces[name] = (sel, 1.0)
+
+manager.generate_restraints_file_mda(
+    system_pdb, selections_with_forces, output_file,
+    stage_name="Equilibration 1",
+)
+
+# 5. Or use the high-level API with selections parameter
+constraints = {"protein_backbone": 10.0, "protein_sidechain": 5.0, "lipid_head": 2.5,
+               "lipid_tail": 2.5, "water": 0.0, "ions": 10.0}
+selections = {name: sel for name, (sel, _) in selections_with_forces.items()}
+
+manager.generate_restraints_file(
+    system_pdb, constraints, output_file,
+    stage_name="Eq1", selections=selections,
+)
+```
+
+**Output:**
+```
+  protein_backbone            →      204 atoms
+  protein_sidechain           →      488 atoms
+  lipid_head                  →     2904 atoms
+  lipid_tail                  →    13310 atoms
+  water                       →    14685 atoms
+  ions                        →        0 atoms
+  other                       →       21 atoms
+  ligand_Cl-                  →       10 atoms  |  resname Cl-
+  ligand_K+                   →       11 atoms  |  resname K+
+```
+
+---
+
+### Example 9: Custom Restraints — Three Levels of Customisation
+
+This example demonstrates three progressive levels of customisation for NAMD restraints using `EquilibrationStage.replace()`:
+
+```python
+from pathlib import Path
+from gatewizard.tools.equilibration import NAMDEquilibrationManager, EquilibrationStage
+
+work_dir = Path(__file__).parent / "popc_membrane"
+system_files = {
+    "prmtop": str(work_dir / "system.prmtop"),
+    "inpcrd": str(work_dir / "system.inpcrd"),
+    "pdb": str(work_dir / "system.pdb"),
+    "bilayer_pdb": str(work_dir / "bilayer_protein_protonated_prepared_lipid.pdb"),
+}
+
+WORK_DIR = work_dir
+manager = NAMDEquilibrationManager(working_dir=WORK_DIR)
+
+# ---------------------------------------------------------------------------
+# Level 1 — Override a single force constant key (no MDAnalysis needed)
+# ---------------------------------------------------------------------------
+# Turn off sidechain restraints entirely; keep default backbone + lipid forces.
+
+print("=== Level 1: Override protein_sidechain to 0 ===")
+stages_l1 = [
+    s.replace(constraints={**s.constraints, "protein_sidechain": 0.0})
+    for s in NAMDEquilibrationManager.get_default_stage_params()
+]
+
+result_l1 = manager.setup_namd_equilibration(
+    system_files=system_files,
+    stage_params_list=stages_l1,
+    output_name="level1_no_sc",
+)
+print(f"Output: {result_l1['namd_dir']}")
+
+# ---------------------------------------------------------------------------
+# Level 2 — Override selections for standard categories (MDAnalysis)
+# ---------------------------------------------------------------------------
+# Useful when your PSF uses non-standard segment names or residue types.
+
+print("\n=== Level 2: Custom selections for standard categories ===")
+stages_l2 = NAMDEquilibrationManager.get_default_stage_params()
+
+result_l2 = manager.setup_namd_equilibration(
+    system_files=system_files,
+    stage_params_list=stages_l2,
+    output_name="level2_custom_sel",
+    selections={
+        "protein_backbone": "backbone",
+        "protein_sidechain": "protein and not backbone",
+        "lipid_head": "resname POPC and name P O11 O12 O13 O14",
+        "lipid_tail": "resname POPC and not (name P O11 O12 O13 O14 N)",
+    },
+)
+print(f"Output: {result_l2['namd_dir']}")
+
+# ---------------------------------------------------------------------------
+# Level 3 — Full MDAnalysis control with a custom atom category
+# ---------------------------------------------------------------------------
+# Restrain ions in the first 3 stages at 10 kcal/mol/Å², then release.
+# Replace "ions" with "ligand_ABC" and "resname ABC" for a real ligand system.
+
+print("\n=== Level 3: Custom ion restraints (demonstrates ligand-style) ===")
+stages_l3 = NAMDEquilibrationManager.get_default_stage_params()
+
+# Apply 10 kcal/mol/Å² to ions in stages 1-3; zero thereafter
+stages_l3_dicts = []
+for i, s in enumerate(stages_l3):
+    ion_force = 10.0 if i < 3 else 0.0
+    new_constraints = {**s.constraints, "custom_ions": ion_force}
+    stages_l3_dicts.append(s.replace(constraints=new_constraints).to_dict())
+
+result_l3 = manager.setup_namd_equilibration(
+    system_files=system_files,
+    stage_params_list=stages_l3_dicts,
+    output_name="level3_custom_ions",
+    selections={
+        "custom_ions": "resname SOD CLA POT",  # MDAnalysis selection
+    },
+)
+print(f"Output:           {result_l3['namd_dir']}")
+```
+
+**When to use each level:**
+
+- **Level 1** (`replace(constraints=...)`): Change only force constants. No MDAnalysis needed — fastest approach.
+- **Level 2** (`selections=` parameter): Override which atoms are selected for standard categories (backbone, sidechain, lipid head/tail) using your own MDAnalysis selection strings.
+- **Level 3** (custom keys): Add entirely new atom categories (ligands, ions, cofactors) not covered by the default keys. Set the selection string and per-stage force schedule.
 
 ---
 
@@ -1604,26 +1697,26 @@ OpenMMEquilibrationManager(working_dir: Path)
 
 ---
 
-### Quick Start (OpenMM)
-
-#### Example: Single NVT Stage with Auto-Detection
+### Example 1: Single NVT Stage
 
 ```python
 from pathlib import Path
 from gatewizard.tools.equilibration import OpenMMEquilibrationManager
 
-work_dir = Path("popc_membrane")
+# Point to folder with system files
+work_dir = Path(__file__).parent / "popc_membrane"
 
+# Define a single NVT equilibration stage
 stages = [
     {
         "name": "Equilibration 1",
         "time_ns": 0.125,
         "ensemble": "NVT",
         "temperature": 310.15,
-        "timestep": 1.0,       # femtoseconds (same as NAMD)
+        "timestep": 1.0,
         "minimize_steps": 5000,
         "constraints": {
-            "protein_backbone": 10.0,   # kcal/mol/Å²
+            "protein_backbone": 10.0,
             "protein_sidechain": 5.0,
             "lipid_head": 2.5,
             "lipid_tail": 0.0,
@@ -1631,42 +1724,231 @@ stages = [
     }
 ]
 
+# Setup with automatic file detection (no system_files needed!)
+# scheme_type is auto-detected from the 'ensemble' field in stages
 manager = OpenMMEquilibrationManager(work_dir)
 result = manager.setup_openmm_equilibration(
     stage_params_list=stages,
     output_name="openmm_example_01",
 )
+
 print(f"Setup complete: {result['openmm_dir']}")
 # Run with: cd {result['openmm_dir']} && bash run_equilibration.sh
 ```
 
-#### Example: Full 7-Stage NPT Protocol
+---
+
+### Example 2: Full CHARMM-GUI Protocol (7 stages)
 
 ```python
 from pathlib import Path
 from gatewizard.tools.equilibration import OpenMMEquilibrationManager
 
-work_dir = Path("popc_membrane")
+# Point to folder with system files
+work_dir = Path(__file__).parent / "popc_membrane"
 
+# Full 6-stage NPT membrane equilibration protocol (CHARMM-GUI style)
+# Gradual relaxation of restraints following the standard protocol
 stages = [
-    {"name": "Eq 1 NVT strong",   "time_ns": 0.125, "ensemble": "NVT",  "temperature": 303.15, "timestep": 1.0, "minimize_steps": 5000, "constraints": {"protein_backbone": 10.0, "protein_sidechain": 5.0,  "lipid_head": 2.5, "lipid_tail": 0.0}},
-    {"name": "Eq 2 NVT relax",    "time_ns": 0.125, "ensemble": "NVT",  "temperature": 303.15, "timestep": 1.0,                          "constraints": {"protein_backbone":  5.0, "protein_sidechain": 2.5,  "lipid_head": 1.0, "lipid_tail": 0.0}},
-    {"name": "Eq 3 NPT pcouple",  "time_ns": 0.125, "ensemble": "NPT",  "temperature": 303.15, "timestep": 1.0,                          "constraints": {"protein_backbone":  2.5, "protein_sidechain": 1.0,  "lipid_head": 0.5, "lipid_tail": 0.0}},
-    {"name": "Eq 4 NPT relax",    "time_ns": 0.250, "ensemble": "NPT",  "temperature": 303.15, "timestep": 2.0,                          "constraints": {"protein_backbone":  1.0, "protein_sidechain": 0.5,  "lipid_head": 0.0, "lipid_tail": 0.0}},
-    {"name": "Eq 5 NPT backbone", "time_ns": 0.250, "ensemble": "NPT",  "temperature": 303.15, "timestep": 2.0,                          "constraints": {"protein_backbone":  0.5, "protein_sidechain": 0.0,  "lipid_head": 0.0, "lipid_tail": 0.0}},
-    {"name": "Eq 6 NPT light",    "time_ns": 0.500, "ensemble": "NPT",  "temperature": 303.15, "timestep": 2.0,                          "constraints": {"protein_backbone":  0.1, "protein_sidechain": 0.0,  "lipid_head": 0.0, "lipid_tail": 0.0}},
-    {"name": "Production",        "time_ns": 50.0,  "ensemble": "NPT",  "temperature": 303.15, "timestep": 2.0,                          "constraints": {"protein_backbone":  0.0, "protein_sidechain": 0.0,  "lipid_head": 0.0, "lipid_tail": 0.0}},
+    {
+        "name": "Equilibration 1 - NVT with strong restraints",
+        "time_ns": 0.125,
+        "ensemble": "NVT",
+        "temperature": 303.15,
+        "timestep": 1.0,
+        "minimize_steps": 5000,
+        "constraints": {
+            "protein_backbone": 10.0,
+            "protein_sidechain": 5.0,
+            "lipid_head": 2.5,
+            "lipid_tail": 0.0,
+        },
+    },
+    {
+        "name": "Equilibration 2 - NVT relaxing restraints",
+        "time_ns": 0.125,
+        "ensemble": "NVT",
+        "temperature": 303.15,
+        "timestep": 1.0,
+        "constraints": {
+            "protein_backbone": 5.0,
+            "protein_sidechain": 2.5,
+            "lipid_head": 1.0,
+            "lipid_tail": 0.0,
+        },
+    },
+    {
+        "name": "Equilibration 3 - NPT with pressure coupling",
+        "time_ns": 0.125,
+        "ensemble": "NPT",
+        "temperature": 303.15,
+        "timestep": 1.0,
+        "constraints": {
+            "protein_backbone": 2.5,
+            "protein_sidechain": 1.0,
+            "lipid_head": 0.5,
+            "lipid_tail": 0.0,
+        },
+    },
+    {
+        "name": "Equilibration 4 - NPT further relaxing",
+        "time_ns": 0.25,
+        "ensemble": "NPT",
+        "temperature": 303.15,
+        "timestep": 2.0,
+        "constraints": {
+            "protein_backbone": 1.0,
+            "protein_sidechain": 0.5,
+            "lipid_head": 0.0,
+            "lipid_tail": 0.0,
+        },
+    },
+    {
+        "name": "Equilibration 5 - NPT backbone only",
+        "time_ns": 0.25,
+        "ensemble": "NPT",
+        "temperature": 303.15,
+        "timestep": 2.0,
+        "constraints": {
+            "protein_backbone": 0.5,
+            "protein_sidechain": 0.0,
+            "lipid_head": 0.0,
+            "lipid_tail": 0.0,
+        },
+    },
+    {
+        "name": "Equilibration 6 - NPT light backbone restraints",
+        "time_ns": 0.5,
+        "ensemble": "NPT",
+        "temperature": 303.15,
+        "timestep": 2.0,
+        "constraints": {
+            "protein_backbone": 0.1,
+            "protein_sidechain": 0.0,
+            "lipid_head": 0.0,
+            "lipid_tail": 0.0,
+        },
+    },
+    {
+        "name": "Production - NPT unrestrained",
+        "time_ns": 50.0,
+        "ensemble": "NPT",
+        "temperature": 303.15,
+        "timestep": 2.0,
+        "constraints": {
+            "protein_backbone": 0.0,
+            "protein_sidechain": 0.0,
+            "lipid_head": 0.0,
+            "lipid_tail": 0.0,
+        },
+    },
 ]
 
+# Setup with automatic file detection
+# scheme_type is auto-detected from 'ensemble' field of first stage (NVT -> 01_NVT)
+# Note: Mixed ensembles (NVT stages 1-2, NPT stages 3-7) are handled automatically.
+#       The scheme_type controls which pressure coupling templates are used for
+#       stages 3+ — pass scheme_type="NPT" explicitly if needed.
 manager = OpenMMEquilibrationManager(work_dir)
 result = manager.setup_openmm_equilibration(
     stage_params_list=stages,
-    output_name="openmm_npt_7stage",
-    scheme_type="NPT",          # explicit; otherwise auto-detected from stage 1 ensemble
+    output_name="openmm_example_02",
+    scheme_type="NPT",
 )
+
 print(f"Setup complete: {result['openmm_dir']}")
 print(f"Config files: {len(result['config_files'])}")
+print(f"Run script: {result['run_script'].name}")
 # Run with: cd {result['openmm_dir']} && bash run_equilibration.sh
+```
+
+---
+
+### Example 3: Custom Ligand Restraints
+
+```python
+from pathlib import Path
+from gatewizard.tools.equilibration import (
+    OpenMMEquilibrationManager,
+    EquilibrationStage,
+)
+
+WORK_DIR = Path("openmm_ligand_restraints")
+WORK_DIR.mkdir(exist_ok=True)
+
+manager = OpenMMEquilibrationManager(working_dir=WORK_DIR)
+
+system_files = {
+    "prmtop": "system.prmtop",
+    "inpcrd": "system.inpcrd",
+    "pdb": "system.pdb",
+}
+
+# --- Standard protein + lipid restraints (auto-detected) ---
+print("=== Example 1: Standard protein/lipid restraints ===")
+stages = OpenMMEquilibrationManager.get_default_stage_params()
+
+result = manager.setup_openmm_equilibration(
+    system_files=system_files,
+    stage_params_list=stages,
+    output_name="standard_restraints",
+)
+print(f"OpenMM dir:      {result['openmm_dir']}")
+print(f"Restraint files: {result['restraint_files']}")
+# → restraint_files["prot_pos"]  = Path(".../restraints/prot_pos.txt")
+# → restraint_files["lipid_pos"] = Path(".../restraints/lipid_pos.txt")  (if lipid forces > 0)
+# → restraint_files["custom_pos"] = None
+
+# --- Add ligand ABC restraints in stages 1-3 ---
+print("\n=== Example 2: Ligand ABC restraints in stages 1-3 ===")
+raw_stages = OpenMMEquilibrationManager.get_default_stage_params()
+stage_objs = [EquilibrationStage(**s) for s in raw_stages]
+
+# Apply 5 kcal/mol/Å² to ligand ABC in the first 3 stages; zero thereafter
+stage_dicts = []
+for i, s in enumerate(stage_objs):
+    ligand_force = 5.0 if i < 3 else 0.0
+    new_constraints = {**s.constraints, "ligand_ABC": ligand_force}
+    stage_dicts.append(s.replace(constraints=new_constraints).to_dict())
+
+result2 = manager.setup_openmm_equilibration(
+    system_files=system_files,
+    stage_params_list=stage_dicts,
+    output_name="ligand_ABC_restraints",
+    selections={
+        "ligand_ABC": "resname ABC",  # MDAnalysis selection string
+    },
+)
+print(f"OpenMM dir:      {result2['openmm_dir']}")
+print(f"Restraint files: {result2['restraint_files']}")
+# → restraint_files["custom_pos"] = Path(".../restraints/custom_pos.txt")
+#   custom_pos.txt force = 5.0 kcal/mol/Å² × 418.4 = 2092.0 kJ/mol/nm²
+
+# --- Custom backbone taper + ligand restraints ---
+print("\n=== Example 3: Custom backbone taper + ligand ABC ===")
+raw_stages = OpenMMEquilibrationManager.get_default_stage_params()
+
+# Apply a linear backbone taper and add the ligand
+bb_schedule = [10.0, 5.0, 2.5, 1.0, 0.5, 0.0]
+sc_schedule = [5.0, 2.5, 1.0, 0.5, 0.0, 0.0]
+lig_schedule = [5.0, 5.0, 5.0, 0.0, 0.0, 0.0]
+
+stage_dicts3 = []
+for i, s in enumerate(raw_stages):
+    s["constraints"]["protein_backbone"] = bb_schedule[i]
+    s["constraints"]["protein_sidechain"] = sc_schedule[i]
+    s["constraints"]["ligand_ABC"] = lig_schedule[i]
+    stage_dicts3.append(s)
+
+result3 = manager.setup_openmm_equilibration(
+    system_files=system_files,
+    stage_params_list=stage_dicts3,
+    output_name="taper_plus_ligand",
+    selections={"ligand_ABC": "resname ABC"},
+)
+print(f"OpenMM dir:      {result3['openmm_dir']}")
+print(f"Config files:    {[p.name for p in result3['config_files']]}")
+print(f"Restraint files: {result3['restraint_files']}")
 ```
 
 ---
