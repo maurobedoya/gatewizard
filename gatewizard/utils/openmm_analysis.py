@@ -627,6 +627,177 @@ def _property_label(key: str, energy_label: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Module-level analysis helpers — mirror namd_analysis interface
+# ---------------------------------------------------------------------------
+
+# Internal key → human-readable display name
+_OPENMM_DISPLAY_NAMES: Dict[str, str] = {
+    "potential": "Potential Energy",
+    "kinetic": "Kinetic Energy",
+    "total": "Total Energy",
+    "temp": "Temperature",
+    "volume": "Volume",
+    "density": "Density",
+}
+
+# Internal key → native unit (as stored in log / internal arrays)
+_OPENMM_NATIVE_UNITS: Dict[str, str] = {
+    "potential": "kJ/mol",
+    "kinetic": "kJ/mol",
+    "total": "kJ/mol",
+    "temp": "K",
+    "volume": "nm³",
+    "density": "g/mL",
+}
+
+# Ordered display preference
+_OPENMM_KEY_ORDER = ("potential", "kinetic", "total", "temp", "volume", "density")
+
+
+def _openmm_convert_units(
+    arr: "np.ndarray",
+    key: str,
+    energy_units: str,
+    temperature_units: str,
+    volume_units: str,
+) -> tuple:
+    """Convert an OpenMM property array from native units. Returns (converted_array, unit_label)."""
+    import numpy as np
+
+    if key in ("potential", "kinetic", "total"):
+        # Native: kJ/mol
+        if energy_units == "kcal/mol":
+            return arr / 4.184, "kcal/mol"
+        return arr.copy(), "kJ/mol"
+    if key == "temp":
+        if temperature_units == "°C":
+            return arr - 273.15, "°C"
+        if temperature_units == "°F":
+            return (arr - 273.15) * 9 / 5 + 32, "°F"
+        return arr.copy(), "K"
+    if key == "volume":
+        # Native: nm³
+        if volume_units == "Å³":
+            return arr * 1000.0, "Å³"
+        if volume_units == "mL":
+            return arr * 1e-21, "mL"
+        if volume_units == "L":
+            return arr * 1e-24, "L"
+        return arr.copy(), "nm³"
+    if key == "density":
+        # g/mL — no useful conversion needed
+        return arr.copy(), "g/mL"
+    return arr.copy(), _OPENMM_NATIVE_UNITS.get(key, "")
+
+
+def list_openmm_energy_properties(
+    log_files: List[Union[str, Path]],
+    file_times: Optional[Dict[str, float]] = None,
+) -> List[str]:
+    """Return available OpenMM energy properties detected from log files.
+
+    Returns display names (e.g. ``"Potential Energy"``) in a fixed order,
+    mirroring :func:`~gatewizard.utils.namd_analysis.list_namd_energy_properties`.
+    """
+    import math
+
+    logs = [Path(f) for f in log_files]
+    analyzer = OpenMMLogAnalyzer(logs, file_times=file_times)
+    props = []
+    for key in _OPENMM_KEY_ORDER:
+        vals = analyzer.data.get(key, [])
+        if vals and any(not math.isnan(v) for v in vals):
+            props.append(_OPENMM_DISPLAY_NAMES[key])
+    return props
+
+
+def run_openmm_energetic_analysis(
+    log_files: List[Union[str, Path]],
+    properties: Optional[List[str]] = None,
+    file_times: Optional[Dict[str, float]] = None,
+    time_units: str = "ns",
+    energy_units: str = "kcal/mol",
+    pressure_units: str = "atm",
+    temperature_units: str = "K",
+    volume_units: str = "Å³",
+) -> dict:
+    """Run OpenMM log energetic analysis and return JSON-serializable arrays.
+
+    Returns the same dict structure as
+    :func:`~gatewizard.utils.namd_analysis.run_energetic_analysis`:
+    ``{x, x_label, series: [{name, key, unit, y}], statistics}``.
+    """
+    import math
+    import numpy as np
+
+    logs = [Path(f) for f in log_files]
+    analyzer = OpenMMLogAnalyzer(logs, file_times=file_times)
+
+    # Time axis
+    x = analyzer._calculate_time_array()
+    x_label = "Time (ns)"
+    if time_units == "ps":
+        x = x * 1000.0
+        x_label = "Time (ps)"
+    elif time_units in {"us", "µs"}:
+        x = x / 1000.0
+        x_label = "Time (µs)"
+
+    # Determine available properties
+    available_display = list_openmm_energy_properties(logs, file_times)
+    selected_display = properties if properties is not None else available_display
+
+    # Reverse map: display name → internal key
+    _display_to_key = {v: k for k, v in _OPENMM_DISPLAY_NAMES.items()}
+
+    series = []
+    statistics: dict = {}
+
+    for display_name in selected_display:
+        key = _display_to_key.get(display_name)
+        if key is None:
+            continue
+        raw = analyzer.data.get(key, [])
+        if not raw:
+            continue
+        arr = np.array(raw, dtype=float)
+        valid_mask = ~np.isnan(arr)
+        if not valid_mask.any():
+            continue
+
+        converted, unit_label = _openmm_convert_units(
+            arr, key, energy_units, temperature_units, volume_units
+        )
+
+        series.append(
+            {
+                "name": display_name,
+                "key": key,
+                "unit": unit_label,
+                "y": converted.tolist(),
+            }
+        )
+
+        valid_c = converted[~np.isnan(converted)]
+        if len(valid_c) > 0:
+            statistics[key] = {
+                "mean": float(np.nanmean(valid_c)),
+                "std": float(np.nanstd(valid_c)),
+                "min": float(np.nanmin(valid_c)),
+                "max": float(np.nanmax(valid_c)),
+                "initial": float(valid_c[0]),
+                "final": float(valid_c[-1]),
+            }
+
+    return {
+        "x": x.tolist(),
+        "x_label": x_label,
+        "series": series,
+        "statistics": statistics,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Equilibration progress tracking (mirrors gromacs_analysis interface)
 # ---------------------------------------------------------------------------
 

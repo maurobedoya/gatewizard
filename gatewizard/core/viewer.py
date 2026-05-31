@@ -1219,10 +1219,10 @@ class MolecularViewer:
                 if a.res_name not in AA_NAMES
                 and a.res_name not in ("HOH", "WAT", "TIP")
             ]
-        if criteria == "Chain":
+        if criteria in ("Chain", "Chain..."):
             ch = extra.strip().upper()
             return [i for i, a in enumerate(atoms) if a.chain_id == ch]
-        if criteria == "Residue range":
+        if criteria in ("Residue range", "Residue range..."):
             return self._parse_range_text(extra)
         return []
 
