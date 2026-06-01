@@ -1420,6 +1420,131 @@ class MolecularViewer:
         logger.info(f"Deleted {deleted} atoms")
         return deleted
 
+    def rename_chain_by_indices(self, indices: List[int], new_chain: str) -> int:
+        """Rename the chain ID of atoms specified by index list.
+
+        Parameters
+        ----------
+        indices : list of int
+            Atom indices (0-based position in ``structure.atoms``).
+        new_chain : str
+            New chain ID (1 character).
+
+        Returns
+        -------
+        int
+            Number of atoms renamed.
+        """
+        self._require_structure()
+        new_chain = new_chain.strip().upper()
+        if len(new_chain) != 1:
+            raise ViewerError("Chain ID must be 1 character")
+        idx_set = set(indices)
+        count = 0
+        for i, atom in enumerate(self.structure.atoms):
+            if i in idx_set:
+                atom.chain_id = new_chain
+                count += 1
+        # Update residues whose chain_id no longer matches their atoms: use the
+        # chain_id of the first atom in the residue as the authoritative value.
+        atom_by_pos = {i: a for i, a in enumerate(self.structure.atoms)}
+        atom_positions: Dict[Tuple[str, int], List[int]] = {}
+        for i, a in enumerate(self.structure.atoms):
+            key = (a.chain_id, a.res_id)
+            atom_positions.setdefault(key, []).append(i)
+        for res in self.structure.residues:
+            # Find atoms that belong to this residue by original chain/res_id match
+            for i, a in enumerate(self.structure.atoms):
+                if a.res_id == res.seq_id and i in idx_set:
+                    res.chain_id = new_chain
+                    break
+        self.structure.chains.clear()
+        for res in self.structure.residues:
+            self.structure.chains.setdefault(res.chain_id, []).append(res)
+        logger.info(f"Renamed chain for {count} atoms (by indices) -> {new_chain}")
+        return count
+
+    def rename_residues_by_indices(self, indices: List[int], new_name: str) -> int:
+        """Rename the residue name of atoms specified by index list.
+
+        Parameters
+        ----------
+        indices : list of int
+            Atom indices (0-based position in ``structure.atoms``).
+        new_name : str
+            New residue name (max 4 characters).
+
+        Returns
+        -------
+        int
+            Number of atoms renamed.
+        """
+        self._require_structure()
+        new_name = new_name.strip().upper()
+        idx_set = set(indices)
+        # Collect (chain_id, res_id) pairs that are in the selection
+        sel_keys: set = set()
+        count = 0
+        for i, atom in enumerate(self.structure.atoms):
+            if i in idx_set:
+                atom.res_name = new_name
+                sel_keys.add((atom.chain_id, atom.res_id))
+                count += 1
+        for res in self.structure.residues:
+            if (res.chain_id, res.seq_id) in sel_keys:
+                res.name = new_name
+        logger.info(f"Renamed residues for {count} atoms (by indices) -> {new_name}")
+        return count
+
+    def renumber_residues_by_indices(
+        self, indices: List[int], new_start: int = 1
+    ) -> int:
+        """Renumber residues that contain atoms in *indices*, starting from *new_start*.
+
+        The unique (chain_id, res_id) pairs found among the selected atoms are
+        sorted by res_id and assigned new sequential IDs beginning at
+        *new_start*.
+
+        Parameters
+        ----------
+        indices : list of int
+            Atom indices (0-based position in ``structure.atoms``).
+        new_start : int
+            Starting residue number for the renumbered residues.
+
+        Returns
+        -------
+        int
+            Number of atoms whose res_id was updated.
+        """
+        self._require_structure()
+        idx_set = set(indices)
+        pairs = sorted(
+            {
+                (a.chain_id, a.res_id)
+                for i, a in enumerate(self.structure.atoms)
+                if i in idx_set
+            },
+            key=lambda p: (p[0], p[1]),
+        )
+        remap: Dict[Tuple[str, int], int] = {
+            pair: new_start + j for j, pair in enumerate(pairs)
+        }
+        count = 0
+        for atom in self.structure.atoms:
+            key = (atom.chain_id, atom.res_id)
+            if key in remap:
+                atom.res_id = remap[key]
+                count += 1
+        for res in self.structure.residues:
+            key = (res.chain_id, res.seq_id)
+            if key in remap:
+                res.seq_id = remap[key]
+        logger.info(
+            f"Renumbered {len(pairs)} residues (by indices), new_start={new_start} ({count} atoms)"
+        )
+        return count
+
     # -- coordinate transformations ------------------------------------
 
     def _reassign_ss(self):
