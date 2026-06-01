@@ -1,9 +1,9 @@
 import os
 import tempfile
 import numpy as np
-from gatewizard.core.viewer import MolecularViewer
+from gatewizard.core.structure_manager import StructureManager
 
-viewer = MolecularViewer()
+viewer = StructureManager()
 
 # A structure with two chains:
 #   Chain A runs along the X-axis (the "channel pore")

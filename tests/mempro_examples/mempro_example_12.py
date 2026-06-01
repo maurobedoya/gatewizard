@@ -8,9 +8,9 @@ try:
 
     # Load the best orientation into the viewer
     if results and results[0].pdb_path:
-        from gatewizard.core.viewer import MolecularViewer
+        from gatewizard.core.structure_manager import StructureManager
 
-        viewer = MolecularViewer()
+        viewer = StructureManager()
         info = viewer.load_structure(results[0].pdb_path)
         print(f"Loaded rank 1: {info['n_atoms']} atoms, {info['n_chains']} chains")
 except (MemProError, FileNotFoundError):

@@ -1,9 +1,9 @@
-# gatewizard/core/viewer.py
+# gatewizard/core/structure_manager.py
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2025 Constanza González and Mauricio Bedoya
 
 """
-Molecular viewer and structure editor using MDAnalysis.
+Structure manager and editor using MDAnalysis.
 
 Provides a programmatic API for loading, inspecting, selecting, editing,
 and saving molecular structures.  Secondary structure is assigned via
@@ -32,8 +32,8 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 
-class ViewerError(Exception):
-    """Error raised by MolecularViewer operations."""
+class StructureError(Exception):
+    """Error raised by StructureManager operations."""
 
 
 # ---------------------------------------------------------------------------
@@ -406,7 +406,7 @@ AA_NAMES = {
 
 
 class Atom:
-    """Lightweight atom container for VTK rendering."""
+    """Lightweight atom container."""
 
     __slots__ = (
         "serial",
@@ -941,21 +941,21 @@ class Selection:
 # ---------------------------------------------------------------------------
 
 
-class MolecularViewer:
+class StructureManager:
     """
     Programmatic API for loading, inspecting, editing and saving
     molecular structures.
 
     Uses MDAnalysis for PDB parsing and atom selections.  The returned
     data are lightweight ``ProteinStructure`` / ``Atom`` objects that
-    can be rendered with VTK in the GUI or exported to PDB files.
+    can be used programmatically or exported to PDB files.
 
     Examples
     --------
-    >>> from gatewizard.core.viewer import MolecularViewer
-    >>> viewer = MolecularViewer()
-    >>> viewer.load_structure("protein.pdb")
-    >>> info = viewer.get_structure_info()
+    >>> from gatewizard.core.structure_manager import StructureManager
+    >>> sm = StructureManager()
+    >>> sm.load_structure("protein.pdb")
+    >>> info = sm.get_structure_info()
     >>> print(info['n_atoms'], info['n_residues'])
     """
 
@@ -982,7 +982,7 @@ class MolecularViewer:
         """
         filepath = str(Path(filepath).resolve())
         if not os.path.isfile(filepath):
-            raise ViewerError(f"File not found: {filepath}")
+            raise StructureError(f"File not found: {filepath}")
         self.structure = parse_pdb(filepath)
         self._filepath = filepath
         self.selections.clear()
@@ -1017,7 +1017,7 @@ class MolecularViewer:
 
         pdb_id = pdb_id.strip().upper()
         if not re.match(r"^[0-9A-Z]{4}$", pdb_id):
-            raise ViewerError(f"Invalid PDB ID: {pdb_id}")
+            raise StructureError(f"Invalid PDB ID: {pdb_id}")
         url = f"https://files.rcsb.org/download/{pdb_id}.pdb"
         resp = _requests.get(url, timeout=30)
         resp.raise_for_status()
@@ -1101,7 +1101,7 @@ class MolecularViewer:
             - ``'psique'`` – Use the PSIQUE program.
             - ``'heuristic'`` – CA-angle heuristic (always available).
             - ``'pdb_records'`` – Only read HELIX/SHEET from the PDB file
-              (raises ``ViewerError`` if none found).
+              (raises ``StructureError`` if none found).
 
         Returns
         -------
@@ -1110,7 +1110,7 @@ class MolecularViewer:
 
         Raises
         ------
-        ViewerError
+        StructureError
             If the requested method is not available or fails.
         """
         self._require_structure()
@@ -1119,10 +1119,10 @@ class MolecularViewer:
             _assign_secondary_structure(self.structure, filepath=self._filepath)
         elif method == "psique":
             if not self._filepath:
-                raise ViewerError("No PDB file path – cannot run PSIQUE")
+                raise StructureError("No PDB file path – cannot run PSIQUE")
             ss_map = _assign_ss_psique(self._filepath)
             if ss_map is None:
-                raise ViewerError(
+                raise StructureError(
                     "PSIQUE produced no secondary structure assignments "
                     "for this structure (too few residues?)."
                 )
@@ -1132,14 +1132,14 @@ class MolecularViewer:
             self.structure.assign_secondary_structure_heuristic()
         elif method == "pdb_records":
             if not self._filepath:
-                raise ViewerError("No PDB file path available")
+                raise StructureError("No PDB file path available")
             ss_map = _read_ss_from_pdb_records(self._filepath)
             if not ss_map:
-                raise ViewerError("No HELIX/SHEET records found in PDB file")
+                raise StructureError("No HELIX/SHEET records found in PDB file")
             for r in self.structure.residues:
                 r.ss = ss_map.get((r.chain_id, r.seq_id), "C")
         else:
-            raise ViewerError(
+            raise StructureError(
                 f"Unknown method '{method}'. "
                 "Use 'auto', 'psique', 'heuristic', or 'pdb_records'."
             )
@@ -1289,7 +1289,7 @@ class MolecularViewer:
         """
         self._require_structure()
         if len(new_chain) != 1:
-            raise ViewerError("Chain ID must be 1 character")
+            raise StructureError("Chain ID must be 1 character")
         count = 0
         for atom in self.structure.atoms:
             if atom.chain_id == old_chain:
@@ -1438,7 +1438,7 @@ class MolecularViewer:
         self._require_structure()
         new_chain = new_chain.strip().upper()
         if len(new_chain) != 1:
-            raise ViewerError("Chain ID must be 1 character")
+            raise StructureError("Chain ID must be 1 character")
         idx_set = set(indices)
         count = 0
         for i, atom in enumerate(self.structure.atoms):
@@ -1778,7 +1778,7 @@ class MolecularViewer:
 
     def _require_structure(self):
         if self.structure is None:
-            raise ViewerError("No structure loaded. Call load_structure() first.")
+            raise StructureError("No structure loaded. Call load_structure() first.")
 
     def _get_current_pdb_path(self) -> str:
         """Return a file path to the current structure (writing a temp if needed)."""

@@ -1,9 +1,9 @@
 import os
 import tempfile
 import numpy as np
-from gatewizard.core.viewer import MolecularViewer
+from gatewizard.core.structure_manager import StructureManager
 
-viewer = MolecularViewer()
+viewer = StructureManager()
 
 # A small chain along the X-axis so rotations are easy to verify
 pdb_content = """\

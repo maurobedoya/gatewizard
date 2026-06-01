@@ -59,7 +59,7 @@ nav:
   - Troubleshooting: troubleshooting.md
   - API Reference:
       - Overview: api/index.md
-      - Viewer Module: api/viewer.md
+      - Structure Manager: api/structure_manager.md
       - Preparation Module: api/preparation.md
       - Builder Module: api/builder.md
       - MemPrO Module: api/mempro.md

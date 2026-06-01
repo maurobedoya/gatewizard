@@ -1,8 +1,8 @@
 import os
 import tempfile
-from gatewizard.core.viewer import MolecularViewer
+from gatewizard.core.structure_manager import StructureManager
 
-viewer = MolecularViewer()
+viewer = StructureManager()
 
 pdb_content = """\
 ATOM      1  N   ALA A   1       1.000   2.000   3.000  1.00  0.00           N

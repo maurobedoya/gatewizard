@@ -1,8 +1,8 @@
 import os
 import tempfile
-from gatewizard.core.viewer import MolecularViewer, ViewerError
+from gatewizard.core.structure_manager import StructureManager, StructureError
 
-viewer = MolecularViewer()
+viewer = StructureManager()
 
 # Backbone atoms (N, CA, C, O) from residues 1-20 of 2MVJ.
 # Contains an alpha-helix (residues 5-19) that psique can detect.
@@ -110,14 +110,14 @@ try:
     try:
         ss = viewer.assign_secondary_structure("pdb_records")
         print(f"SS after pdb_records: {ss}")
-    except ViewerError as e:
+    except StructureError as e:
         print(f"pdb_records: {e}")
 
     # Try psique (may not be installed)
     try:
         ss = viewer.assign_secondary_structure("psique")
         print(f"SS after psique: {ss}")
-    except ViewerError as e:
+    except StructureError as e:
         print(f"psique not available: {e}")
 
     # Auto method (same priority as load)

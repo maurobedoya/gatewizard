@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Viewer Test Suite
+StructureManager Test Suite
 
 This test suite covers:
-1. Core viewer API (MolecularViewer class)
+1. Core structure manager API (StructureManager class)
 2. Data model classes (Atom, Residue, ProteinStructure, Selection)
 3. Documentation example workflows (Examples 1-10)
 
@@ -30,14 +30,14 @@ import importlib.util
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from gatewizard.core.viewer import (
-    MolecularViewer,
+from gatewizard.core.structure_manager import (
+    StructureManager,
     ProteinStructure,
     Atom,
     Residue,
     Selection,
     parse_pdb,
-    ViewerError,
+    StructureError,
     AA_NAMES,
     BACKBONE_NAMES,
 )
@@ -68,7 +68,7 @@ def mini_pdb(tmp_path):
 
 @pytest.fixture
 def viewer(mini_pdb):
-    v = MolecularViewer()
+    v = StructureManager()
     v.load_structure(mini_pdb)
     return v
 
@@ -78,15 +78,15 @@ def viewer(mini_pdb):
 # ============================================================================
 
 
-class TestMolecularViewer:
-    """Test the MolecularViewer class core functionality."""
+class TestStructureManager:
+    """Test the StructureManager class core functionality."""
 
     def test_create(self):
-        v = MolecularViewer()
+        v = StructureManager()
         assert v.structure is None
 
     def test_load_structure(self, mini_pdb):
-        v = MolecularViewer()
+        v = StructureManager()
         info = v.load_structure(mini_pdb)
         assert info["n_atoms"] == 11
         assert info["n_residues"] > 0
@@ -94,8 +94,8 @@ class TestMolecularViewer:
         assert info["n_bonds"] >= 0
 
     def test_load_nonexistent(self):
-        v = MolecularViewer()
-        with pytest.raises(ViewerError):
+        v = StructureManager()
+        with pytest.raises(StructureError):
             v.load_structure("/nonexistent/path.pdb")
 
     def test_get_chains(self, viewer):
@@ -197,8 +197,8 @@ class TestMolecularViewer:
         assert os.path.getsize(saved) > 0
 
     def test_save_pdb_no_structure(self, tmp_path):
-        v = MolecularViewer()
-        with pytest.raises(ViewerError):
+        v = StructureManager()
+        with pytest.raises(StructureError):
             v.save_pdb(str(tmp_path / "fail.pdb"))
 
 
@@ -354,7 +354,7 @@ class TestViewerExamples:
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("Viewer Test Suite - Manual Run")
+    print("StructureManager Test Suite - Manual Run")
     print("=" * 60)
 
     examples_dir = Path(__file__).parent / "viewer_examples"

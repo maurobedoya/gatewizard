@@ -1,7 +1,7 @@
-# Viewer Module
+# Structure Manager Module
 
-Module for loading, inspecting, editing, and visualizing molecular structures.
-Uses MDAnalysis for PDB parsing and VTK for 3D rendering.
+Module for loading, inspecting, editing, and saving molecular structures.
+Uses MDAnalysis for PDB parsing and atom selections.
 
 - Load PDB files from disk or by PDB ID
 - Query chains, residues, secondary structure
@@ -9,33 +9,32 @@ Uses MDAnalysis for PDB parsing and VTK for 3D rendering.
 - Auto-detect molecules (protein, water, ligands)
 - Edit: rename chains/residues, renumber residues, delete atoms
 - Save modified structures as PDB
-- Full VTK 3D visualization with multiple representations
 
 ## Import
 
 ```python
-from gatewizard.core.viewer import MolecularViewer, Selection
-from gatewizard import MolecularViewer  # Also available at top level
+from gatewizard.core.structure_manager import StructureManager, Selection
+from gatewizard import StructureManager  # Also available at top level
 ```
 
-## Class: MolecularViewer
+## Class: StructureManager
 
 Main API class for programmatic structure viewing and editing.
 
 ### Constructor
 
 ```python
-MolecularViewer()
+StructureManager()
 ```
 
-Creates a new viewer instance. No structure is loaded initially.
+Creates a new StructureManager instance. No structure is loaded initially.
 
-### Example 1: Create a MolecularViewer and inspect defaults
+### Example 1: Create a StructureManager and inspect defaults
 ```python
-from gatewizard.core.viewer import MolecularViewer
+from gatewizard.core.structure_manager import StructureManager
 
-viewer = MolecularViewer()
-print(f"MolecularViewer created: {viewer}")
+viewer = StructureManager()
+print(f"StructureManager created: {viewer}")
 print(f"Structure loaded: {viewer.structure is not None}")
 ```
 
@@ -56,15 +55,15 @@ Load a PDB file from disk.
 
 **Returns:** Dictionary with keys `n_atoms`, `n_residues`, `n_chains`, `n_bonds`, `title`.
 
-**Raises:** `ViewerError` if file not found or parse fails.
+**Raises:** `StructureError` if file not found or parse fails.
 
 ### Example 2: Load a PDB structure and print summary info
 ```python
 import os
 import tempfile
-from gatewizard.core.viewer import MolecularViewer
+from gatewizard.core.structure_manager import StructureManager
 
-viewer = MolecularViewer()
+viewer = StructureManager()
 
 # Create a minimal PDB for testing
 pdb_content = """\
@@ -166,9 +165,9 @@ Count residues by secondary structure type.
 ```python
 import os
 import tempfile
-from gatewizard.core.viewer import MolecularViewer
+from gatewizard.core.structure_manager import StructureManager
 
-viewer = MolecularViewer()
+viewer = StructureManager()
 
 pdb_content = """\
 ATOM      1  N   ALA A   1       1.000   2.000   3.000  1.00  0.00           N
@@ -226,9 +225,9 @@ Select atoms using predefined criteria.
 ```python
 import os
 import tempfile
-from gatewizard.core.viewer import MolecularViewer
+from gatewizard.core.structure_manager import StructureManager
 
-viewer = MolecularViewer()
+viewer = StructureManager()
 
 pdb_content = """\
 ATOM      1  N   ALA A   1       1.000   2.000   3.000  1.00  0.00           N
@@ -270,9 +269,9 @@ finally:
 ```python
 import os
 import tempfile
-from gatewizard.core.viewer import MolecularViewer
+from gatewizard.core.structure_manager import StructureManager
 
-viewer = MolecularViewer()
+viewer = StructureManager()
 
 pdb_content = """\
 ATOM      1  N   ALA A   1       1.000   2.000   3.000  1.00  0.00           N
@@ -319,9 +318,9 @@ Automatically group atoms into protein, water, and individual ligand selections.
 ```python
 import os
 import tempfile
-from gatewizard.core.viewer import MolecularViewer
+from gatewizard.core.structure_manager import StructureManager
 
-viewer = MolecularViewer()
+viewer = StructureManager()
 
 pdb_content = """\
 ATOM      1  N   ALA A   1       1.000   2.000   3.000  1.00  0.00           N
@@ -386,9 +385,9 @@ Rename residues in a range.
 ```python
 import os
 import tempfile
-from gatewizard.core.viewer import MolecularViewer
+from gatewizard.core.structure_manager import StructureManager
 
-viewer = MolecularViewer()
+viewer = StructureManager()
 
 pdb_content = """\
 ATOM      1  N   ALA A   1       1.000   2.000   3.000  1.00  0.00           N
@@ -437,9 +436,9 @@ Renumber residues sequentially from `new_start`.
 ```python
 import os
 import tempfile
-from gatewizard.core.viewer import MolecularViewer
+from gatewizard.core.structure_manager import StructureManager
 
-viewer = MolecularViewer()
+viewer = StructureManager()
 
 pdb_content = """\
 ATOM      1  N   ALA A  10       1.000   2.000   3.000  1.00  0.00           N
@@ -492,15 +491,15 @@ Write the current structure to a PDB file.
 
 **Returns:** Absolute path of the saved file.
 
-**Raises:** `ViewerError` if no structure is loaded.
+**Raises:** `StructureError` if no structure is loaded.
 
 ### Example 9: Delete atoms and save modified PDB
 ```python
 import os
 import tempfile
-from gatewizard.core.viewer import MolecularViewer
+from gatewizard.core.structure_manager import StructureManager
 
-viewer = MolecularViewer()
+viewer = StructureManager()
 
 pdb_content = """\
 ATOM      1  N   ALA A   1       1.000   2.000   3.000  1.00  0.00           N
@@ -641,9 +640,9 @@ secondary axis.
 import os
 import tempfile
 import numpy as np
-from gatewizard.core.viewer import MolecularViewer
+from gatewizard.core.structure_manager import StructureManager
 
-viewer = MolecularViewer()
+viewer = StructureManager()
 
 # A small chain along the X-axis so rotations are easy to verify
 pdb_content = """\
@@ -711,9 +710,9 @@ Rotated 8 atoms 180° around Y (origin):
 import os
 import tempfile
 import numpy as np
-from gatewizard.core.viewer import MolecularViewer
+from gatewizard.core.structure_manager import StructureManager
 
-viewer = MolecularViewer()
+viewer = StructureManager()
 
 # Structure offset from origin so centering is visible
 pdb_content = """\
@@ -794,9 +793,9 @@ Centered on residue 1:
 import os
 import tempfile
 import numpy as np
-from gatewizard.core.viewer import MolecularViewer
+from gatewizard.core.structure_manager import StructureManager
 
-viewer = MolecularViewer()
+viewer = StructureManager()
 
 # Structure extended along the X-axis (principal axis ≈ X)
 # We will align it so the principal axis points along Z
@@ -884,9 +883,9 @@ Aligned CA atoms to Y-axis, transformed all 12 atoms:
 import os
 import tempfile
 import numpy as np
-from gatewizard.core.viewer import MolecularViewer
+from gatewizard.core.structure_manager import StructureManager
 
-viewer = MolecularViewer()
+viewer = StructureManager()
 
 # A structure with two chains:
 #   Chain A runs along the X-axis (the "channel pore")
@@ -995,13 +994,13 @@ Reassign secondary structure using a specific method.
 **Parameters:**
 - `method` (str): Assignment method. One of:
     - `'auto'` – PDB HELIX/SHEET records → psique → heuristic (default, same as initial load).
-    - `'psique'` – Use the psique tool (raises `ViewerError` if psique is not available).
+    - `'psique'` – Use the psique tool (raises `StructureError` if psique is not available).
     - `'heuristic'` – CA-angle heuristic (always available).
-    - `'pdb_records'` – Only read HELIX/SHEET from the PDB file (raises `ViewerError` if none found).
+    - `'pdb_records'` – Only read HELIX/SHEET from the PDB file (raises `StructureError` if none found).
 
 **Returns:** Updated secondary structure summary `{"H": n, "E": n, ...}`.
 
-**Raises:** `ViewerError` if the requested method is not available or fails.
+**Raises:** `StructureError` if the requested method is not available or fails.
 
 ### Example 11: Reassign secondary structure (psique, heuristic, pdb_records)
 
@@ -1013,9 +1012,9 @@ header records are included — this forces the `auto` method to fall through to
 ```python
 import os
 import tempfile
-from gatewizard.core.viewer import MolecularViewer, ViewerError
+from gatewizard.core.structure_manager import StructureManager, StructureError
 
-viewer = MolecularViewer()
+viewer = StructureManager()
 
 # Backbone atoms (N, CA, C, O) from residues 1-20 of 2MVJ.
 # Contains an alpha-helix (residues 5-19) that psique can detect.
@@ -1124,14 +1123,14 @@ try:
     try:
         ss = viewer.assign_secondary_structure('pdb_records')
         print(f"SS after pdb_records: {ss}")
-    except ViewerError as e:
+    except StructureError as e:
         print(f"pdb_records: {e}")
 
     # psique: runs the executable, writes temp PDB with HELIX records, parses SS
     try:
         ss = viewer.assign_secondary_structure('psique')
         print(f"SS after psique: {ss}")
-    except ViewerError as e:
+    except StructureError as e:
         print(f"psique error: {e}")
 
     # Auto method (same priority as load: pdb_records -> psique -> heuristic)
@@ -1159,9 +1158,9 @@ SS after auto: {'C': 5, 'H': 15}
 ```python
 import os
 import tempfile
-from gatewizard.core.viewer import MolecularViewer
+from gatewizard.core.structure_manager import StructureManager
 
-viewer = MolecularViewer()
+viewer = StructureManager()
 
 pdb_content = """\
 ATOM      1  N   ALA A  50       1.000   2.000   3.000  1.00  0.00           N
@@ -1207,7 +1206,7 @@ try:
     print(f"Saved edited structure: {os.path.basename(out_path)}")
 
     # 6. Verify
-    viewer2 = MolecularViewer()
+    viewer2 = StructureManager()
     info2 = viewer2.load_structure(out_path)
     print(f"Verified: {info2['n_atoms']} atoms, chains: {viewer2.get_chains()}")
     residues = viewer2.get_residues('X')
@@ -1259,19 +1258,4 @@ The viewer supports seven molecular representations:
 | `backbone` | Backbone | CA trace as tube |
 | `surface` | Surface | Molecular surface |
 
----
 
-## GUI: VisualizeFrame
-
-The `VisualizeFrame` in `gatewizard.gui.frames.visualize` provides the full
-interactive VTK-based 3D viewer with:
-
-- Load/download PDB files
-- Multiple selections with independent representations and colors
-- Drag-reorder selections
-- Per-selection quality, size, material, and SS color settings
-- Edit operations (rename chain, rename/renumber residues, delete atoms)
-- SSAO ambient occlusion, shadows, depth cueing
-- Save high-resolution images (PNG, JPEG, TIFF, BMP) with configurable scale
-- Save/load viewpoints as JSON
-- Save modified structures as PDB

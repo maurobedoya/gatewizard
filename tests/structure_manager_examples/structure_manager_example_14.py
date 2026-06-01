@@ -1,9 +1,9 @@
 import os
 import tempfile
 import numpy as np
-from gatewizard.core.viewer import MolecularViewer
+from gatewizard.core.structure_manager import StructureManager
 
-viewer = MolecularViewer()
+viewer = StructureManager()
 
 # Structure extended along the X-axis (principal axis ≈ X)
 # We will align it so the principal axis points along Z

@@ -1,8 +1,8 @@
 import os
 import tempfile
-from gatewizard.core.viewer import MolecularViewer
+from gatewizard.core.structure_manager import StructureManager
 
-viewer = MolecularViewer()
+viewer = StructureManager()
 
 # Create a minimal PDB for testing
 pdb_content = """\

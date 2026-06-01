@@ -1,8 +1,8 @@
 import os
 import tempfile
-from gatewizard.core.viewer import MolecularViewer
+from gatewizard.core.structure_manager import StructureManager
 
-viewer = MolecularViewer()
+viewer = StructureManager()
 
 pdb_content = """\
 ATOM      1  N   ALA A  50       1.000   2.000   3.000  1.00  0.00           N
@@ -48,7 +48,7 @@ try:
     print(f"Saved edited structure: {os.path.basename(out_path)}")
 
     # 6. Verify
-    viewer2 = MolecularViewer()
+    viewer2 = StructureManager()
     info2 = viewer2.load_structure(out_path)
     print(f"Verified: {info2['n_atoms']} atoms, chains: {viewer2.get_chains()}")
     residues = viewer2.get_residues("X")

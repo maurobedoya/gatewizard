@@ -1,19 +1,19 @@
 # Viewer Examples
 
-These examples demonstrate the `MolecularViewer` API for loading,
+These examples demonstrate the `StructureManager` API for loading,
 inspecting, selecting, editing, and saving protein structures.
 
 All examples use the API only (no GUI) and can be run with:
 
 ```bash
-python tests/viewer_examples/viewer_example_01.py
+python tests/viewer_examples/structure_manager_example_01.py
 ```
 
 ## Examples
 
 | # | Description |
 |---|-------------|
-| 01 | Create a MolecularViewer and inspect defaults |
+| 01 | Create a StructureManager and inspect defaults |
 | 02 | Load a PDB structure and print summary info |
 | 03 | Query chains, residues, secondary structure |
 | 04 | Select atoms by criteria (protein, backbone, ligand, etc.) |

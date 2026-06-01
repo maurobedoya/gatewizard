@@ -20,7 +20,7 @@ from gatewizard.core.preparation import (
 
 from gatewizard.core.builder import Builder
 from gatewizard.core.job_monitor import JobMonitor
-from gatewizard.core.viewer import MolecularViewer
+from gatewizard.core.structure_manager import StructureManager
 from gatewizard.core.mempro import MemPrO
 from gatewizard.tools.equilibration import (
     NAMDEquilibrationManager,
@@ -39,7 +39,7 @@ __all__ = [
     "modify_pdb_based_on_summary",
     "Builder",
     "JobMonitor",
-    "MolecularViewer",
+    "StructureManager",
     "MemPrO",
     "NAMDEquilibrationManager",
     "OpenMMEquilibrationManager",
