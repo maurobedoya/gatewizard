@@ -10,6 +10,10 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any, NamedTuple, TYPE_CHECKING, Union
 from dataclasses import dataclass
 from .logger import get_logger
+from gatewizard.utils.lipid_bilayer_analysis import (
+    BilayerTrajectoryAnalyzer,
+    run_bilayer_analysis,
+)
 
 if TYPE_CHECKING:
     import numpy as np
@@ -1760,7 +1764,6 @@ class TrajectoryAnalyzer:
         except ImportError:
             raise ImportError(
                 "MDAnalysis is required for trajectory analysis. "
-                "Install with: conda install -c conda-forge mdanalysis"
             )
 
         self.topology = Path(topology)
