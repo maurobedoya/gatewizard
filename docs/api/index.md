@@ -66,11 +66,12 @@ Module for analyzing simulation results and monitoring equilibration progress.
 - NAMD log file parsing and energy analysis
 - OpenMM StateDataReporter log parsing
 - MDAnalysis-based trajectory analysis (RMSD, RMSF, distances, radius of gyration)
+- Lipid bilayer analysis via lipyphilic (area per lipid, membrane thickness)
 - Dark-theme matplotlib plots
 - Multi-stage log concatenation with per-file time override
 - Comprehensive 2×2 energy summary plots
 
-**Main Classes:** `EnergyAnalyzer`, `TrajectoryAnalyzer`, `OpenMMLogAnalyzer`
+**Main Classes:** `EnergyAnalyzer`, `TrajectoryAnalyzer`, `BilayerTrajectoryAnalyzer`, `OpenMMLogAnalyzer`
 
 ---
 

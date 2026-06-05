@@ -15,7 +15,6 @@ trajectory_files = [
     data_dir / "step1_equilibration.dcd",
     data_dir / "step2_equilibration.dcd",
     data_dir / "step3_equilibration.dcd",
-    data_dir / "step4_equilibration.dcd",
 ]
 
 # Initialize analyzer with custom time for each file (in nanoseconds)
@@ -23,10 +22,9 @@ analyzer = TrajectoryAnalyzer(
     topology_file,
     trajectory_files,
     file_times={
-        "step1_equilibration.dcd": 0.1,  # 100 ps
-        "step2_equilibration.dcd": 0.1,  # 100 ps
-        "step3_equilibration.dcd": 0.1,  # 100 ps
-        "step4_equilibration.dcd": 0.1,  # 100 ps
+        "step1_equilibration.dcd": 0.1,  # 0.1 ns
+        "step2_equilibration.dcd": 0.1,  # 0.1 ns
+        "step3_equilibration.dcd": 0.1,  # 0.1 ns
     },
 )
 

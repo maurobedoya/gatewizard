@@ -4,10 +4,11 @@ Module for analyzing MD trajectories and NAMD energy data with easy-to-use wrapp
 
 ## Overview
 
-The analysis module provides two main classes:
+The analysis module provides three main trajectory/energy classes:
 
 - **`EnergyAnalyzer`** - Parse and plot NAMD energy data with full customization
 - **`TrajectoryAnalyzer`** - Calculate and plot RMSD, RMSF, distances, and radius of gyration with complete control
+- **`BilayerTrajectoryAnalyzer`** - Calculate area per lipid and membrane thickness using [lipyphilic](https://lipyphilic.readthedocs.io/)
 
 **Key Features:**
 
@@ -23,6 +24,8 @@ The analysis module provides two main classes:
 from gatewizard.utils.namd_analysis import (
     EnergyAnalyzer,
     TrajectoryAnalyzer,
+    BilayerTrajectoryAnalyzer,
+    run_bilayer_analysis,
     get_equilibration_progress
 )
 ```
@@ -1463,6 +1466,139 @@ analyzer.plot_rmsf(highlight_threshold=2.0)  # Highlight > 2.0 Å
 
 ---
 
+## Class: BilayerTrajectoryAnalyzer
+
+Lipid bilayer analysis built on [lipyphilic](https://lipyphilic.readthedocs.io/) and MDAnalysis.
+
+### Constructor
+
+```python
+BilayerTrajectoryAnalyzer(
+    topology: Path,
+    trajectory: Path | List[Path],
+    file_times: Optional[Dict[str, float]] = None
+)
+```
+
+Same topology/trajectory interface as `TrajectoryAnalyzer`. Leaflet assignment is performed automatically before each analysis.
+
+### Method: `calculate_area_per_lipid()`
+
+Calculate the area per lipid via 2D Voronoi tessellation ([lipyphilic `AreaPerLipid`](https://lipyphilic.readthedocs.io/en/latest/reference/analysis/areas.html)).
+
+```python
+calculate_area_per_lipid(
+    lipid_sel: str = "name PO4",
+    leaflet_lipid_sel: Optional[str] = None,
+    start: Optional[int] = None,
+    stop: Optional[int] = None,
+    step: Optional[int] = None,
+    verbose: bool = False,
+) -> Dict[str, np.ndarray]
+```
+
+**Parameters:**
+
+| Parameter | Description |
+|-----------|-------------|
+| `lipid_sel` | Atoms used for Voronoi tessellation. MARTINI: `"name GL1 GL2 ROH"`. All-atom: `"name PO4"` or phosphate selections. |
+| `leaflet_lipid_sel` | Selection for leaflet assignment. Defaults to `lipid_sel`. |
+| `start`, `stop`, `step` | Trajectory frame range passed to lipyphilic. |
+
+**Returns:** `time` (ns), `areas` (n_lipids × n_frames, Å²), `mean_area_per_lipid`, `mean_upper_leaflet`, `mean_lower_leaflet`, `resids`, `resnames`.
+
+See [Example 14: Area per Lipid](#example-14-area-per-lipid).
+
+### Method: `calculate_membrane_thickness()`
+
+Calculate bilayer thickness from interleaflet headgroup distances ([lipyphilic `MembThickness`](https://lipyphilic.readthedocs.io/en/latest/reference/analysis/memb_thickness.html)).
+
+```python
+calculate_membrane_thickness(
+    lipid_sel: str = "name PO4",
+    leaflet_lipid_sel: Optional[str] = None,
+    leaflet_filter_sel: Optional[str] = None,
+    n_bins: int = 1,
+    interpolate: bool = False,
+    start: Optional[int] = None,
+    stop: Optional[int] = None,
+    step: Optional[int] = None,
+    verbose: bool = False,
+) -> Dict[str, np.ndarray]
+```
+
+**Parameters:**
+
+| Parameter | Description |
+|-----------|-------------|
+| `lipid_sel` | Headgroup atoms for the thickness calculation. |
+| `leaflet_lipid_sel` | Selection for leaflet assignment. Defaults to `lipid_sel`. |
+| `leaflet_filter_sel` | Optional filter passed to `AssignLeaflets.filter_leaflets()` to exclude species (e.g. cholesterol). |
+| `n_bins` | Grid resolution for intrinsic surface construction (`1` = global mean height). |
+| `interpolate` | Fill missing grid values when `n_bins` is large (slower). |
+
+**Returns:** `time` (ns), `thickness` (Å).
+
+See [Example 15: Membrane Thickness](#example-15-membrane-thickness).
+
+### Method: `plot_area_per_lipid()` / `plot_membrane_thickness()`
+
+Generate time-series plots with the same styling options as `TrajectoryAnalyzer` plots. See Examples 14 and 15.
+
+### Function: `run_bilayer_analysis()`
+
+JSON-serializable API for GUI and downstream consumers.
+
+```python
+run_bilayer_analysis(
+    topology_file: Union[str, Path],
+    trajectory_files: List[Union[str, Path]],
+    analysis_type: str,
+    lipid_sel: str = "name PO4",
+    leaflet_lipid_sel: Optional[str] = None,
+    leaflet_filter_sel: Optional[str] = None,
+    n_bins: int = 1,
+    interpolate: bool = False,
+    file_times: Optional[Dict[str, float]] = None,
+    start: Optional[int] = None,
+    stop: Optional[int] = None,
+    step: Optional[int] = None,
+    verbose: bool = False,
+) -> Dict[str, Any]
+```
+
+**Supported `analysis_type` values:** `area_per_lipid`, `membrane_thickness` (aliases: `apl`, `thickness`, `memb_thickness`).
+
+**Area per lipid return shape:**
+
+```python
+{
+    "analysis_type": "area_per_lipid",
+    "x": [...],           # time (ns)
+    "y": [...],           # mean area per lipid (Å²)
+    "mean_upper_leaflet": [...],
+    "mean_lower_leaflet": [...],
+    "lipid_resids": [...],
+    "lipid_resnames": [...],
+    "per_lipid_areas": [[...], ...],
+    "stats": {"mean", "std", "min", "max"},
+}
+```
+
+**Membrane thickness return shape:**
+
+```python
+{
+    "analysis_type": "membrane_thickness",
+    "x": [...],
+    "y": [...],           # thickness (Å)
+    "n_bins": 1,
+    "stats": {"mean", "std", "min", "max"},
+}
+```
+
+---
+
 ## Examples
 
 Complete working examples are available in [Analysis examples](https://github.com/maurobedoya/gatewizard/tree/main/tests/analysis_examples). Each example demonstrates specific analysis capabilities and can be run directly.
@@ -1921,6 +2057,147 @@ analyzer.plot_properties(
 )
 print("Separate figures saved: temp_density_example_13_temp.png, temp_density_example_13_density.png")
 ```
+
+---
+
+### Example 14: Area per Lipid
+
+Calculate and plot the area per lipid using [lipyphilic](https://lipyphilic.readthedocs.io/) Voronoi tessellation on the membrane-protein equilibration trajectories in `equilibration_folder`.
+
+```python
+from pathlib import Path
+
+from gatewizard.utils.namd_analysis import BilayerTrajectoryAnalyzer, run_bilayer_analysis
+
+script_dir = Path(__file__).parent
+data_dir = script_dir / "equilibration_folder"
+
+topology_file = data_dir / "system.pdb"
+trajectory_files = [
+    data_dir / "step1_equilibration.dcd",
+    data_dir / "step2_equilibration.dcd",
+    data_dir / "step3_equilibration.dcd",
+]
+
+# POPC headgroup phosphorus atoms in the AMBER lipid parametrization
+LIPID_SEL = "resname PC and name P31"
+
+file_times = {
+    "step1_equilibration.dcd": 0.1,  # 0.1 ns
+    "step2_equilibration.dcd": 0.1,  # 0.1 ns
+    "step3_equilibration.dcd": 0.1,  # 0.1 ns
+}
+
+# ------------------------------------------------------------------
+# 1. Class API — calculate area per lipid
+# ------------------------------------------------------------------
+analyzer = BilayerTrajectoryAnalyzer(
+    topology_file,
+    trajectory_files,
+    file_times=file_times,
+)
+data = analyzer.calculate_area_per_lipid(lipid_sel=LIPID_SEL)
+
+mean_area = float(data["mean_area_per_lipid"].mean())
+print(f"Mean area per lipid: {mean_area:.1f} Å²")
+print(f"Lipids analysed: {len(data['resids'])}")
+print(f"Frames analysed: {data['areas'].shape[1]}")
+
+# ------------------------------------------------------------------
+# 2. Plot mean area per lipid time series
+# ------------------------------------------------------------------
+analyzer.plot_area_per_lipid(
+    lipid_sel=LIPID_SEL,
+    series="mean",
+    time_units="ns",
+    save="area_per_lipid_example_14.png",
+    show=False,
+)
+print("Plot saved: area_per_lipid_example_14.png")
+
+# ------------------------------------------------------------------
+# 3. JSON API — run_bilayer_analysis()
+# ------------------------------------------------------------------
+result = run_bilayer_analysis(
+    topology_file,
+    trajectory_files,
+    analysis_type="area_per_lipid",
+    lipid_sel=LIPID_SEL,
+    file_times=file_times,
+)
+print(f"JSON API mean area: {result['stats']['mean']:.1f} Å²")
+```
+
+For other force fields, adjust `lipid_sel` to match your headgroup atoms, e.g. `"name GL1 GL2 ROH"` (MARTINI) or `"name PO4"` (all-atom CHARMM).
+
+---
+
+### Example 15: Membrane Thickness
+
+Calculate and plot bilayer thickness as the mean interleaflet headgroup distance ([lipyphilic `MembThickness`](https://lipyphilic.readthedocs.io/en/latest/reference/analysis/memb_thickness.html)) on the same equilibration trajectories.
+
+```python
+from pathlib import Path
+
+from gatewizard.utils.namd_analysis import BilayerTrajectoryAnalyzer, run_bilayer_analysis
+
+script_dir = Path(__file__).parent
+data_dir = script_dir / "equilibration_folder"
+
+topology_file = data_dir / "system.pdb"
+trajectory_files = [
+    data_dir / "step1_equilibration.dcd",
+    data_dir / "step2_equilibration.dcd",
+    data_dir / "step3_equilibration.dcd",
+]
+
+LIPID_SEL = "resname PC and name P31"
+
+file_times = {
+    "step1_equilibration.dcd": 0.1,  # 0.1 ns
+    "step2_equilibration.dcd": 0.1,  # 0.1 ns
+    "step3_equilibration.dcd": 0.1,  # 0.1 ns
+}
+
+# ------------------------------------------------------------------
+# 1. Class API — calculate membrane thickness
+# ------------------------------------------------------------------
+analyzer = BilayerTrajectoryAnalyzer(
+    topology_file,
+    trajectory_files,
+    file_times=file_times,
+)
+data = analyzer.calculate_membrane_thickness(lipid_sel=LIPID_SEL)
+
+mean_thickness = float(data["thickness"].mean())
+print(f"Mean membrane thickness: {mean_thickness:.1f} Å")
+print(f"Frames analysed: {len(data['thickness'])}")
+
+# ------------------------------------------------------------------
+# 2. Plot membrane thickness time series
+# ------------------------------------------------------------------
+analyzer.plot_membrane_thickness(
+    lipid_sel=LIPID_SEL,
+    time_units="ns",
+    save="membrane_thickness_example_15.png",
+    show=False,
+)
+print("Plot saved: membrane_thickness_example_15.png")
+
+# ------------------------------------------------------------------
+# 3. JSON API — run_bilayer_analysis()
+# ------------------------------------------------------------------
+result = run_bilayer_analysis(
+    topology_file,
+    trajectory_files,
+    analysis_type="membrane_thickness",
+    lipid_sel=LIPID_SEL,
+    file_times=file_times,
+)
+print(f"JSON API mean thickness: {result['stats']['mean']:.1f} Å")
+```
+
+To exclude cholesterol from a mixed bilayer thickness calculation, pass `leaflet_filter_sel="resname DPPC DOPC"` and set `lipid_sel` to the headgroup atoms of the lipids included in the calculation.
 
 ---
 

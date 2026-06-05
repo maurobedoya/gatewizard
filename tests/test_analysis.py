@@ -275,7 +275,8 @@ class TestAnalysisExamples:
             print(f"\n🎉 All {len(passed_examples)} examples passed!")
 
     @pytest.mark.parametrize(
-        "example_num", ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]
+        "example_num",
+        ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15"],
     )
     def test_individual_examples(self, example_num, temp_dir):
         """Test each example individually for better pytest reporting."""

@@ -4,10 +4,11 @@ Detailed documentation of GateWizard's trajectory and energy analysis capabiliti
 
 ## Overview
 
-GateWizard provides two main types of analysis:
+GateWizard provides three main types of analysis:
 
 1. **Structural Analysis**: For trajectory files (.dcd, .xtc, .trr)
-2. **Energetic Analysis**: For NAMD log files
+2. **Bilayer Analysis**: Area per lipid and membrane thickness (via lipyphilic, installed with gatewizard)
+3. **Energetic Analysis**: For NAMD log files
 
 Both types support multiple files, custom time assignment, and flexible unit selection.
 
@@ -109,6 +110,54 @@ Both types support multiple files, custom time assignment, and flexible unit sel
 - Constant Rg: Stable, compact structure
 - Increasing Rg: Unfolding or expansion
 - Decreasing Rg: Compaction or folding
+
+### Bilayer Analysis (lipyphilic)
+
+Lipid bilayer properties are calculated via the `BilayerTrajectoryAnalyzer` class using [lipyphilic](https://lipyphilic.readthedocs.io/), which is installed automatically with gatewizard (`pip install -e .` or `pip install gatewizard`).
+
+Working examples: **Example 14** (area per lipid) and **Example 15** (membrane thickness) in `tests/analysis_examples/`, using `equilibration_folder/system.pdb` and equilibration DCD trajectories. See [Analysis Module API](api/analysis.md).
+
+#### Area per Lipid
+
+**Purpose**: Measure the lateral area occupied by each lipid via 2D Voronoi tessellation.
+
+**Usage**:
+```
+1. Load bilayer topology and trajectories from equilibration_folder (Example 14 / 15)
+2. Set lipid headgroup selection (e.g. "resname PC and name P31" for AMBER POPC)
+3. Run area-per-lipid analysis
+```
+
+**Output**:
+- Time series of mean area per lipid (Å²)
+- Per-lipid areas and per-leaflet means
+- Residue IDs for each lipid
+
+**Interpretation**:
+- ~40–70 Å²: Typical phospholipid areas (force-field dependent)
+- Lower area: Higher packing / Lo phase
+- Higher area: Looser packing / Ld phase
+
+#### Membrane Thickness
+
+**Purpose**: Measure bilayer thickness as the mean interleaflet headgroup distance.
+
+**Usage**:
+```
+1. Load bilayer topology and trajectories from equilibration_folder (Example 14 / 15)
+2. Set headgroup selection (e.g. "resname PC and name P31")
+3. Optionally exclude species via leaflet_filter_sel
+4. Run membrane thickness analysis
+```
+
+**Output**:
+- Time series of membrane thickness (Å)
+- Summary statistics (mean, std, min, max)
+
+**Interpretation**:
+- ~35–45 Å: Typical hydrated phospholipid bilayers (model dependent)
+- Stable plateau: Equilibrated membrane
+- Drift: Possible incomplete equilibration or phase change
 
 ### Time Management for Trajectories
 
