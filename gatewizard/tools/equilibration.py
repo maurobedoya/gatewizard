@@ -2274,7 +2274,6 @@ class NAMDEquilibrationManager:
         except ImportError:
             self.logger.warning(
                 "MDAnalysis not available; COM colvars file not generated. "
-                "Install with: conda install -c conda-forge mdanalysis"
             )
             return None
         except Exception as exc:
@@ -4621,7 +4620,6 @@ class OpenMMEquilibrationManager:
             self.logger.warning(
                 "MDAnalysis not available — using PDB name-based heuristic for "
                 "prot_pos.txt / lipid_pos.txt.  Install MDAnalysis for accurate "
-                "selections: conda install -c conda-forge mdanalysis"
             )
             if needs_prot or needs_lipid:
                 self._generate_openmm_restraints_fallback(
@@ -4636,7 +4634,6 @@ class OpenMMEquilibrationManager:
                 self.logger.error(
                     "MDAnalysis is required to generate restraints for custom "
                     f"categories ({', '.join(sorted(all_custom_keys))}). "
-                    "Install it with: conda install -c conda-forge mdanalysis"
                 )
 
         return result
@@ -5103,7 +5100,6 @@ class GROMACSEquilibrationManager:
         except ImportError as exc:
             raise ImportError(
                 "ParmEd is required for AMBER→GROMACS conversion. "
-                "Install with: conda install -c conda-forge parmed"
             ) from exc
 
         self.logger.info(f"Converting AMBER files to GROMACS using ParmEd…")
@@ -6125,7 +6121,6 @@ class GROMACSEquilibrationManager:
         except ImportError:
             self.logger.warning(
                 "MDAnalysis not available; COM colvars file not generated. "
-                "Install with: conda install -c conda-forge mdanalysis"
             )
             return None
         except Exception as exc:
