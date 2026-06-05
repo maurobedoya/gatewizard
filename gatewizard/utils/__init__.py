@@ -21,6 +21,9 @@ from gatewizard.utils.optional_deps import (
     require_optional_dependency,
     is_package_available,
     safe_import,
+    get_package_version,
+    get_dependency_versions,
+    get_external_tool_versions,
     get_optional_dependencies_status,
     check_and_warn_missing_dependencies,
 )
@@ -42,6 +45,9 @@ __all__ = [
     "require_optional_dependency",
     "is_package_available",
     "safe_import",
+    "get_package_version",
+    "get_dependency_versions",
+    "get_external_tool_versions",
     "get_optional_dependencies_status",
     "check_and_warn_missing_dependencies",
 ]

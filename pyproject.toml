@@ -39,6 +39,20 @@ dependencies = [
     "psique>=1.2.1",
 ]
 
+[project.optional-dependencies]
+md = [
+    "parmed>=4.3.0",
+    "openmm>=8.0",
+]
+orientation = [
+    "mempro @ git+https://github.com/pstansfeld/MemPrO.git",
+]
+full = [
+    "parmed>=4.3.0",
+    "openmm>=8.0",
+    "mempro @ git+https://github.com/pstansfeld/MemPrO.git",
+]
+
 [project.scripts]
 gatewizard = "gatewizard.main:main"
 

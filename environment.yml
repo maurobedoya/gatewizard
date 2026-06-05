@@ -15,4 +15,4 @@ dependencies:
   - cuda-version=12.*  # pin to CUDA 12.x so OpenMM PTX is compatible with CUDA 13.x drivers
   - pip
   - pip:
-    - psique>=1.2.1
+    - -e .[full]
