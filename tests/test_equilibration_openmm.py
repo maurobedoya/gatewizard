@@ -197,9 +197,55 @@ class TestOpenMMConfigGeneration:
         content = manager.generate_openmm_config("s1", params, 1, "NPT")
         assert "rest        = no" in content
 
-    def test_rest_no_for_production(self, manager, basic_stage_params):
+    def test_rest_yes_for_production_when_constraints_active(
+        self, manager, basic_stage_params
+    ):
         content = manager.generate_openmm_config("prod", basic_stage_params, 7, "NPT")
+        assert "rest        = yes" in content
+
+    def test_rest_no_for_production_when_all_constraints_zero(self, manager):
+        params = {
+            "ensemble": "NPT",
+            "time_ns": 0.125,
+            "temperature": 310.15,
+            "timestep": 2.0,
+            "dcd_freq": 5000,
+            "constraints": {
+                "protein_backbone": 0.0,
+                "protein_sidechain": 0.0,
+                "lipid_head": 0.0,
+                "lipid_tail": 0.0,
+            },
+        }
+        content = manager.generate_openmm_config("prod", params, 7, "NPT")
         assert "rest        = no" in content
+
+    def test_rest_yes_for_ions_constraint_via_custom_restraints(
+        self, manager, tmp_path
+    ):
+        params = {
+            "ensemble": "NPT",
+            "time_ns": 0.125,
+            "temperature": 310.15,
+            "timestep": 2.0,
+            "dcd_freq": 5000,
+            "constraints": {
+                "protein_backbone": 0.0,
+                "protein_sidechain": 0.0,
+                "lipid_head": 0.0,
+                "lipid_tail": 0.0,
+                "ions": 5.0,
+            },
+        }
+        # Simulate a per-stage custom_pos file (the path just needs to exist for the test)
+        fake_custom_file = tmp_path / "restraints" / "custom_pos_stage1.txt"
+        fake_custom_file.parent.mkdir(parents=True)
+        fake_custom_file.touch()
+        content = manager.generate_openmm_config(
+            "eq1", params, 1, "NPT", custom_pos_file=fake_custom_file
+        )
+        assert "rest        = yes" in content
+        assert "custom_pos_file = restraints/custom_pos_stage1.txt" in content
 
     def test_fc_ldih_always_zero(self, manager, basic_stage_params):
         # step6.6 (stage 6) drops all lipid restraint fields per CHARMM-GUI protocol;

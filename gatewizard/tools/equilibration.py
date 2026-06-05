@@ -3972,7 +3972,7 @@ class OpenMMEquilibrationManager:
                 output_dir=openmm_dir,
                 selections=selections,
             )
-            has_custom_restraints = restraint_files.get("custom_pos") is not None
+            has_custom_restraints = bool(restraint_files.get("custom_pos_per_stage"))
         else:
             self.logger.warning(
                 f"System PDB not found at {system_pdb_path}; skipping restraint index generation."
@@ -3980,6 +3980,9 @@ class OpenMMEquilibrationManager:
 
         config_files: List[Path] = []
         stage_config_names: List[str] = []
+        custom_pos_per_stage: Dict[int, Optional[Path]] = restraint_files.get(
+            "custom_pos_per_stage", {}
+        )
 
         for stage_index, stage_params in enumerate(stage_params_list, start=1):
             stage_name = stage_params.get("name", f"Stage {stage_index}")
@@ -3990,7 +3993,7 @@ class OpenMMEquilibrationManager:
                 stage_params=stage_params,
                 stage_index=stage_index,
                 scheme_type=scheme_type,
-                has_custom_restraints=has_custom_restraints,
+                custom_pos_file=custom_pos_per_stage.get(stage_index),
             )
 
             config_filename = self._get_config_filename(stage_index)
@@ -4050,6 +4053,7 @@ class OpenMMEquilibrationManager:
         stage_params: Dict[str, Any],
         stage_index: int,
         scheme_type: str,
+        custom_pos_file: Optional[Path] = None,
         has_custom_restraints: bool = False,
     ) -> str:
         """
@@ -4064,9 +4068,10 @@ class OpenMMEquilibrationManager:
             stage_params: Stage parameter dict (see setup_openmm_equilibration).
             stage_index: 1-based position of this stage in the protocol.
             scheme_type: Ensemble type (NVT, NPT, NPAT, or NPgT).
-            has_custom_restraints: When True, ``rest = yes`` is set even if all
-                standard force constants are zero (used when ``custom_pos.txt``
-                has been generated for this stage).
+            custom_pos_file: When set, a ``custom_pos_file =`` line is injected
+                into the .inp so ``omm_restraints.py`` loads the per-stage file.
+                When None, no custom positional restraints are applied.
+            has_custom_restraints: Deprecated — ignored; kept for back-compat.
 
         Returns:
             String content of the generated .inp file.
@@ -4103,8 +4108,6 @@ class OpenMMEquilibrationManager:
                 "protein_sidechain",
                 "lipid_head",
                 "lipid_tail",
-                "water",
-                "ions",
             }
         )
         constraints = stage_params.get("constraints", {})
@@ -4118,9 +4121,7 @@ class OpenMMEquilibrationManager:
             * _KCAL_TO_KJ
         )
         # Check whether this stage uses any custom (non-standard) restraint
-        stage_has_custom = has_custom_restraints and any(
-            float(v) > 0 for k, v in constraints.items() if k not in _STD_KEYS
-        )
+        stage_has_custom = custom_pos_file is not None
         rest = (
             "yes"
             if (fc_bb_kj > 0 or fc_sc_kj > 0 or fc_lpos_kj > 0 or stage_has_custom)
@@ -4136,7 +4137,28 @@ class OpenMMEquilibrationManager:
         content = content.replace("{NSTEP}", str(nstep))
         content = content.replace("{DT}", f"{dt_ps:.3f}")
         content = content.replace("{NSTDCD}", str(dcd_freq))
-        content = content.replace("{REST}", rest)
+        # Some production templates ship with a literal "rest = no" instead of
+        # "{REST}". Make restraint toggling robust for both formats.
+        if "{REST}" in content:
+            content = content.replace("{REST}", rest)
+        else:
+            content = re.sub(
+                r"(?m)^(rest\s*=\s*)(yes|no)(\s*#.*)?$",
+                lambda m: f"{m.group(1)}{rest}{m.group(3) or ''}",
+                content,
+            )
+
+        # Older production templates may omit FC lines entirely.
+        # Ensure OpenMM input always carries user force constants.
+        if not re.search(r"(?m)^\s*fc_bb\s*=", content):
+            content += (
+                "\n"
+                "fc_bb       = 0.0                                   # Positional restraint force constant for protein backbone (kJ/mol/nm^2)\n"
+            )
+        if not re.search(r"(?m)^\s*fc_sc\s*=", content):
+            content += "fc_sc       = 0.0                                   # Positional restraint force constant for protein side-chain (kJ/mol/nm^2)\n"
+        if not re.search(r"(?m)^\s*fc_lpos\s*=", content):
+            content += "fc_lpos     = 0.0                                   # Positional restraint force constant for lipids (kJ/mol/nm^2)\n"
         # Override CHARMM-GUI template force constants with user-specified values
         content = re.sub(
             r"fc_bb\s*=\s*[\d.]+", f"fc_bb       = {fc_bb_kj:.4f}", content
@@ -4147,6 +4169,14 @@ class OpenMMEquilibrationManager:
         content = re.sub(
             r"fc_lpos\s*=\s*[\d.]+", f"fc_lpos     = {fc_lpos_kj:.4f}", content
         )
+        if custom_pos_file is not None:
+            # Inject the per-stage custom restraint file path as a parseable .inp parameter
+            # so omm_restraints.py loads the correct file for this stage.
+            content += (
+                "\n"
+                f"custom_pos_file = restraints/{custom_pos_file.name}"
+                "                   # Per-stage custom positional restraints (GateWizard)\n"
+            )
         if is_first_stage:
             content = content.replace("{MINI_NSTEP}", str(minimize_steps))
             content = content.replace("{GEN_VEL}", "yes")
@@ -4403,8 +4433,6 @@ class OpenMMEquilibrationManager:
                 "protein_sidechain",
                 "lipid_head",
                 "lipid_tail",
-                "water",
-                "ions",
             }
         )
 
@@ -4423,17 +4451,18 @@ class OpenMMEquilibrationManager:
             max_forces.get("lipid_head", 0.0) > 0
             or max_forces.get("lipid_tail", 0.0) > 0
         )
-        custom_keys: Dict[str, float] = {
-            k: v for k, v in max_forces.items() if k not in _STD_KEYS and v > 0
+        # Set of custom keys that have > 0 force in at least one stage
+        all_custom_keys: set = {
+            k for k, v in max_forces.items() if k not in _STD_KEYS and v > 0
         }
 
-        result: Dict[str, Optional[Path]] = {
+        result: Dict[str, Any] = {
             "prot_pos": None,
             "lipid_pos": None,
-            "custom_pos": None,
+            "custom_pos_per_stage": {},  # {stage_index: Path | None}
         }
 
-        if not (needs_prot or needs_lipid or custom_keys):
+        if not (needs_prot or needs_lipid or all_custom_keys):
             self.logger.info(
                 "No active restraints found; skipping index file generation."
             )
@@ -4511,21 +4540,31 @@ class OpenMMEquilibrationManager:
                         "  lipid_pos.txt skipped: no lipid atoms matched"
                     )
 
-            # --- custom_pos.txt ---
-            if custom_keys:
-                custom_lines: List[str] = [
-                    "# GateWizard custom positional restraints\n",
-                    "# Format: atom_index(0-based)  force_kJ_mol_nm2\n",
-                ]
-                any_written = False
-                for key in sorted(custom_keys):
-                    force_kcal = custom_keys[key]
+            # --- custom_pos_stage{N}.txt (per-stage files) ---
+            # Build atom groups once (expensive MDAnalysis query), then write
+            # stage-specific files with the correct per-stage force constant.
+            if all_custom_keys:
+                # Resolve MDAnalysis selection strings for every custom key
+                custom_atom_groups: Dict[str, Any] = {}
+                for key in sorted(all_custom_keys):
                     sel_str = selections.get(key)
-                    if sel_str is None and key == "other":
-                        sel_str = NAMDEquilibrationManager.DEFAULT_SELECTIONS["other"]
+                    if sel_str is not None:
+                        sel_alias = sel_str.strip().lower().replace(" ", "_")
+                        if sel_alias in NAMDEquilibrationManager.DEFAULT_SELECTIONS:
+                            sel_str = NAMDEquilibrationManager.DEFAULT_SELECTIONS[
+                                sel_alias
+                            ]
+                        elif sel_alias == "ion":
+                            sel_str = NAMDEquilibrationManager.DEFAULT_SELECTIONS[
+                                "ions"
+                            ]
+                    elif key in NAMDEquilibrationManager.DEFAULT_SELECTIONS:
+                        sel_str = NAMDEquilibrationManager.DEFAULT_SELECTIONS[key]
+                    elif key == "ion":
+                        sel_str = NAMDEquilibrationManager.DEFAULT_SELECTIONS["ions"]
                     if sel_str is None:
                         self.logger.warning(
-                            f"  custom_pos.txt: no selection for '{key}'. "
+                            f"  custom_pos: no selection for '{key}'. "
                             f"Add selections['{key}'] = 'resname ...' to include it."
                         )
                         continue
@@ -4533,30 +4572,50 @@ class OpenMMEquilibrationManager:
                         ag = u.select_atoms(sel_str)
                     except Exception as exc:
                         self.logger.warning(
-                            f"  custom_pos.txt: selection for '{key}' failed: {exc}"
+                            f"  custom_pos: selection for '{key}' failed: {exc}"
                         )
                         continue
                     if len(ag) == 0:
                         self.logger.warning(
-                            f"  custom_pos.txt: '{key}' matched 0 atoms (sel='{sel_str}')"
+                            f"  custom_pos: '{key}' matched 0 atoms (sel='{sel_str}')"
                         )
                         continue
-                    force_kj = force_kcal * _KCAL_TO_KJ
-                    custom_lines.append(
-                        f"# {key}: {force_kcal} kcal/mol/\u00c5\u00b2 = {force_kj:.2f} kJ/mol/nm\u00b2\n"
-                    )
-                    for atom in ag:
-                        custom_lines.append(f"{atom.index}  {force_kj:.4f}\n")
-                    any_written = True
-                    self.logger.info(
-                        f"  custom_pos.txt: {len(ag)} atoms for '{key}' "
-                        f"@ {force_kj:.2f} kJ/mol/nm\u00b2"
-                    )
-                if any_written:
-                    custom_path = restraints_dir / "custom_pos.txt"
+                    custom_atom_groups[key] = ag
+
+                # Write per-stage files with the correct force constant for each stage
+                for stage_i, sp in enumerate(stage_params_list, start=1):
+                    stage_constraints = sp.get("constraints", {})
+                    stage_custom: Dict[str, float] = {
+                        k: float(v)
+                        for k, v in stage_constraints.items()
+                        if k not in _STD_KEYS
+                        and float(v) > 0
+                        and k in custom_atom_groups
+                    }
+                    if not stage_custom:
+                        result["custom_pos_per_stage"][stage_i] = None
+                        continue
+                    custom_lines: List[str] = [
+                        "# GateWizard custom positional restraints\n",
+                        "# Format: atom_index(0-based)  force_kJ_mol_nm2\n",
+                    ]
+                    for key in sorted(stage_custom):
+                        force_kcal = stage_custom[key]
+                        force_kj = force_kcal * _KCAL_TO_KJ
+                        ag = custom_atom_groups[key]
+                        custom_lines.append(
+                            f"# {key}: {force_kcal} kcal/mol/\u00c5\u00b2 = {force_kj:.2f} kJ/mol/nm\u00b2\n"
+                        )
+                        for atom in ag:
+                            custom_lines.append(f"{atom.index}  {force_kj:.4f}\n")
+                        self.logger.info(
+                            f"  custom_pos_stage{stage_i}.txt: {len(ag)} atoms for '{key}' "
+                            f"@ {force_kj:.2f} kJ/mol/nm\u00b2"
+                        )
+                    custom_path = restraints_dir / f"custom_pos_stage{stage_i}.txt"
                     with open(custom_path, "w") as fh:
                         fh.writelines(custom_lines)
-                    result["custom_pos"] = custom_path
+                    result["custom_pos_per_stage"][stage_i] = custom_path
 
         except ImportError:
             self.logger.warning(
@@ -4573,10 +4632,10 @@ class OpenMMEquilibrationManager:
                     needs_prot,
                     needs_lipid,
                 )
-            if custom_keys:
+            if all_custom_keys:
                 self.logger.error(
                     "MDAnalysis is required to generate restraints for custom "
-                    f"categories ({', '.join(sorted(custom_keys))}). "
+                    f"categories ({', '.join(sorted(all_custom_keys))}). "
                     "Install it with: conda install -c conda-forge mdanalysis"
                 )
 
@@ -5778,10 +5837,7 @@ class GROMACSEquilibrationManager:
         )
 
         # ------ force constants in define line ------
-        if is_production:
-            # Remove the define line entirely for production (no restraints)
-            content = re.sub(r"^define\s*=.*\n", "", content, flags=re.MULTILINE)
-        elif is_minimization:
+        if is_minimization:
             content = re.sub(
                 r"POSRES_FC_BB=[\d.]+", f"POSRES_FC_BB={fc_bb:.1f}", content
             )
@@ -5803,9 +5859,19 @@ class GROMACSEquilibrationManager:
                 r"POSRES_FC_LIPID=[\d.]+", f"POSRES_FC_LIPID={fc_lip:.1f}", content
             )
             content = re.sub(r"DDIHRES_FC=[\d.]+", f"DDIHRES_FC={fc_dih:.1f}", content)
-            # If all FCs are zero, remove the define / POSRES flag
+            # For equilibration and production alike, keep POSRES only when
+            # at least one force constant is non-zero.
             if fc_bb == 0 and fc_sc == 0 and fc_lip == 0:
                 content = re.sub(r"^define\s*=.*\n", "", content, flags=re.MULTILINE)
+            elif not re.search(r"(?m)^define\s*=", content):
+                # CHARMM-GUI production templates may omit the define line;
+                # inject one so user-requested production restraints are active.
+                content = (
+                    "define                  = -DPOSRES "
+                    f"-DPOSRES_FC_BB={fc_bb:.1f} "
+                    f"-DPOSRES_FC_SC={fc_sc:.1f} "
+                    f"-DPOSRES_FC_LIPID={fc_lip:.1f}\n" + content
+                )
 
         # GateWizard does not add dihedral restraints to the topology, so the
         # DIHRES / DIHRES_FC macros would always be unused and cause a warning.

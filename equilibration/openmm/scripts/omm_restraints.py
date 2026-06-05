@@ -160,13 +160,18 @@ def restraints(system, crd, inputs):
     # GateWizard extension: per-atom custom positional restraints
     # (ligands, cofactors, or any molecule not covered by the standard categories)
     # File format: atom_index(0-based)  force_kJ_mol_nm2
-    if os.path.exists("restraints/custom_pos.txt"):
+    # The .inp parameter 'custom_pos_file' points to a per-stage file so each
+    # stage can have its own force constants; falls back to the shared file.
+    _custom_pos_path = (
+        getattr(inputs, "custom_pos_file", "") or "restraints/custom_pos.txt"
+    )
+    if os.path.exists(_custom_pos_path):
         posresCUSTOM = CustomExternalForce("k*periodicdistance(x, y, z, x0, y0, z0)^2")
         posresCUSTOM.addPerParticleParameter("k")
         posresCUSTOM.addPerParticleParameter("x0")
         posresCUSTOM.addPerParticleParameter("y0")
         posresCUSTOM.addPerParticleParameter("z0")
-        for line in open("restraints/custom_pos.txt", "r"):
+        for line in open(_custom_pos_path, "r"):
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
