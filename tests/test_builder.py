@@ -529,6 +529,41 @@ END
         assert valid or len(error_msg) > 0
         print(f"Validation result: {valid}, message: {error_msg}")
 
+    def test_generate_preparation_inputs(self, temp_dir, sample_pdb):
+        """Test generating preparation input files without launching."""
+        builder = Builder()
+        builder.set_configuration(water_model="tip3p", protein_ff="ff14SB")
+
+        success, message, job_dir = builder.generate_preparation_inputs(
+            pdb_file=str(sample_pdb),
+            working_dir=str(temp_dir),
+            upper_lipids=["POPC"],
+            lower_lipids=["POPC"],
+            lipid_ratios="1//1",
+        )
+
+        assert success, message
+        assert job_dir is not None
+        assert (job_dir / "run_preparation.sh").is_file()
+        assert (job_dir / "status.json").is_file()
+
+        import json
+
+        status = json.loads((job_dir / "status.json").read_text())
+        assert status["status"] == "not_started"
+        assert status["start_time"] is None
+        assert not (job_dir / "process.pid").exists()
+
+    def test_run_preparation_requires_generated_files(self, temp_dir):
+        """Test run_preparation fails when input files are missing."""
+        builder = Builder()
+        job_dir = temp_dir / "empty_job"
+        job_dir.mkdir()
+
+        success, message = builder.run_preparation(job_dir)
+        assert not success
+        assert "generate input files first" in message.lower()
+
 
 # ============================================================================
 # HELPER FUNCTIONS

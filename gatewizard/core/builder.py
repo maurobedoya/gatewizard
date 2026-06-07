@@ -168,7 +168,8 @@ class Builder:
             )
 
             # Create and launch preparation script
-            success = self._launch_preparation(cmd, job_dir, config)
+            script_path = self._generate_preparation_files(cmd, job_dir, config)
+            success = self._run_preparation_script(job_dir, script_path, config)
 
             if success:
                 # If wait=True, block until the job finishes
@@ -192,6 +193,86 @@ class Builder:
         except Exception as e:
             logger.error(f"Error preparing system: {e}", exc_info=True)
             return False, f"Error preparing system: {str(e)}", None
+
+    def generate_preparation_inputs(
+        self,
+        pdb_file: str,
+        working_dir: str,
+        upper_lipids: List[str],
+        lower_lipids: List[str],
+        lipid_ratios: str = "",
+        **kwargs,
+    ) -> Tuple[bool, str, Optional[Path]]:
+        """
+        Generate preparation input files without launching the job.
+
+        Creates a job directory with ``run_preparation.sh`` and ``status.json``
+        (status ``not_started``).  Use :meth:`run_preparation` to execute the job.
+        """
+        config = {**self.config, **kwargs}
+
+        valid, error_msg = self.validate_system_inputs(
+            pdb_file, upper_lipids, lower_lipids, lipid_ratios, **config
+        )
+        if not valid:
+            return False, error_msg, None
+
+        try:
+            custom_output_name = config.get("output_folder_name", None)
+            job_dir = self._create_job_directory(
+                pdb_file, working_dir, custom_output_name
+            )
+            local_pdb = self._prepare_input_files(pdb_file, job_dir)
+
+            if config.get("notprotonate", False):
+                logger.info(
+                    "Using notprotonate mode - assuming PDB has correct protonation states"
+                )
+                config["_workflow_note"] = (
+                    "IMPORTANT: When using --notprotonate, ensure your PDB file has correct protonation states and residue names (e.g., GLU->GLH for protonated glutamate)"
+                )
+
+            cmd = self._build_command(
+                local_pdb, upper_lipids, lower_lipids, lipid_ratios, config
+            )
+            self._generate_preparation_files(cmd, job_dir, config)
+            return True, "Preparation input files generated successfully", job_dir
+
+        except Exception as e:
+            logger.error(f"Error generating preparation inputs: {e}", exc_info=True)
+            return False, f"Error generating preparation inputs: {str(e)}", None
+
+    def run_preparation(self, job_dir: str | Path) -> Tuple[bool, str]:
+        """
+        Launch a previously generated preparation job.
+
+        Args:
+            job_dir: Path to the job directory containing ``run_preparation.sh``.
+
+        Returns:
+            Tuple of (success, message)
+        """
+        job_path = Path(job_dir).resolve()
+        script_path = job_path / "run_preparation.sh"
+        if not script_path.is_file():
+            return False, "run_preparation.sh not found — generate input files first"
+
+        status_file = job_path / "status.json"
+        config: Dict[str, Any] = {}
+        if status_file.is_file():
+            try:
+                with open(status_file, "r", encoding="utf-8") as f:
+                    status_data = json.load(f)
+                if status_data.get("status") == "running":
+                    return False, "Preparation is already running"
+                config = status_data.get("config", {})
+            except (json.JSONDecodeError, OSError) as e:
+                logger.warning(f"Could not read status.json: {e}")
+
+        success = self._run_preparation_script(job_path, script_path, config)
+        if success:
+            return True, "System preparation started successfully"
+        return False, "Failed to start system preparation"
 
     def wait_for_completion(
         self,
@@ -439,23 +520,88 @@ class Builder:
     def _launch_preparation(
         self, cmd: List[str], job_dir: Path, config: Dict[str, Any]
     ) -> bool:
-        """Launch the preparation process."""
+        """Generate preparation files and launch the process."""
         try:
-            # Create initial status file
-            self._create_initial_status(cmd, job_dir, config)
+            script_path = self._generate_preparation_files(cmd, job_dir, config)
+            return self._run_preparation_script(job_dir, script_path, config)
+        except Exception as e:
+            logger.error(f"Error launching preparation: {e}", exc_info=True)
+            return False
 
-            # Create execution script
-            script_path = self._create_execution_script(cmd, job_dir, config)
+    def _get_workflow_steps(self, config: Dict[str, Any]) -> List[str]:
+        """Return workflow step names for the given configuration."""
+        preoriented = config.get("preoriented", True)
+        parametrize = config.get("parametrize", True)
+        if preoriented:
+            return ["Packmol", "pdb4amber", "tleap"] if parametrize else ["Packmol"]
+        return (
+            ["MEMEMBED", "Packmol", "pdb4amber", "tleap"]
+            if parametrize
+            else ["MEMEMBED", "Packmol"]
+        )
 
-            # Launch script
+    def _write_status_file(
+        self,
+        cmd: List[str],
+        job_dir: Path,
+        config: Dict[str, Any],
+        *,
+        status: str,
+        start_time: Optional[str],
+    ) -> None:
+        """Write status.json for job monitoring."""
+        status_data = {
+            "command": " ".join(cmd),
+            "start_time": start_time,
+            "end_time": None,
+            "current_step": 0,
+            "status": status,
+            "error": None,
+            "steps": self._get_workflow_steps(config),
+            "steps_completed": [],
+            "step_messages": [],
+            "config": config,
+        }
+
+        with open(job_dir / "status.json", "w", encoding="utf-8") as f:
+            json.dump(status_data, f, indent=2)
+
+    def _generate_preparation_files(
+        self, cmd: List[str], job_dir: Path, config: Dict[str, Any]
+    ) -> Path:
+        """Create status.json (not_started) and run_preparation.sh."""
+        self._write_status_file(
+            cmd, job_dir, config, status="not_started", start_time=None
+        )
+        script_path = self._create_execution_script(cmd, job_dir, config)
+        logger.info(f"Generated preparation input files in: {job_dir}")
+        return script_path
+
+    def _mark_preparation_running(self, job_dir: Path) -> None:
+        """Update status.json to running when the job is launched."""
+        status_file = job_dir / "status.json"
+        if not status_file.is_file():
+            return
+        try:
+            with open(status_file, "r", encoding="utf-8") as f:
+                status_data = json.load(f)
+            status_data["status"] = "running"
+            status_data["start_time"] = datetime.now().isoformat()
+            with open(status_file, "w", encoding="utf-8") as f:
+                json.dump(status_data, f, indent=2)
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning(f"Could not update status.json: {e}")
+
+    def _run_preparation_script(
+        self, job_dir: Path, script_path: Path, config: Dict[str, Any]
+    ) -> bool:
+        """Launch the preparation script."""
+        try:
+            self._mark_preparation_running(job_dir)
             success = self._execute_script(script_path)
 
-            # Post-process files if execution was successful
             if success:
-                # Wait a moment for files to be written
                 time.sleep(2)
-
-                # Perform file conversion
                 conversion_success = self._post_process_files(job_dir, config)
                 if not conversion_success:
                     logger.warning("File conversion failed, but preparation completed")
@@ -463,40 +609,20 @@ class Builder:
             return success
 
         except Exception as e:
-            logger.error(f"Error launching preparation: {e}", exc_info=True)
+            logger.error(f"Error running preparation script: {e}", exc_info=True)
             return False
 
     def _create_initial_status(
         self, cmd: List[str], job_dir: Path, config: Dict[str, Any]
     ):
-        """Create initial status file for job monitoring."""
-        # Determine the full workflow steps based on configuration
-        preoriented = config.get("preoriented", True)
-        parametrize = config.get("parametrize", True)
-        if preoriented:
-            steps = ["Packmol", "pdb4amber", "tleap"] if parametrize else ["Packmol"]
-        else:
-            steps = (
-                ["MEMEMBED", "Packmol", "pdb4amber", "tleap"]
-                if parametrize
-                else ["MEMEMBED", "Packmol"]
-            )
-
-        status = {
-            "command": " ".join(cmd),
-            "start_time": datetime.now().isoformat(),
-            "end_time": None,
-            "current_step": 0,
-            "status": "running",
-            "error": None,
-            "steps": steps,
-            "steps_completed": [],
-            "step_messages": [],
-            "config": config,
-        }
-
-        with open(job_dir / "status.json", "w") as f:
-            json.dump(status, f, indent=2)
+        """Create initial status file for job monitoring (running)."""
+        self._write_status_file(
+            cmd,
+            job_dir,
+            config,
+            status="running",
+            start_time=datetime.now().isoformat(),
+        )
 
     def _create_execution_script(
         self, cmd: List[str], job_dir: Path, config: Dict[str, Any]
