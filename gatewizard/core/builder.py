@@ -66,6 +66,9 @@ class Builder:
             "pack_only": False,  # Only perform packing stage
             "parametrize_only": False,  # Only perform parametrization stage
             "ligand_params": {},  # Dict of ligand name -> {frcmod, lib} file paths
+            "nloop": 20,  # GENCAN loops for PACKMOL (packmol-memgen default)
+            "nloop_all": 100,  # GENCAN loops for all-together packing
+            "tolerance": 2.0,  # PACKMOL clash tolerance (radius1+radius2)
         }
 
     def set_configuration(self, **kwargs):
@@ -483,6 +486,15 @@ class Builder:
         # Add water layer distance (include even if default value for explicit control)
         if config.get("dist_wat") is not None:
             cmd.extend(["--dist_wat", str(config["dist_wat"])])
+
+        # PACKMOL options (packing stage only)
+        if not config.get("parametrize_only", False):
+            if config.get("nloop") is not None:
+                cmd.extend(["--nloop", str(config["nloop"])])
+            if config.get("nloop_all") is not None:
+                cmd.extend(["--nloop_all", str(config["nloop_all"])])
+            if config.get("tolerance") is not None:
+                cmd.extend(["--tolerance", str(config["tolerance"])])
 
         # Add explicit box dimensions (mutually exclusive with dist_wat)
         dims = config.get("dims")

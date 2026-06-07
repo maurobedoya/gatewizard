@@ -72,6 +72,9 @@ class TestBuilder:
         assert builder.config["preoriented"] == True
         assert builder.config["parametrize"] == True
         assert builder.config["notprotonate"] == False
+        assert builder.config["nloop"] == 20
+        assert builder.config["nloop_all"] == 100
+        assert builder.config["tolerance"] == 2.0
 
     def test_set_configuration(self, builder):
         """Test configuration update."""
@@ -105,6 +108,27 @@ class TestBuilder:
             upper_lipids=["POPC", "POPE", "CHL1"], lower_lipids=["POPE", "POPS", "CHL1"]
         )
         assert result == "POPC:POPE:CHL1//POPE:POPS:CHL1"
+
+    def test_build_command_includes_packmol_options(self, builder, tmp_path):
+        """Test packmol-memgen command includes PACKMOL loop/tolerance flags."""
+        pdb_file = tmp_path / "protein.pdb"
+        pdb_file.write_text("END\n")
+        config = {
+            **builder.config,
+            "water_model": "opc",
+            "protein_ff": "ff19SB",
+            "lipid_ff": "lipid21",
+            "nloop": 30,
+            "nloop_all": 120,
+            "tolerance": 1.5,
+        }
+        cmd = builder._build_command(
+            pdb_file, ["POPC"], ["POPC"], "1//1", config
+        )
+        cmd_str = " ".join(cmd)
+        assert "--nloop 30" in cmd_str
+        assert "--nloop_all 120" in cmd_str
+        assert "--tolerance 1.5" in cmd_str
 
 
 # ============================================================================
