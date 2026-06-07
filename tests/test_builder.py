@@ -652,6 +652,29 @@ def run_all_examples():
     print(f"{'='*80}")
 
 
+class TestNamdOpcBuilderTleap:
+    """OPC + NAMD tleap FlexibleWater integration."""
+
+    def test_tleap_flexible_water_when_namd_opc(self):
+        builder = Builder()
+        builder.set_configuration(water_model="opc", md_engine="namd")
+        content = builder._create_tleap_input("system_for_tleap.pdb", builder.config)
+        assert "FlexibleWater on" in content
+        assert "leaprc.water.opc" in content
+
+    def test_tleap_no_flexible_water_tip3p_namd(self):
+        builder = Builder()
+        builder.set_configuration(water_model="tip3p", md_engine="namd")
+        content = builder._create_tleap_input("system_for_tleap.pdb", builder.config)
+        assert "FlexibleWater" not in content
+
+    def test_tleap_no_flexible_water_opc_gromacs(self):
+        builder = Builder()
+        builder.set_configuration(water_model="opc", md_engine="gromacs")
+        content = builder._create_tleap_input("system_for_tleap.pdb", builder.config)
+        assert "FlexibleWater" not in content
+
+
 if __name__ == "__main__":
     # Run tests with pytest
     pytest.main([__file__, "-v"])

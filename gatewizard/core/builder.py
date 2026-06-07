@@ -69,6 +69,7 @@ class Builder:
             "nloop": 20,  # GENCAN loops for PACKMOL (packmol-memgen default)
             "nloop_all": 100,  # GENCAN loops for all-together packing
             "tolerance": 2.0,  # PACKMOL clash tolerance (radius1+radius2)
+            "md_engine": None,  # Target MD engine: namd, gromacs, openmm, or None
         }
 
     def set_configuration(self, **kwargs):
@@ -666,6 +667,12 @@ class Builder:
     # {config['_workflow_note']}
     #"""
 
+        from gatewizard.tools.namd_water import tleap_flexible_water_lines
+
+        tleap_flexible_water_block = tleap_flexible_water_lines(
+            config.get("md_engine"), config.get("water_model", "tip3p")
+        )
+
         script_content = f"""#!/bin/bash
     # Run preparation script for Gatewizard
     # Generated: {datetime.now().isoformat()}
@@ -1067,6 +1074,7 @@ EOF
                 echo "  Protein FF: $protein_ff -> $protein_leaprc" | tee -a logs/preparation.log
                 echo "  Lipid FF: $lipid_ff -> $lipid_leaprc" | tee -a logs/preparation.log
                 echo "  Water model: $water_model -> $water_leaprc" | tee -a logs/preparation.log
+                echo "  MD engine target: {config.get('md_engine') or '(not set)'}" | tee -a logs/preparation.log
                 
                 # Create dynamic tleap input file
                 cat > leap_parametrize.in << EOF
@@ -1079,6 +1087,7 @@ source $lipid_leaprc
 # Load water model ${{water_model^^}}
 source $water_leaprc
 
+{tleap_flexible_water_block}
 {self._generate_bash_ligand_tleap_lines(config)}
 
 # Load PDB file prepared by pdb4amber (protein + membrane + water + neutralized)
@@ -1407,6 +1416,11 @@ EOF
         lipid_leaprc = lipid_leaprc_map.get(lipid_ff, "leaprc.lipid21")
         water_leaprc = water_leaprc_map.get(water_model, "leaprc.water.tip3p")
 
+        md_engine = config.get("md_engine")
+        from gatewizard.tools.namd_water import tleap_flexible_water_lines
+
+        flexible_water = tleap_flexible_water_lines(md_engine, water_model)
+
         # Generate ligand parameter lines if ligands are present
         ligand_params = config.get("ligand_params", {})
         # Extract atom type from parametrized ligand info (all ligands share the same type)
@@ -1429,6 +1443,7 @@ source {lipid_leaprc}
 # Load water model {water_model.upper()}
 source {water_leaprc}
 
+{flexible_water}
 {ligand_lines}
 
 # Load PDB file (protein + membrane + water + neutralized)

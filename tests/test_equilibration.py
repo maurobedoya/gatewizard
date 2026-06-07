@@ -153,6 +153,40 @@ class TestNAMDEquilibrationManager:
             manager._generate_input_name(6, "Equilibration 6") == "step6_equilibration"
         )
 
+    def test_opc_water_model_block_in_template(self, manager, tmp_path):
+        """OPC systems get waterModel tip4 in generated NAMD configs."""
+        template_path = (
+            manager.namd_templates_dir / "02_NPT" / "step6.1_equilibration.inp"
+        )
+        template_content = template_path.read_text(encoding="utf-8")
+        manager.water_model = "opc"
+        result = manager._customize_charmm_gui_template(
+            template_content,
+            "Equilibration 1",
+            {"temperature": 303.15, "time_ns": 0.125, "timestep": 1.0},
+            0,
+            {"prmtop": "system.prmtop", "inpcrd": "system.inpcrd"},
+        )
+        assert "waterModel              tip4" in result
+        assert "useSettle               on" in result
+        assert "{WATER_MODEL_BLOCK}" not in result
+
+    def test_tip3p_water_model_block_empty(self, manager):
+        template_path = (
+            manager.namd_templates_dir / "02_NPT" / "step6.1_equilibration.inp"
+        )
+        template_content = template_path.read_text(encoding="utf-8")
+        manager.water_model = "tip3p"
+        result = manager._customize_charmm_gui_template(
+            template_content,
+            "Equilibration 1",
+            {"temperature": 303.15, "time_ns": 0.125, "timestep": 1.0},
+            0,
+            {"prmtop": "system.prmtop", "inpcrd": "system.inpcrd"},
+        )
+        assert "waterModel              tip4" not in result
+        assert "{WATER_MODEL_BLOCK}" not in result
+
     def test_firsttimestep_calculation(self, manager):
         """Test firsttimestep calculation for multi-stage equilibration."""
         all_stages = {
