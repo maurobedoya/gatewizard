@@ -48,6 +48,7 @@ pairlistsPerCycle       2;                  # 2 is the default
 # Integrator Parameters
 timestep           {TIMESTEP}
 rigidBonds              all;                # Bound constraint all bonds involving H are fixed in length
+{WATER_MODEL_BLOCK}
 nonbondedFreq           1;                  # nonbonded forces every step
 fullElectFrequency      1;                  # PME every step
 

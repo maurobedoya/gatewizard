@@ -20,6 +20,7 @@ import json
 import tempfile
 
 from gatewizard.utils.logger import get_logger
+from gatewizard.tools.namd_water import namd_water_model_config_block
 
 logger = get_logger(__name__)
 
@@ -952,15 +953,29 @@ class NAMDEquilibrationManager:
                 "",
                 "# AMBER-compatible force field settings",
                 "rigidBonds         all",  # SHAKE all bonds (ntc=2, ntf=2)
-                "rigidTolerance     1.0e-8",  # SHAKE tolerance (tol in AMBER)
                 "rigidIterations    100",
-                "useSettle          on",  # Use SETTLE for water (jfastw=0)
                 f"cutoff             {stage_params.get('cutoff', 9.0)}",  # Default AMBER cutoff
                 f"pairlistdist       {stage_params.get('cutoff', 9.0) + 2.0}",  # cutoff + 2.0
-                "watermodel         tip3",  # Default water model
-                "",
             ]
         )
+        from gatewizard.tools.namd_water import namd_water_model_config_block
+
+        wm = getattr(self, "water_model", "tip3p")
+        for line in namd_water_model_config_block(wm).splitlines():
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#"):
+                config_lines.append(stripped)
+        if wm == "tip3p" or not any(
+            l.startswith("waterModel") for l in config_lines[-5:]
+        ):
+            config_lines.extend(
+                [
+                    "rigidTolerance     1.0e-8",
+                    "useSettle          on",
+                    "watermodel         tip3",
+                ]
+            )
+        config_lines.append("")
 
         # Temperature control - Langevin thermostat (corresponds to ntt=3 in AMBER)
         temperature = stage_params.get("temperature", 310.15)
@@ -1865,6 +1880,7 @@ class NAMDEquilibrationManager:
         ref_positions_file: Optional[str] = None,
         ref_positions_col: Optional[str] = None,
         ref_positions_col_value: Optional[float] = None,
+        water_model: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Complete NAMD equilibration setup - replicates GUI workflow.
@@ -1931,6 +1947,17 @@ class NAMDEquilibrationManager:
         """
         import shutil
         import json
+
+        from gatewizard.tools.namd_water import (
+            namd_water_model_config_block,
+            normalize_water_model,
+            read_water_model_from_builder_status,
+        )
+
+        if water_model is None:
+            water_model = read_water_model_from_builder_status(self.working_dir)
+        self.water_model = normalize_water_model(water_model or "tip3p")
+        self.logger.info(f"NAMD water model for config: {self.water_model}")
 
         self.logger.info("=== Setting up NAMD equilibration ===")
 
@@ -3430,6 +3457,10 @@ colvarsRestartFrequency 5000
         )
         customized_content = customized_content.replace(
             "{INITIAL_TEMPERATURE_DIRECTIVE}", initial_temp_directive
+        )
+        customized_content = customized_content.replace(
+            "{WATER_MODEL_BLOCK}",
+            namd_water_model_config_block(getattr(self, "water_model", "tip3p")),
         )
 
         # Replace system file paths (parmfile and ambercoor)
