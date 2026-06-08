@@ -1,237 +1,144 @@
-# GateWizard
+# GateWizard (API)
 
 [![PyPI version](https://img.shields.io/pypi/v/gatewizard.svg)](https://pypi.org/project/gatewizard/)
-[![Python](https://img.shields.io/pypi/pyversions/gatewizard.svg)](https://pypi.org/project/gatewizard/)
 [![Documentation](https://img.shields.io/badge/docs-latest-blue.svg)](https://maurobedoya.github.io/gatewizard/)
 [![DOI](https://zenodo.org/badge/1073861334.svg)](https://doi.org/10.5281/zenodo.18264074)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub stars](https://img.shields.io/github/stars/maurobedoya/gatewizard.svg)](https://github.com/maurobedoya/gatewizard/stargazers)
 
-A library and GUI application tool for membrane protein preparation and molecular dynamics analysis.
+Python library for membrane protein preparation, system building, equilibration setup, and MD trajectory analysis.
 
+**This repository is the API only.** It does not include a graphical interface.
 
+If you want a desktop app, use **[gatewizard-gui](https://github.com/maurobedoya/gatewizard-gui)** — a separate project that calls this library. You can use the API without the GUI, and the GUI without cloning this repo (it installs the API via pip).
 
-📖 **[Read the Documentation](https://maurobedoya.github.io/gatewizard/)**
+📖 [Documentation](https://maurobedoya.github.io/gatewizard/)
+
+<br clear="left" />
+<img src="./resources/gatewizard_logo_black_back-white.png" alt="GateWizard" width="140" align="left" />
 
 ## Features
 
-[<img align="right" src="./docs/images/readme/main_viewer.png" width="600" />](./docs/images/readme/main_viewer.png)
+- **Preparation** — clean structures, pKa (PROPKA), protonation, and termini capping
+- **Membrane builder** — orient protein, pack lipids and solvent, Amber parametrization (tleap)
+- **Equilibration** — CHARMM-GUI-style protocols for NAMD, GROMACS, and OpenMM (NVT, NPT, NPAT, NPγT)
+- **Analysis** — trajectory metrics, structural analysis, and plotting helpers
+- **Force fields** — Amber protein models (e.g. ff14SB, ff19SB) and common water/lipid setups
 
-- **Protein Structure Preparation**: Clean PDB files, add missing atoms, and optimize structures
-- **Propka Integration**: pKa calculations with automatic protonation state assignment
-- **Protein Capping**: Add ACE/NME caps to protein termini before analysis
-- **Force Field Support**: Compatible with Amber force fields (ff14SB, ff19SB, etc.)
-- **Membrane System Building**: Automated membrane protein insertion and equilibration
-- **Modern GUI**: Built with CustomTkinter for an intuitive user experience
-
-## Installation
-
-### Quick Installation from PyPI (Recommended)
-
-1. **Create a conda environment with scientific dependencies:**
-   ```bash
-   conda create -n gatewizard -c conda-forge python sqlite ambertools=24 parmed=4.3.0 -y
-   ```
-
-2. **Activate the environment:**
-   ```bash
-   conda activate gatewizard
-   ```
-
-3. **Install GateWizard from PyPI:**
-   ```bash
-   pip install gatewizard
-   ```
-
-### Alternative: Development Installation
-
-For developers or to install from source:
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/maurobedoya/gatewizard.git
-   cd gatewizard
-   ```
-
-2. **Create environment from file:**
-   ```bash
-   conda env create -f environment.yml
-   conda activate gatewizard
-   ```
-
-3. **Install in development mode:**
-   ```bash
-   pip install -e .
-   ```
-
-## Dependencies
-
-### Core Dependencies (Automatically Installed)
-- **Python** ≥ 3.8
-- **CustomTkinter** ≥ 5.0.0 - Modern GUI framework
-- **NumPy** ≥ 1.21.0 - Numerical computing
-- **Matplotlib** ≥ 3.5.0 - Plotting and visualization
-- **MDAnalysis** ≥ 2.0.0 - Molecular analysis toolkit
-- **Propka** ≥ 3.2.0 - pKa calculations
-- **RDKit** ≥ 2023.3.1 - Ligand 2D structure visualization
-
-### Scientific Computing Dependencies (Via Conda)
-- **AmberTools 24** - Molecular dynamics preparation and analysis
-- **Parmed 4.3.0** - Parameter/topology file manipulation (must be from conda-forge for compatibility)
-
-### External Requirements
-- **NAMD 3.0.1** - Required for molecular dynamics simulations and equilibration
-  - Download from: [NAMD Official Website](https://www.ks.uiuc.edu/Research/namd/)
-  - Must be installed separately and accessible in your system PATH
-
-- **MemPrO** - Required for membrane protein orientation (not available on PyPI)
-  - Must be installed manually from GitHub:
-    ```bash
-    pip install git+https://github.com/pstansfeld/MemPrO.git
-    ```
-
-## Usage
-
-### Launch the GUI
-```bash
-gatewizard
-```
-
-### Command Line Options
-```bash
-gatewizard --help              # Show all options
-gatewizard --screen 1          # Launch on secondary monitor
-gatewizard --debug             # Enable debug logging
-gatewizard --version           # Show version
-```
-
-## Upgrading
-
-To upgrade to the latest version:
+## Install
 
 ```bash
-# Activate your environment
+conda create -n gatewizard -c conda-forge python sqlite ambertools=24 parmed=4.3.0 openmm cudatoolkit -y
 conda activate gatewizard
-
-# Upgrade GateWizard
-pip install --upgrade gatewizard
+pip install "gatewizard[full]"
 ```
 
-To check your current version:
+For optional extras without OpenMM (NAMD/GROMACS only):
+
 ```bash
-gatewizard --version
+pip install gatewizard
 ```
 
-## Troubleshooting
+From source (includes `openmm` + `cudatoolkit` via conda):
 
-### Common Issues
-
-**ImportError with numpy.compat:**
-This indicates a version conflict between NumPy and Parmed. Make sure to install Parmed via conda-forge as shown in the installation instructions.
-
-**pdb4amber command not found:**
-Ensure AmberTools is installed via conda-forge and the gatewizard environment is activated.
-
-**GUI not launching:**
-Check that CustomTkinter is properly installed. Try reinstalling with `pip install --force-reinstall customtkinter`.
-
-## Development
-
-### Setting up for Development
 ```bash
-# Clone the repository
 git clone https://github.com/maurobedoya/gatewizard.git
 cd gatewizard
-
-# Create and activate environment
 conda env create -f environment.yml
 conda activate gatewizard
-
-# Install in development mode
 pip install -e .
 ```
 
-### Project Structure
-
-```
-gatewizard/
-├── gatewizard/          # Main source code
-│   ├── gui/             # GUI components
-│   ├── analysis/        # Analysis modules
-│   └── ...
-├── docs/                # Documentation (GitHub Pages)
-├── tests/               # Test suite
-├── environment.yml      # Conda environment
-├── pyproject.toml      # Project configuration
-└── README.md           # This file
-```
-
-### Running Tests
-
-All tests are in the `tests/` directory. See [tests/README.md](tests/README.md) for detailed testing documentation.
+Check the version:
 
 ```bash
-# Run all tests
-python -m pytest tests/
-
-# Run with verbose output
-python -m pytest tests/ -v
-
-# Run specific test file
-python -m pytest tests/test_propka_improvements.py
-
-# Run with coverage
-python -m pytest tests/ --cov=gatewizard --cov-report=html
+python -c "import gatewizard; print(gatewizard.__version__)"
 ```
 
-### Documentation
+## Dependencies
 
-Documentation is built with MkDocs and hosted on GitHub Pages.
+GateWizard is split across two repositories ([API](https://github.com/maurobedoya/gatewizard) + [GUI](https://github.com/franciscoadasme/gatewizard-gui)). Below is the **full dependency stack**; subsections mark what **this repo** installs automatically.
+
+### Python — core (`pip install gatewizard`) · *this repo*
+
+Installed automatically:
+
+| Package | Role |
+|---------|------|
+| Python ≥ 3.8 | Runtime |
+| NumPy | Numerical arrays |
+| Matplotlib | Plots and analysis figures |
+| MDAnalysis | Trajectories and topologies |
+| lipyphilic | Membrane / lipid analysis |
+| PROPKA | pKa and protonation |
+| RDKit | Ligand 2D structures |
+| Pillow | Image I/O |
+| psique | Structure / sequence tools |
+| requests | HTTP helpers |
+
+### Python — optional `[full]` · *this repo*
+
+| Package | Role |
+|---------|------|
+| ParmEd | Topology conversion (GROMACS, etc.) |
+| OpenMM | Equilibration / MD (Python; use with conda `cudatoolkit` for GPU) |
+| MemPrO | Membrane orientation ([GitHub](https://github.com/pstansfeld/MemPrO)) |
+
+Install: `pip install "gatewizard[full]"`
+
+### Python — GUI backend · *[gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui)*
+
+| Package | Role |
+|---------|------|
+| FastAPI | Local HTTP API for the desktop app |
+| Uvicorn | ASGI server |
+| gatewizard[full] | This API (installed into the embedded runtime) |
+
+### Conda (building + OpenMM GPU) · *this repo via `environment.yml`; GUI embeds on Linux/WSL/macOS*
+
+| Package | Role |
+|---------|------|
+| AmberTools 24 | `tleap`, `antechamber`, `packmol`, `pdb4amber`, … |
+| ParmEd 4.3.0 | From conda-forge (AmberTools-compatible) |
+| OpenMM ≥ 8.0 | MD engine (Python) |
+| cudatoolkit | OpenMM CUDA platform (Linux/WSL + NVIDIA driver) |
+
+### Desktop app · *[gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui)*
+
+| Package | Role |
+|---------|------|
+| Electron | Desktop shell |
+| Node.js 20+ | App and build runtime |
+| Svelte 5 | UI framework |
+| Vite | Frontend bundler |
+| Tailwind CSS | Styling |
+| Three.js + Threlte | 3D structure viewer |
+| electron-updater | In-app update checks |
+
+### External MD engines (install separately · neither repo)
+
+| Tool | Role |
+|------|------|
+| [NAMD](https://www.ks.uiuc.edu/Research/namd/) | Run NAMD equilibration — `namd3` / `namd2` on `PATH` |
+| [GROMACS](https://www.gromacs.org/) | Run GROMACS equilibration — `gmx` on `PATH` |
+
+OpenMM needs no separate binary — use **`openmm` + `cudatoolkit`** (conda) with `gatewizard[full]`. Auto-selects **CUDA → OpenCL → CPU**; override with `PLATFORM=CUDA bash run_equilibration.sh`.
 
 ```bash
-# Install MkDocs
-pip install mkdocs mkdocs-material
-
-# Serve documentation locally
-mkdocs serve
-
-# Build documentation
-mkdocs build
-
-# Deploy to GitHub Pages
-mkdocs gh-deploy
+python -c "import openmm; print([openmm.Platform.getPlatform(i).getName() for i in range(openmm.Platform.getNumPlatforms())])"
 ```
 
-View documentation at: `http://localhost:8000` (when serving locally)
+### Provided by this repository
 
-## Contributing
+| Component | Included |
+|-----------|----------|
+| `gatewizard` Python package (core + `[full]` extras) | yes |
+| `environment.yml` (AmberTools, OpenMM, cudatoolkit, …) | yes |
+| Desktop app (Electron, Svelte, viewer) | no — [gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui) |
+| FastAPI backend | no — GUI repo |
+| NAMD / GROMACS binaries | no — user install |
 
-Contributions are welcome! Please:
+## Desktop GUI
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Add/update tests
-5. Update documentation
-6. Commit your changes (`git commit -m 'Add amazing feature'`)
-7. Push to the branch (`git push origin feature/amazing-feature`)
-8. Open a Pull Request
-
-### Code Style
-
-- Follow PEP 8 guidelines
-- Add docstrings to functions and classes
-- Include type hints where appropriate
-- Write tests for new features
-
-## License
-
-GateWizard is licensed under the [MIT License](LICENSE).
-
-Copyright (c) 2025 Constanza González and Mauricio Bedoya
-
-## Authors
-
-- Constanza González
-- Mauricio Bedoya
+**[gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui)** — Electron app for the same workflow with a visual interface. It manages its own Python runtime and can update the API from the app.
 
