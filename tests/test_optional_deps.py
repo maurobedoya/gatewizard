@@ -3,6 +3,7 @@
 import sys
 from importlib import metadata
 from pathlib import Path
+import tomllib
 from unittest.mock import patch
 
 import pytest
@@ -119,6 +120,12 @@ class TestGetDependencyVersions:
         assert deps["openmm"]["install_group"] == "md"
         assert deps["mempro"]["install_group"] == "orientation"
 
+    def test_mempro_description_uses_manual_install(self):
+        report = get_dependency_versions(include_platform=False)
+        description = report["dependencies"]["mempro"]["description"]
+        assert "git+https://github.com/pstansfeld/MemPrO.git" in description
+        assert "gatewizard[orientation]" not in description
+
     def test_platform_metadata_when_requested(self):
         report = get_dependency_versions(include_platform=True)
         assert "platform" in report
@@ -153,6 +160,17 @@ class TestGetOptionalDependenciesStatus:
             assert "description" in info
             assert "version" in info
             assert "install_group" in info
+
+
+class TestPackagingMetadata:
+    def test_optional_dependencies_do_not_use_direct_urls(self):
+        pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
+        data = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+        optional_deps = data["project"]["optional-dependencies"]
+
+        for deps in optional_deps.values():
+            for dep in deps:
+                assert " @ " not in dep
 
 
 class TestExternalTools:

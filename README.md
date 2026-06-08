@@ -31,6 +31,7 @@ If you want a desktop app, use **[gatewizard-gui](https://github.com/maurobedoya
 conda create -n gatewizard -c conda-forge python sqlite ambertools=24 parmed=4.3.0 openmm cudatoolkit -y
 conda activate gatewizard
 pip install "gatewizard[full]"
+pip install git+https://github.com/pstansfeld/MemPrO.git
 ```
 
 For optional extras without OpenMM (NAMD/GROMACS only):
@@ -82,9 +83,12 @@ Installed automatically:
 |---------|------|
 | ParmEd | Topology conversion (GROMACS, etc.) |
 | OpenMM | Equilibration / MD (Python; use with conda `cudatoolkit` for GPU) |
-| MemPrO | Membrane orientation ([GitHub](https://github.com/pstansfeld/MemPrO)) |
 
 Install: `pip install "gatewizard[full]"`
+
+Install MemPrO separately for membrane orientation:
+
+`pip install git+https://github.com/pstansfeld/MemPrO.git`
 
 ### Python — GUI backend · *[gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui)*
 
@@ -141,4 +145,3 @@ python -c "import openmm; print([openmm.Platform.getPlatform(i).getName() for i 
 ## Desktop GUI
 
 **[gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui)** — Electron app for the same workflow with a visual interface. It manages its own Python runtime and can update the API from the app.
-

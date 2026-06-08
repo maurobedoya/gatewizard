@@ -44,13 +44,10 @@ md = [
     "parmed>=4.3.0",
     "openmm>=8.0",
 ]
-orientation = [
-    "mempro @ git+https://github.com/pstansfeld/MemPrO.git",
-]
+orientation = []
 full = [
     "parmed>=4.3.0",
     "openmm>=8.0",
-    "mempro @ git+https://github.com/pstansfeld/MemPrO.git",
 ]
 
 [project.scripts]
