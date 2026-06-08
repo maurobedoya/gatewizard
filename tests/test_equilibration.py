@@ -210,7 +210,7 @@ class TestNAMDEquilibrationManager:
             },
             "Equilibration 4": {
                 "time_ns": 0.5,
-                "timestep": 2.0,  # Changed timestep
+                "timestep": 1.0,
                 "minimize_steps": 0,
                 "ensemble": "NPT",
             },
@@ -237,8 +237,8 @@ class TestNAMDEquilibrationManager:
         expected_stage3 = expected_stage2 + int(0.125 * 1e6 / 1.0)
         assert manager._calculate_first_timestep(3, {}, all_stages) == expected_stage3
 
-        # Stage 4 (Equilibration 5): 385000 + 250000 (0.5ns / 2.0fs) = 635000
-        expected_stage4 = expected_stage3 + int(0.5 * 1e6 / 2.0)
+        # Stage 4 (Equilibration 5): 385000 + 500000 (0.5ns / 1.0fs) = 885000
+        expected_stage4 = expected_stage3 + int(0.5 * 1e6 / 1.0)
         assert manager._calculate_first_timestep(4, {}, all_stages) == expected_stage4
 
     def test_run_script_generation(self, manager):

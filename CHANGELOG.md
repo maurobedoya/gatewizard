@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.35] - 2026-06-07
+
+### Changed
+
+- Equilibration stage 4 (step 6.4) now uses a **1 fs** integration timestep across NAMD, GROMACS, and OpenMM default protocols and templates, instead of the CHARMM-GUI default 2 fs jump at this stage. Stages 5–6 and production remain at 2 fs. This improves stability for membrane systems still equilibrating box dimensions under NPT/NPAT/NPγT.
+
 ## [1.0.34] - 2026-05-01
 
 ### Fixed
@@ -383,7 +389,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive API documentation
 - User guide and troubleshooting documentation
 
-[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.34...HEAD
+[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.35...HEAD
+[1.0.35]: https://github.com/maurobedoya/gatewizard/compare/v1.0.34...v1.0.35
 [1.0.34]: https://github.com/maurobedoya/gatewizard/compare/v1.0.33...v1.0.34
 [1.0.33]: https://github.com/maurobedoya/gatewizard/compare/v1.0.32...v1.0.33
 [1.0.32]: https://github.com/maurobedoya/gatewizard/compare/v1.0.31...v1.0.32

@@ -98,6 +98,7 @@ margin                  {MARGIN};          # due to initial building, the system
                                            # the system to be too close to the edge of the box
 
 # Time and steps control
+# GateWizard: step 4 stays at 1 fs (CHARMM-GUI switches to 2 fs at step 6.4)
 set time {TIME_NS};                     # Input time in ns
 set tstep {TIMESTEP};                   # Input timestep in fs  
 timestep           {TIMESTEP}

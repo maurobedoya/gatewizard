@@ -1850,7 +1850,7 @@ class NAMDEquilibrationManager:
             _stage(
                 "Equilibration 4",
                 0.25,
-                2.0,
+                1.0,
                 protein_backbone=1.0,
                 protein_sidechain=0.5,
             ),
@@ -4941,7 +4941,7 @@ class OpenMMEquilibrationManager:
             _stage(
                 "Equilibration 4",
                 0.25,
-                2.0,
+                1.0,
                 protein_backbone=1.0,
                 protein_sidechain=0.5,
             ),
@@ -5734,7 +5734,7 @@ class GROMACSEquilibrationManager:
             _stage(
                 "Equilibration 4",
                 0.25,
-                2.0,
+                1.0,
                 protein_backbone=1.0,
                 protein_sidechain=0.5,
             ),

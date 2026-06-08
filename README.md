@@ -1,4 +1,5 @@
 # GateWizard (API)
+<img src="./resources/gatewizard_logo_black_back-white.png" alt="GateWizard" width="140" align="right" />
 
 [![PyPI version](https://img.shields.io/pypi/v/gatewizard.svg)](https://pypi.org/project/gatewizard/)
 [![Documentation](https://img.shields.io/badge/docs-latest-blue.svg)](https://maurobedoya.github.io/gatewizard/)
@@ -10,12 +11,11 @@ Python library for membrane protein preparation, system building, equilibration 
 
 **This repository is the API only.** It does not include a graphical interface.
 
-If you want a desktop app, use **[gatewizard-gui](https://github.com/maurobedoya/gatewizard-gui)** — a separate project that calls this library. You can use the API without the GUI, and the GUI without cloning this repo (it installs the API via pip).
+If you want a desktop app, use **[gatewizard-gui](https://github.com/maurobedoya/gatewizard-gui)**, a separate project that calls this library. You can use the API without the GUI, and the GUI without cloning this repo (it installs the API via pip).
 
 📖 [Documentation](https://maurobedoya.github.io/gatewizard/)
 
 <br clear="left" />
-<img src="./resources/gatewizard_logo_black_back-white.png" alt="GateWizard" width="140" align="left" />
 
 ## Features
 

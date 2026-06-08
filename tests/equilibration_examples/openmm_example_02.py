@@ -52,7 +52,7 @@ stages = [
         "time_ns": 0.25,
         "ensemble": "NPT",
         "temperature": 303.15,
-        "timestep": 2.0,
+        "timestep": 1.0,
         "constraints": {
             "protein_backbone": 1.0,
             "protein_sidechain": 0.5,

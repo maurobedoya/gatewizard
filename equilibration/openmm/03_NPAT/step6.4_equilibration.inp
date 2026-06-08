@@ -1,5 +1,6 @@
 # Adapted from CHARMM-GUI
 # NPAT SCHEME for OpenMM - template step6.4_equilibration.inp
+# GateWizard: step 4 stays at 1 fs (CHARMM-GUI switches to 2 fs at step 6.4)
 
 nstep       = {NSTEP}                               # number of steps to run
 dt          = {DT}                                  # time-step (ps)

@@ -170,6 +170,13 @@ class TestGetDefaultStageParams:
         with pytest.raises(ValueError):
             GROMACSEquilibrationManager.get_default_stage_params("INVALID")
 
+    def test_equilibration_4_uses_1fs_timestep(self):
+        stages = GROMACSEquilibrationManager.get_default_stage_params()
+        equil_4 = next(s for s in stages if s.name == "Equilibration 4")
+        assert equil_4.timestep == 1.0
+        equil_5 = next(s for s in stages if s.name == "Equilibration 5")
+        assert equil_5.timestep == 2.0
+
     def test_temperature_propagated(self):
         stages = GROMACSEquilibrationManager.get_default_stage_params(temperature=300.0)
         for s in stages:

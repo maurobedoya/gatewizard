@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "released_at": "2026-06-05",
+  "gatewizard": {
+    "latest": "1.0.35",
+    "min_for_gui": "1.0.35",
+    "install": "gatewizard[full] @ git+https://github.com/maurobedoya/gatewizard.git@v1.0.35"
+  },
+  "gui": {
+    "latest": "1.0.0",
+    "min_gatewizard": "1.0.35",
+    "release_page": "https://github.com/maurobedoya/gatewizard-gui/releases/latest",
+    "downloads": {
+      "linux": "https://github.com/maurobedoya/gatewizard-gui/releases/latest/download/gatewizard-gui-1.0.0.AppImage",
+      "win": "https://github.com/maurobedoya/gatewizard-gui/releases/latest/download/gatewizard-gui-1.0.0-setup.exe",
+      "mac": "https://github.com/maurobedoya/gatewizard-gui/releases/latest/download/gatewizard-gui-1.0.0.dmg"
+    }
+  },
+  "notes": "Initial manifest. CI updates this file on each gatewizard-gui release when UPDATE_MANIFEST_TOKEN is set."
+}

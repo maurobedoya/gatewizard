@@ -62,12 +62,12 @@ stages = [
     {
         "name": "Equilibration 4",
         "time_ns": 0.5,
-        "steps": 250000,
+        "steps": 500000,
         "ensemble": "NPT",
         "temperature": 303.15,
         "pressure": 1.0,
         "surface_tension": 0.0,
-        "timestep": 2.0,
+        "timestep": 1.0,
         "constraints": {
             "protein_backbone": 1.0,
             "protein_sidechain": 0.5,
