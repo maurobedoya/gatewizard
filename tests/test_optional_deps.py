@@ -165,6 +165,7 @@ class TestPackagingMetadata:
     def test_optional_dependencies_do_not_use_direct_urls(self):
         pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
         in_optional_dependencies = False
+        direct_url_tokens = (" @ ", "git+https://", "git+http://", "https://", "http://")
 
         for line in pyproject_path.read_text(encoding="utf-8").splitlines():
             stripped = line.strip()
@@ -174,7 +175,7 @@ class TestPackagingMetadata:
             if in_optional_dependencies and stripped.startswith("["):
                 break
             if in_optional_dependencies and stripped.startswith('"'):
-                assert " @ " not in stripped, (
+                assert not any(token in stripped for token in direct_url_tokens), (
                     f"Direct URL dependency found in optional dependencies: {stripped}. "
                     "PyPI rejects package metadata containing direct URL dependencies."
                 )
