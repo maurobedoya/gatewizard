@@ -8,16 +8,19 @@
   },
   "mempro": {
     "latest": "0.1.0",
+    "optional": true,
     "install": "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.1.0"
   },
   "gui": {
-    "latest": "1.0.1",
+    "latest": "1.0.4",
     "min_gatewizard": "1.0.36",
-    "release_page": "https://github.com/franciscoadasme/gatewizard-gui/releases/tag/v1.0.1",
+    "release_page": "https://github.com/franciscoadasme/gatewizard-gui/releases/tag/v1.0.4",
     "downloads": {
-      "linux": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.1/gatewizard-gui-1.0.1.AppImage",
-      "win": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.1/gatewizard-gui-1.0.1-setup.exe",
-      "mac": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.1/gatewizard-gui-1.0.1.dmg"
+      "linux_appimage": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.4/gatewizard-gui-1.0.4-linux-x86_64.AppImage",
+      "linux_deb": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.4/gatewizard-gui-1.0.4-linux-amd64.deb",
+      "linux": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.4/gatewizard-gui-1.0.4-linux-x86_64.AppImage",
+      "win": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.4/gatewizard-gui-1.0.4-win-x64-setup.exe",
+      "mac": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.4/gatewizard-gui-1.0.4-mac-arm64.dmg"
     }
   },
   "notes": "GUI repo: franciscoadasme/gatewizard-gui. CI updates this file when UPDATE_MANIFEST_TOKEN is set on the GUI repo."
