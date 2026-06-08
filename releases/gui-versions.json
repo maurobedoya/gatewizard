@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "released_at": "2026-06-05",
+  "released_at": "2026-06-08",
   "gatewizard": {
     "latest": "1.0.36",
     "min_for_gui": "1.0.36",
@@ -11,14 +11,14 @@
     "install": "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.1.0"
   },
   "gui": {
-    "latest": "1.0.0",
+    "latest": "1.0.1",
     "min_gatewizard": "1.0.36",
-    "release_page": "https://github.com/maurobedoya/gatewizard-gui/releases/latest",
+    "release_page": "https://github.com/franciscoadasme/gatewizard-gui/releases/tag/v1.0.1",
     "downloads": {
-      "linux": "https://github.com/maurobedoya/gatewizard-gui/releases/latest/download/gatewizard-gui-1.0.0.AppImage",
-      "win": "https://github.com/maurobedoya/gatewizard-gui/releases/latest/download/gatewizard-gui-1.0.0-setup.exe",
-      "mac": "https://github.com/maurobedoya/gatewizard-gui/releases/latest/download/gatewizard-gui-1.0.0.dmg"
+      "linux": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.1/gatewizard-gui-1.0.1.AppImage",
+      "win": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.1/gatewizard-gui-1.0.1-setup.exe",
+      "mac": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.1/gatewizard-gui-1.0.1.dmg"
     }
   },
-  "notes": "Initial manifest. CI updates this file on each gatewizard-gui release when UPDATE_MANIFEST_TOKEN is set."
+  "notes": "GUI repo: franciscoadasme/gatewizard-gui. CI updates this file when UPDATE_MANIFEST_TOKEN is set on the GUI repo."
 }
