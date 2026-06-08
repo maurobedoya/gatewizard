@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.36] - 2026-06-08
+
+### Fixed
+
+- PyPI publish blocked by MemPrO VCS dependency in optional extras — removed `mempro @ git+...` from `pyproject.toml` metadata (PyPI forbids direct URL dependencies in published wheels)
+
+### Changed
+
+- MemPrO install moved to `requirements-orientation.txt`, pinned to GitHub release `v0.1.0`
+- Updated install docs and dependency messages for `gatewizard[full]` + orientation workflow
+
 ## [1.0.35] - 2026-06-07
 
 ### Changed
@@ -389,7 +400,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive API documentation
 - User guide and troubleshooting documentation
 
-[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.35...HEAD
+[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.36...HEAD
+[1.0.36]: https://github.com/maurobedoya/gatewizard/compare/v1.0.35...v1.0.36
 [1.0.35]: https://github.com/maurobedoya/gatewizard/compare/v1.0.34...v1.0.35
 [1.0.34]: https://github.com/maurobedoya/gatewizard/compare/v1.0.33...v1.0.34
 [1.0.33]: https://github.com/maurobedoya/gatewizard/compare/v1.0.32...v1.0.33

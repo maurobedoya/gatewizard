@@ -31,7 +31,10 @@ If you want a desktop app, use **[gatewizard-gui](https://github.com/maurobedoya
 conda create -n gatewizard -c conda-forge python sqlite ambertools=24 parmed=4.3.0 openmm cudatoolkit -y
 conda activate gatewizard
 pip install "gatewizard[full]"
+pip install -r requirements-orientation.txt
 ```
+
+MemPrO is installed from the [MemPrO GitHub release](https://github.com/pstansfeld/MemPrO/releases) (`v0.1.0`).
 
 For optional extras without OpenMM (NAMD/GROMACS only):
 
@@ -84,7 +87,7 @@ Installed automatically:
 | OpenMM | Equilibration / MD (Python; use with conda `cudatoolkit` for GPU) |
 | MemPrO | Membrane orientation ([GitHub](https://github.com/pstansfeld/MemPrO)) |
 
-Install: `pip install "gatewizard[full]"`
+Install: `pip install "gatewizard[full]"` then `pip install -r requirements-orientation.txt` for MemPrO.
 
 ### Python — GUI backend · *[gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui)*
 

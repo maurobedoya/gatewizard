@@ -7,7 +7,7 @@ propka>=3.2.0
 Pillow>=9.0.0
 rdkit>=2023.3.1  # Or install via conda: conda install -c conda-forge rdkit
 psique>=1.2.1
-# mempro: install manually with: pip install git+https://github.com/pstansfeld/MemPrO.git
+# MemPrO (orientation): pip install -r requirements-orientation.txt
 
 # Note: For AmberTools and Parmed, use conda installation:
 # conda install -c conda-forge ambertools=24 parmed=4.3.0

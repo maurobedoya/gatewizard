@@ -137,7 +137,8 @@ class MemPrO:
         if not self.is_available():
             raise MemProError(
                 "mempro is not installed. "
-                "Install with: pip install git+https://github.com/pstansfeld/MemPrO.git"
+                "Install with: pip install -r requirements-orientation.txt "
+                "(or pip install mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.1.0)"
             )
 
         cmd = [self._mempro_cmd, "-f", str(pdb_path)]

@@ -1,0 +1,3 @@
+# MemPrO is not declared in pyproject.toml extras (PyPI forbids VCS deps in metadata).
+# Pin to the GitHub release tag — main branch is not used for reproducible installs.
+mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.1.0
