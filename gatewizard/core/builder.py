@@ -1182,7 +1182,7 @@ EOF
     """
 
         # Write and make executable
-        with open(script_path, "w", newline="\n") as f:
+        with open(script_path, "w", encoding="utf-8", newline="\n") as f:
             f.write(script_content)
         script_path.chmod(0o755)
 
