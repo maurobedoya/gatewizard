@@ -3,7 +3,6 @@
 import sys
 from importlib import metadata
 from pathlib import Path
-import tomllib
 from unittest.mock import patch
 
 import pytest
@@ -165,12 +164,20 @@ class TestGetOptionalDependenciesStatus:
 class TestPackagingMetadata:
     def test_optional_dependencies_do_not_use_direct_urls(self):
         pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
-        data = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
-        optional_deps = data["project"]["optional-dependencies"]
+        in_optional_dependencies = False
 
-        for deps in optional_deps.values():
-            for dep in deps:
-                assert " @ " not in dep
+        for line in pyproject_path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped == "[project.optional-dependencies]":
+                in_optional_dependencies = True
+                continue
+            if in_optional_dependencies and stripped.startswith("["):
+                break
+            if in_optional_dependencies and stripped.startswith('"'):
+                assert " @ " not in stripped, (
+                    f"Direct URL dependency found in optional dependencies: {stripped}. "
+                    "PyPI rejects package metadata containing direct URL dependencies."
+                )
 
 
 class TestExternalTools:
