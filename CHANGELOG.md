@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.39] - 2026-06-19
+
 ### Fixed
 
 - `subprocess_argv_for_script()` runs conda wrapper scripts via explicit interpreter argv, fixing `pdb4amber` ENOENT on macOS when the env path contains spaces (e.g. `Application Support`)
@@ -411,7 +413,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive API documentation
 - User guide and troubleshooting documentation
 
-[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.37...HEAD
+[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.39...HEAD
+[1.0.39]: https://github.com/maurobedoya/gatewizard/compare/v1.0.37...v1.0.39
 [1.0.37]: https://github.com/maurobedoya/gatewizard/compare/v1.0.36...v1.0.37
 [1.0.36]: https://github.com/maurobedoya/gatewizard/compare/v1.0.35...v1.0.36
 [1.0.35]: https://github.com/maurobedoya/gatewizard/compare/v1.0.34...v1.0.35
