@@ -40,6 +40,7 @@ from gatewizard.core.structure_manager import (
     StructureError,
     AA_NAMES,
     BACKBONE_NAMES,
+    assign_secondary_structure_map,
 )
 
 MINI_PDB = """\
@@ -117,6 +118,17 @@ class TestStructureManager:
     def test_get_secondary_structure_summary(self, viewer):
         ss = viewer.get_secondary_structure_summary()
         assert isinstance(ss, dict)
+
+    def test_assign_secondary_structure_map_falls_back_without_psique(
+        self, mini_pdb, monkeypatch
+    ):
+        import gatewizard.core.structure_manager as sm
+
+        monkeypatch.setattr(sm, "_assign_ss_psique", lambda _path: None)
+        ss_map = assign_secondary_structure_map(mini_pdb, method="auto")
+        assert isinstance(ss_map, dict)
+        assert ss_map
+        assert all(code in {"H", "E", "C", "G", "I", "T"} for code in ss_map.values())
 
     def test_select_by_criteria_all(self, viewer):
         idx = viewer.select_by_criteria("All")

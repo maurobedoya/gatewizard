@@ -689,16 +689,23 @@ def _assign_ss_psique(filepath: str) -> Optional[Dict]:
     Returns
     -------
     dict or None
-        SS mapping, or ``None`` if PSIQUE produced no SS records.
+        SS mapping, or ``None`` if PSIQUE is unavailable or produced no SS records.
     """
     try:
-        ss_map = {}
+        ss_map: Dict[Tuple[str, int], str] = {}
         for ss in psique.assign(filepath):
             for i in range(ss.start.number, ss.end.number + 1):
                 ss_map[(ss.start.chain, i)] = ss.kind.value
-        return ss_map
-    except RuntimeError:
+        return ss_map or None
+    except Exception as exc:
+        logger.warning("PSIQUE secondary structure assignment failed: %s", exc)
         return None
+
+
+def _apply_ss_map(struct: ProteinStructure, ss_map: Dict[Tuple[str, int], str]):
+    """Write an SS mapping onto *struct* residues (default ``'C'``)."""
+    for r in struct.residues:
+        r.ss = ss_map.get((r.chain_id, r.seq_id), "C")
 
 
 def _assign_secondary_structure(
@@ -712,15 +719,63 @@ def _assign_secondary_structure(
     if filepath:
         ss_map = _assign_ss_psique(filepath)
         if ss_map:
-            for r in struct.residues:
-                r.ss = ss_map.get((r.chain_id, r.seq_id), "C")
+            _apply_ss_map(struct, ss_map)
             return
         ss_map = _read_ss_from_pdb_records(filepath)
         if ss_map:
-            for r in struct.residues:
-                r.ss = ss_map.get((r.chain_id, r.seq_id), "C")
+            _apply_ss_map(struct, ss_map)
             return
     struct.assign_secondary_structure_heuristic()
+
+
+def assign_secondary_structure_map(
+    filepath: str,
+    method: str = "auto",
+) -> Dict[Tuple[str, int], str]:
+    """Assign secondary structure and return ``{(chain_id, resid): ss_code}``.
+
+    Parameters
+    ----------
+    filepath : str
+        Path to a coordinate file readable by MDAnalysis (typically PDB).
+    method : str
+        Assignment method. ``'auto'`` tries PSIQUE, then PDB HELIX/SHEET records,
+        then the CA-angle heuristic. Other values match
+        :meth:`StructureManager.assign_secondary_structure`.
+
+    Returns
+    -------
+    dict
+        Mapping from ``(chain_id, resid)`` to SS code (``'H'``, ``'E'``, ``'C'``, …).
+    """
+    filepath = str(filepath)
+    method = method.lower()
+    struct = _load_structure_from_mdanalysis(filepath, build_bonds=False)
+    if method == "auto":
+        _assign_secondary_structure(struct, filepath=filepath)
+        return {(r.chain_id, r.seq_id): r.ss for r in struct.residues}
+
+    if method == "psique":
+        ss_map = _assign_ss_psique(filepath)
+        if not ss_map:
+            raise StructureError(
+                "PSIQUE produced no secondary structure assignments "
+                "for this structure (too few residues?)."
+            )
+        _apply_ss_map(struct, ss_map)
+    elif method == "heuristic":
+        struct.assign_secondary_structure_heuristic()
+    elif method == "pdb_records":
+        ss_map = _read_ss_from_pdb_records(filepath)
+        if not ss_map:
+            raise StructureError("No HELIX/SHEET records found in PDB file")
+        _apply_ss_map(struct, ss_map)
+    else:
+        raise StructureError(
+            f"Unknown method '{method}'. "
+            "Use 'auto', 'psique', 'heuristic', or 'pdb_records'."
+        )
+    return {(r.chain_id, r.seq_id): r.ss for r in struct.residues}
 
 
 # ---------------------------------------------------------------------------
@@ -728,8 +783,10 @@ def _assign_secondary_structure(
 # ---------------------------------------------------------------------------
 
 
-def _parse_with_mdanalysis(filepath: str) -> ProteinStructure:
-    """Parse a PDB file using MDAnalysis."""
+def _load_structure_from_mdanalysis(
+    filepath: str, *, build_bonds: bool = True
+) -> ProteinStructure:
+    """Parse a PDB (or MDAnalysis-readable) file into a ProteinStructure."""
     import MDAnalysis as mda
     import warnings
 
@@ -803,7 +860,14 @@ def _parse_with_mdanalysis(filepath: str) -> ProteinStructure:
         cur_res.add_atom(atom)
 
     struct.source_file = filepath
-    struct.build_bonds()
+    if build_bonds:
+        struct.build_bonds()
+    return struct
+
+
+def _parse_with_mdanalysis(filepath: str) -> ProteinStructure:
+    """Parse a PDB file using MDAnalysis."""
+    struct = _load_structure_from_mdanalysis(filepath, build_bonds=True)
     _assign_secondary_structure(struct, filepath=filepath)
     return struct
 
@@ -1126,8 +1190,7 @@ class StructureManager:
                     "PSIQUE produced no secondary structure assignments "
                     "for this structure (too few residues?)."
                 )
-            for r in self.structure.residues:
-                r.ss = ss_map.get((r.chain_id, r.seq_id), "C")
+            _apply_ss_map(self.structure, ss_map)
         elif method == "heuristic":
             self.structure.assign_secondary_structure_heuristic()
         elif method == "pdb_records":
@@ -1136,8 +1199,7 @@ class StructureManager:
             ss_map = _read_ss_from_pdb_records(self._filepath)
             if not ss_map:
                 raise StructureError("No HELIX/SHEET records found in PDB file")
-            for r in self.structure.residues:
-                r.ss = ss_map.get((r.chain_id, r.seq_id), "C")
+            _apply_ss_map(self.structure, ss_map)
         else:
             raise StructureError(
                 f"Unknown method '{method}'. "
