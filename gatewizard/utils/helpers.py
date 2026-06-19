@@ -532,6 +532,19 @@ def create_directory_robust(
     # If we get here, all retries failed
 
 
+def resolve_conda_executable(name: str) -> str:
+    """Resolve a command under CONDA_PREFIX/bin, then PATH."""
+    conda_prefix = os.environ.get("CONDA_PREFIX", "")
+    if conda_prefix:
+        candidate = os.path.join(conda_prefix, "bin", name)
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    found = shutil.which(name)
+    if found:
+        return found
+    return name
+
+
 def subprocess_argv_for_script(executable: str, args: Sequence[str]) -> list[str]:
     """
     Build argv for subprocess when *executable* may be a script.
@@ -539,9 +552,23 @@ def subprocess_argv_for_script(executable: str, args: Sequence[str]) -> list[str
     macOS kernel shebang handling breaks when the script or interpreter path
     contains spaces (e.g. conda env under ``Application Support``). Invoking
     ``[interpreter, script, *args]`` avoids that failure mode.
+
+    When CONDA_PREFIX is set, scripts in that env's ``bin/`` are run with the
+    env's Python — not the shebang — so relocated envs with stale paths still work.
     """
     if not executable or not os.path.isfile(executable):
         return [executable, *args]
+
+    exec_abs = os.path.abspath(executable)
+    conda_prefix = os.environ.get("CONDA_PREFIX", "")
+    if conda_prefix:
+        conda_bin = os.path.join(os.path.abspath(conda_prefix), "bin")
+        if exec_abs.startswith(conda_bin + os.sep):
+            for py_name in ("python3", "python"):
+                py = os.path.join(conda_bin, py_name)
+                if os.path.isfile(py) and os.access(py, os.X_OK):
+                    return [py, exec_abs, *args]
+
     try:
         with open(executable, "rb") as fh:
             first = fh.readline()
@@ -559,8 +586,14 @@ def subprocess_argv_for_script(executable: str, args: Sequence[str]) -> list[str
         if resolved:
             return [resolved, executable, *args]
         return [executable, *args]
-    if os.path.isfile(interpreter):
+    if os.path.isfile(interpreter) and os.access(interpreter, os.X_OK):
         return [interpreter, executable, *args]
+    if conda_prefix:
+        conda_bin = os.path.join(os.path.abspath(conda_prefix), "bin")
+        for py_name in ("python3", "python"):
+            py = os.path.join(conda_bin, py_name)
+            if os.path.isfile(py) and os.access(py, os.X_OK):
+                return [py, exec_abs, *args]
     return [executable, *args]
 
 

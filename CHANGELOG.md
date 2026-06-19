@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `resolve_conda_executable()` and improved `subprocess_argv_for_script()` run conda env scripts with the active env's Python, fixing PropKa and pdb4amber after the GUI runtime folder move left stale shebang paths
+
 ## [1.0.39] - 2026-06-19
 
 ### Fixed

@@ -17,7 +17,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
 
 from gatewizard.utils.logger import get_logger
-from gatewizard.utils.helpers import get_clean_env, subprocess_argv_for_script
+from gatewizard.utils.helpers import get_clean_env, resolve_conda_executable, subprocess_argv_for_script
 
 logger = get_logger(__name__)
 
@@ -52,18 +52,13 @@ class PreparationError(Exception):
 
 def _resolve_pdb4amber_executable() -> str:
     """Return pdb4amber path (CONDA_PREFIX/bin first, then PATH)."""
-    conda_prefix = os.environ.get("CONDA_PREFIX", "")
-    if conda_prefix:
-        candidate = os.path.join(conda_prefix, "bin", "pdb4amber")
-        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
-            return candidate
-    found = shutil.which("pdb4amber")
-    if found:
-        return found
-    raise PreparationError(
-        "pdb4amber not found. Install AmberTools (e.g. conda install ambertools) "
-        "or ensure CONDA_PREFIX/bin is on PATH."
-    )
+    exe = resolve_conda_executable("pdb4amber")
+    if not os.path.isfile(exe):
+        raise PreparationError(
+            "pdb4amber not found. Install AmberTools (e.g. conda install ambertools) "
+            "or ensure CONDA_PREFIX/bin is on PATH."
+        )
+    return exe
 
 
 class PreparationManager:
@@ -130,7 +125,8 @@ class PreparationManager:
         pdb_for_propka = propka_pdb if propka_pdb else str(pdb_path)
 
         # Build command to execute Propka with absolute path
-        command = [f"propka{self.propka_version}", pdb_for_propka]
+        propka_exe = resolve_conda_executable(f"propka{self.propka_version}")
+        command = subprocess_argv_for_script(propka_exe, [pdb_for_propka])
 
         try:
             # Execute the command in the target output directory
