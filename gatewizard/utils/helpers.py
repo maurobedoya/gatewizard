@@ -611,6 +611,8 @@ def get_clean_env() -> dict:
     """
     env = os.environ.copy()
     conda_prefix = env.get("CONDA_PREFIX", "")
+    if conda_prefix and not env.get("AMBERHOME"):
+        env["AMBERHOME"] = conda_prefix
     ld_path = env.get("LD_LIBRARY_PATH", "")
 
     if not ld_path:
@@ -641,6 +643,11 @@ def get_clean_env_shell_snippet() -> str:
     a generated shell script.  Insert this **before** any AmberTools command.
     """
     return r"""
+# --- AmberTools / conda env (tleap, packmol-memgen, pdb4amber) ---
+if [ -n "$CONDA_PREFIX" ]; then
+    export AMBERHOME="$CONDA_PREFIX"
+    export PATH="$CONDA_PREFIX/bin:$PATH"
+fi
 # --- Sanitise LD_LIBRARY_PATH (drop foreign conda envs) ---
 if [ -n "$CONDA_PREFIX" ] && [ -n "$LD_LIBRARY_PATH" ]; then
     _clean_ldp=""
@@ -653,6 +660,3 @@ if [ -n "$CONDA_PREFIX" ] && [ -n "$LD_LIBRARY_PATH" ]; then
     export LD_LIBRARY_PATH="$_clean_ldp"
 fi
 """
-    raise OSError(
-        f"Failed to create directory after {max_retries + 1} attempts: {directory_path}"
-    )

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Preparation shell script exports `AMBERHOME` and `CONDA_PREFIX/bin` on `PATH` for tleap on macOS
+- Embed absolute `loadPDB` path in `leap_parametrize.in` at generation time (macOS `sed -i` incompatibility left `PREPARED_PDB_PLACEHOLDER` unreplaced)
+- Run tleap via `subprocess_argv_for_script()` with `stdin=DEVNULL` to avoid non-interactive `tl_getline` failures
 - `resolve_conda_executable()` and improved `subprocess_argv_for_script()` run conda env scripts with the active env's Python, fixing PropKa and pdb4amber after the GUI runtime folder move left stale shebang paths
 
 ## [1.0.39] - 2026-06-19

@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 
 from gatewizard.utils.logger import get_logger
-from gatewizard.utils.helpers import get_clean_env, get_clean_env_shell_snippet, subprocess_argv_for_script
+from gatewizard.utils.helpers import get_clean_env, get_clean_env_shell_snippet, resolve_conda_executable, subprocess_argv_for_script
 from gatewizard.core.preparation import _resolve_pdb4amber_executable
 from gatewizard.tools.force_fields import ForceFieldManager
 from gatewizard.tools.validators import SystemValidator
@@ -644,6 +644,7 @@ class Builder:
         """Create bash script for execution."""
         script_path = job_dir / "run_preparation.sh"
         cmd_str = " ".join(f'"{c}"' if " " in c else c for c in cmd)
+        prepared_pdb_for_leap = (job_dir / "system_for_tleap.pdb").resolve()
 
         # Add workflow-specific notes
         workflow_note = ""
@@ -1085,14 +1086,14 @@ source $protein_leaprc
 # Load force field for lipids $lipid_ff
 source $lipid_leaprc
 
-# Load water model ${{water_model^^}}
+# Load water model {config.get('water_model', 'tip3p').upper()}
 source $water_leaprc
 
 {tleap_flexible_water_block}
 {self._generate_bash_ligand_tleap_lines(config)}
 
 # Load PDB file prepared by pdb4amber (protein + membrane + water + neutralized)
-system = loadPDB PREPARED_PDB_PLACEHOLDER
+system = loadPDB "{prepared_pdb_for_leap}"
 
 # Check total system charge
 charge system
@@ -1110,9 +1111,6 @@ savePDB system system.pdb
 # Exit
 quit
 EOF
-                
-                # Replace placeholder with actual file path
-                sed -i "s|PREPARED_PDB_PLACEHOLDER|$(pwd)/$prepared_pdb|g" leap_parametrize.in
                 
                 # Execute tleap
                 if tleap -f leap_parametrize.in 2>&1 | tee -a logs/parametrization.log; then
@@ -1341,13 +1339,15 @@ EOF
             logger.info(f"Created tleap input file: {leap_input_file}")
 
             # Execute tleap
-            cmd = ["tleap", "-f", leap_input_file]
+            tleap_exe = resolve_conda_executable("tleap")
+            cmd = subprocess_argv_for_script(tleap_exe, ["-f", leap_input_file])
 
             result = subprocess.run(
                 cmd,
                 check=True,
                 capture_output=True,
                 text=True,
+                stdin=subprocess.DEVNULL,
                 env=get_clean_env(),
             )
 
