@@ -50,6 +50,22 @@ class PreparationError(Exception):
     pass
 
 
+def _resolve_pdb4amber_executable() -> str:
+    """Return pdb4amber path (CONDA_PREFIX/bin first, then PATH)."""
+    conda_prefix = os.environ.get("CONDA_PREFIX", "")
+    if conda_prefix:
+        candidate = os.path.join(conda_prefix, "bin", "pdb4amber")
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    found = shutil.which("pdb4amber")
+    if found:
+        return found
+    raise PreparationError(
+        "pdb4amber not found. Install AmberTools (e.g. conda install ambertools) "
+        "or ensure CONDA_PREFIX/bin is on PATH."
+    )
+
+
 class PreparationManager:
     """
     Class for managing protein preparation, PROPKA analysis and protonation state predictions.
@@ -791,7 +807,8 @@ class PreparationManager:
             raise FileNotFoundError(f"Input PDB file not found: {input_pdb}")
 
         # Prepare pdb4amber command
-        cmd = ["pdb4amber", "-i", input_pdb, "-o", output_pdb]
+        pdb4amber_exe = _resolve_pdb4amber_executable()
+        cmd = [pdb4amber_exe, "-i", input_pdb, "-o", output_pdb]
 
         # Add optional arguments
         if pdb4amber_options:
