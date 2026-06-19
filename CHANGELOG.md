@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `subprocess_argv_for_script()` runs conda wrapper scripts via explicit interpreter argv, fixing `pdb4amber` ENOENT on macOS when the env path contains spaces (e.g. `Application Support`)
+- `run_pdb4amber_with_cap_fix()` and builder `pdb4amber` step use the new subprocess argv helper
+
 ## [1.0.37] - 2026-06-19
 
 ### Fixed

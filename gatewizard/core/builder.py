@@ -18,7 +18,8 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 
 from gatewizard.utils.logger import get_logger
-from gatewizard.utils.helpers import get_clean_env, get_clean_env_shell_snippet
+from gatewizard.utils.helpers import get_clean_env, get_clean_env_shell_snippet, subprocess_argv_for_script
+from gatewizard.core.preparation import _resolve_pdb4amber_executable
 from gatewizard.tools.force_fields import ForceFieldManager
 from gatewizard.tools.validators import SystemValidator
 from gatewizard.tools.ligand_parametrization import (
@@ -1292,7 +1293,10 @@ EOF
             logger.info(f"Running pdb4amber on {input_pdb}")
 
             # Build pdb4amber command
-            cmd = ["pdb4amber", "-i", input_pdb, "-o", output_pdb]
+            pdb4amber_exe = _resolve_pdb4amber_executable()
+            cmd = subprocess_argv_for_script(
+                pdb4amber_exe, ["-i", input_pdb, "-o", output_pdb]
+            )
 
             # Execute pdb4amber
             result = subprocess.run(

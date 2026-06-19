@@ -17,7 +17,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
 
 from gatewizard.utils.logger import get_logger
-from gatewizard.utils.helpers import get_clean_env
+from gatewizard.utils.helpers import get_clean_env, subprocess_argv_for_script
 
 logger = get_logger(__name__)
 
@@ -808,7 +808,9 @@ class PreparationManager:
 
         # Prepare pdb4amber command
         pdb4amber_exe = _resolve_pdb4amber_executable()
-        cmd = [pdb4amber_exe, "-i", input_pdb, "-o", output_pdb]
+        cmd = subprocess_argv_for_script(
+            pdb4amber_exe, ["-i", input_pdb, "-o", output_pdb]
+        )
 
         # Add optional arguments
         if pdb4amber_options:
@@ -1001,7 +1003,9 @@ def run_pdb4amber(
     """
     logger.info(f"Running pdb4amber on {input_pdb}")
 
-    command = [pdb4amber_path, "-i", input_pdb, "-o", output_pdb]
+    command = subprocess_argv_for_script(
+        pdb4amber_path, ["-i", input_pdb, "-o", output_pdb]
+    )
 
     try:
         # Set environment variables if needed

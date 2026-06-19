@@ -13,8 +13,9 @@ import re
 import os
 import sys
 import time
+import shutil
 from pathlib import Path
-from typing import Union, Tuple, Optional, List
+from typing import Union, Tuple, Optional, List, Sequence
 from datetime import datetime, timedelta
 
 
@@ -529,6 +530,38 @@ def create_directory_robust(
                 raise
 
     # If we get here, all retries failed
+
+
+def subprocess_argv_for_script(executable: str, args: Sequence[str]) -> list[str]:
+    """
+    Build argv for subprocess when *executable* may be a script.
+
+    macOS kernel shebang handling breaks when the script or interpreter path
+    contains spaces (e.g. conda env under ``Application Support``). Invoking
+    ``[interpreter, script, *args]`` avoids that failure mode.
+    """
+    if not executable or not os.path.isfile(executable):
+        return [executable, *args]
+    try:
+        with open(executable, "rb") as fh:
+            first = fh.readline()
+    except OSError:
+        return [executable, *args]
+    if not first.startswith(b"#!"):
+        return [executable, *args]
+    shebang = first[2:].strip().decode("utf-8", "replace")
+    if not shebang:
+        return [executable, *args]
+    parts = shebang.split()
+    interpreter = parts[0]
+    if os.path.basename(interpreter) == "env" and len(parts) > 1:
+        resolved = shutil.which(parts[1])
+        if resolved:
+            return [resolved, executable, *args]
+        return [executable, *args]
+    if os.path.isfile(interpreter):
+        return [interpreter, executable, *args]
+    return [executable, *args]
 
 
 def get_clean_env() -> dict:
