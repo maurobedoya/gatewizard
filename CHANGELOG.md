@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `compute_orientation_transform()` and `apply_orientation_transform()` to apply MemPro orientations to a full structure via rigid-body fit
+- `StructureManager.apply_mempro_orientation()` for the same workflow on a loaded structure
+
 ### Fixed
 
+- MemPro Apply in Visualize transforms the loaded structure instead of replacing it with MemPro output, preserving ligands, water, and other molecules
 - Secondary structure assignment still tries PSIQUE first; if PSIQUE fails or returns no results (e.g. on Windows), the API falls through to PDB HELIX/SHEET records and then the CA-angle heuristic instead of leaving SS unassigned
 - Export `assign_secondary_structure_map()` for callers that need per-residue SS without StructureManager
 - Preparation shell script exports `AMBERHOME` and `CONDA_PREFIX/bin` on `PATH` for tleap on macOS

@@ -1607,6 +1607,45 @@ class StructureManager:
         )
         return count
 
+    def apply_mempro_orientation(self, oriented_pdb: str) -> int:
+        """Apply a MemPrO rigid-body orientation to the loaded structure.
+
+        The oriented PDB supplies the target protein pose (plus MemPrO dummy
+        atoms).  All atoms in the currently loaded structure — protein, lipids,
+        ligands, water, etc. — receive the same transform.
+
+        Parameters
+        ----------
+        oriented_pdb : str
+            Path to a MemPro ``oriented_rank_*.pdb`` file.
+
+        Returns
+        -------
+        int
+            Number of atoms transformed.
+        """
+        from gatewizard.core.mempro import compute_orientation_transform
+
+        self._require_structure()
+        if not self._filepath:
+            raise StructureError(
+                "No source PDB path available — cannot match atoms for MemPro orientation"
+            )
+        oriented_path = str(Path(oriented_pdb).resolve())
+        if not Path(oriented_path).is_file():
+            raise StructureError(f"Oriented PDB not found: {oriented_path}")
+
+        R, t = compute_orientation_transform(self._filepath, oriented_path)
+        atoms = self.structure.atoms
+        for atom in atoms:
+            atom.coord = R @ atom.coord + t
+        self.structure.build_bonds()
+        self._reassign_ss()
+        logger.info(
+            f"Applied MemPro orientation from {oriented_path} to {len(atoms)} atoms"
+        )
+        return len(atoms)
+
     # -- coordinate transformations ------------------------------------
 
     def _reassign_ss(self):

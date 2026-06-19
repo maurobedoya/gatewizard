@@ -15,11 +15,15 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
 
 from gatewizard.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+_MEMPRO_DUMMY_RESNAMES = frozenset({"DUM"})
 
 
 class MemProError(Exception):
@@ -325,3 +329,121 @@ class MemPrO:
         if extra_args:
             cmd.extend(extra_args)
         return cmd
+
+
+def _is_mempro_dummy_residue(res_name: str) -> bool:
+    name = (res_name or "").strip().upper()
+    return name in _MEMPRO_DUMMY_RESNAMES or name.startswith("DUM")
+
+
+def _atom_match_key(chain_id: str, res_id: int, atom_name: str) -> Tuple[str, int, str]:
+    return (str(chain_id).strip() or "A", int(res_id), str(atom_name).strip())
+
+
+def _kabsch_fit(
+    mobile: np.ndarray, target: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Return ``R, t`` so that ``target ≈ R @ mobile + t`` (column vectors)."""
+    mobile = np.asarray(mobile, dtype=np.float64)
+    target = np.asarray(target, dtype=np.float64)
+    if mobile.shape != target.shape or mobile.shape[0] < 3:
+        raise MemProError(
+            f"Need at least 3 matched atom pairs for orientation fit, got {mobile.shape[0]}"
+        )
+
+    mobile_centroid = mobile.mean(axis=0)
+    target_centroid = target.mean(axis=0)
+    mobile_centered = mobile - mobile_centroid
+    target_centered = target - target_centroid
+
+    H = mobile_centered.T @ target_centered
+    U, _, Vt = np.linalg.svd(H)
+    R = Vt.T @ U.T
+    if np.linalg.det(R) < 0:
+        Vt = Vt.copy()
+        Vt[-1, :] *= -1
+        R = Vt.T @ U.T
+    t = target_centroid - R @ mobile_centroid
+    return R, t
+
+
+def compute_orientation_transform(
+    source_pdb: str, oriented_pdb: str
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Compute the rigid transform that maps *source_pdb* protein onto *oriented_pdb*.
+
+    MemPrO outputs oriented protein coordinates (plus dummy atoms).  Matching uses
+    standard amino-acid atoms present in both files, keyed by
+    ``(chain_id, resid, atom_name)``.
+
+    Returns
+    -------
+    R, t
+        Rotation matrix and translation vector such that
+        ``oriented_coord ≈ R @ source_coord + t``.
+    """
+    from gatewizard.core.structure_manager import (
+        AA_NAMES,
+        _load_structure_from_mdanalysis,
+    )
+
+    source_path = str(Path(source_pdb).resolve())
+    oriented_path = str(Path(oriented_pdb).resolve())
+    if not Path(source_path).is_file():
+        raise FileNotFoundError(f"Source PDB not found: {source_path}")
+    if not Path(oriented_path).is_file():
+        raise FileNotFoundError(f"Oriented PDB not found: {oriented_path}")
+
+    source_struct = _load_structure_from_mdanalysis(source_path, build_bonds=False)
+    oriented_struct = _load_structure_from_mdanalysis(oriented_path, build_bonds=False)
+
+    source_coords: Dict[Tuple[str, int, str], np.ndarray] = {}
+    for atom in source_struct.atoms:
+        if atom.res_name not in AA_NAMES:
+            continue
+        source_coords[_atom_match_key(atom.chain_id, atom.res_id, atom.name)] = atom.coord
+
+    mobile_pts: List[np.ndarray] = []
+    target_pts: List[np.ndarray] = []
+    for atom in oriented_struct.atoms:
+        if _is_mempro_dummy_residue(atom.res_name):
+            continue
+        if atom.res_name not in AA_NAMES:
+            continue
+        key = _atom_match_key(atom.chain_id, atom.res_id, atom.name)
+        if key in source_coords:
+            mobile_pts.append(source_coords[key])
+            target_pts.append(atom.coord)
+
+    if len(mobile_pts) < 3:
+        raise MemProError(
+            "Could not match enough protein atoms between the loaded structure and "
+            f"the MemPro oriented PDB (matched {len(mobile_pts)} pairs)."
+        )
+
+    return _kabsch_fit(np.array(mobile_pts), np.array(target_pts))
+
+
+def apply_orientation_transform(
+    source_pdb: str,
+    oriented_pdb: str,
+    output_pdb: str,
+) -> str:
+    """Apply a MemPro orientation to the full *source_pdb* and write *output_pdb*."""
+    from gatewizard.core.structure_manager import _load_structure_from_mdanalysis
+
+    R, t = compute_orientation_transform(source_pdb, oriented_pdb)
+    struct = _load_structure_from_mdanalysis(str(Path(source_pdb).resolve()), build_bonds=True)
+    for atom in struct.atoms:
+        atom.coord = R @ atom.coord + t
+    struct.build_bonds()
+    out_path = str(Path(output_pdb).resolve())
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    struct.write_pdb(out_path)
+    logger.info(
+        "Applied MemPro orientation transform to %s using %s -> %s",
+        source_pdb,
+        oriented_pdb,
+        out_path,
+    )
+    return out_path

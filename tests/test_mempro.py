@@ -36,7 +36,13 @@ import importlib.util
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from gatewizard.core.mempro import MemPrO, OrientationResult, MemProError
+from gatewizard.core.mempro import (
+    MemPrO,
+    OrientationResult,
+    MemProError,
+    apply_orientation_transform,
+    compute_orientation_transform,
+)
 
 # Sample orientation.txt content for testing
 SAMPLE_ORIENTATION_TXT = """\
@@ -53,6 +59,19 @@ ATOM      1  N   ALA A   1       1.000   2.000   3.000  1.00  0.00           N
 ATOM      2  CA  ALA A   1       2.000   2.000   3.000  1.00  0.00           C
 ATOM      3  C   ALA A   1       3.000   2.000   3.000  1.00  0.00           C
 ATOM      4  O   ALA A   1       3.500   3.000   3.000  1.00  0.00           O
+END
+"""
+
+SYSTEM_PDB = """\
+ATOM      1  N   ALA A   1       1.000   2.000   3.000  1.00  0.00           N
+ATOM      2  CA  ALA A   1       2.000   2.000   3.000  1.00  0.00           C
+ATOM      3  C   ALA A   1       3.000   2.000   3.000  1.00  0.00           C
+ATOM      4  O   ALA A   1       3.500   3.000   3.000  1.00  0.00           O
+ATOM      5  N   GLY A   2       4.000   1.000   3.000  1.00  0.00           N
+ATOM      6  CA  GLY A   2       5.000   1.000   3.000  1.00  0.00           C
+ATOM      7  C   GLY A   2       6.000   1.000   3.000  1.00  0.00           C
+ATOM      8  O   GLY A   2       6.500   2.000   3.000  1.00  0.00           O
+HETATM    9  O   HOH A 100      20.000  20.000  20.000  1.00  0.00           O
 END
 """
 
@@ -197,6 +216,58 @@ class TestMemPrO:
         results = MemPrO.parse_results(orient_dir)
         ranks = [r.rank for r in results]
         assert ranks == sorted(ranks)
+
+
+class TestMemProOrientationTransform:
+    def test_apply_orientation_transform_preserves_ligands_and_water(self, tmp_path):
+        import numpy as np
+        from gatewizard.core.structure_manager import _load_structure_from_mdanalysis
+
+        source = tmp_path / "system.pdb"
+        source.write_text(SYSTEM_PDB)
+
+        R = np.array([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
+        t = np.array([10.0, -5.0, 2.0])
+        src_struct = _load_structure_from_mdanalysis(str(source), build_bonds=False)
+        oriented_lines = []
+        serial = 1
+        for atom in src_struct.atoms:
+            if atom.res_name not in {"ALA", "GLY"}:
+                continue
+            coord = R @ atom.coord + t
+            oriented_lines.append(
+                f"ATOM  {serial:5d} {atom.name:<4s} {atom.res_name:>3s} "
+                f"{atom.chain_id:1s}{atom.res_id:4d}    "
+                f"{coord[0]:8.3f}{coord[1]:8.3f}{coord[2]:8.3f}"
+                f"  1.00  0.00          {atom.element:>2s}\n"
+            )
+            serial += 1
+        oriented_lines.append(
+            "HETATM  99  CA  DUM X   1       0.000   0.000   0.000  1.00  0.00           C\n"
+        )
+        oriented_lines.append("END\n")
+        oriented = tmp_path / "oriented.pdb"
+        oriented.write_text("".join(oriented_lines))
+
+        out = tmp_path / "oriented_system.pdb"
+        apply_orientation_transform(str(source), str(oriented), str(out))
+        out_struct = _load_structure_from_mdanalysis(str(out), build_bonds=False)
+
+        water = next(a for a in out_struct.atoms if a.res_name == "HOH")
+        expected_water = R @ np.array([20.0, 20.0, 20.0]) + t
+        assert np.allclose(water.coord, expected_water, atol=1e-3)
+        assert any(a.res_name == "DUM" for a in out_struct.atoms) is False
+        assert len(out_struct.atoms) == 9
+
+    def test_compute_orientation_transform_requires_matches(self, tmp_path):
+        source = tmp_path / "source.pdb"
+        source.write_text(SYSTEM_PDB)
+        oriented = tmp_path / "oriented.pdb"
+        oriented.write_text(
+            "ATOM      1  CA  ALA B   9       9.000   9.000   9.000  1.00  0.00           C\nEND\n"
+        )
+        with pytest.raises(MemProError):
+            compute_orientation_transform(str(source), str(oriented))
 
 
 # ============================================================================
