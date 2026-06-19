@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.37] - 2026-06-19
+
+### Fixed
+
+- `run_pdb4amber_with_cap_fix()` resolves `pdb4amber` from `CONDA_PREFIX/bin` before subprocess execution, fixing Prepare failures in packaged desktop apps (e.g. GateWizard GUI on macOS) where `PATH` is minimal and the bare `pdb4amber` command was not found
+
 ## [1.0.36] - 2026-06-08
 
 ### Fixed
@@ -400,7 +406,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive API documentation
 - User guide and troubleshooting documentation
 
-[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.36...HEAD
+[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.37...HEAD
+[1.0.37]: https://github.com/maurobedoya/gatewizard/compare/v1.0.36...v1.0.37
 [1.0.36]: https://github.com/maurobedoya/gatewizard/compare/v1.0.35...v1.0.36
 [1.0.35]: https://github.com/maurobedoya/gatewizard/compare/v1.0.34...v1.0.35
 [1.0.34]: https://github.com/maurobedoya/gatewizard/compare/v1.0.33...v1.0.34

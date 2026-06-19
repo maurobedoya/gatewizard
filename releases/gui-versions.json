@@ -1,10 +1,10 @@
 {
   "schema": 1,
-  "released_at": "2026-06-08",
+  "released_at": "2026-06-19",
   "gatewizard": {
-    "latest": "1.0.36",
-    "min_for_gui": "1.0.36",
-    "install": "gatewizard[full] @ git+https://github.com/maurobedoya/gatewizard.git@v1.0.36"
+    "latest": "1.0.37",
+    "min_for_gui": "1.0.37",
+    "install": "gatewizard[full]>=1.0.37"
   },
   "mempro": {
     "latest": "0.1.0",
@@ -13,7 +13,7 @@
   },
   "gui": {
     "latest": "1.0.4",
-    "min_gatewizard": "1.0.36",
+    "min_gatewizard": "1.0.37",
     "release_page": "https://github.com/franciscoadasme/gatewizard-gui/releases/tag/v1.0.4",
     "downloads": {
       "linux_appimage": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.4/gatewizard-gui-1.0.4-linux-x86_64.AppImage",
