@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.40] - 2026-06-19
+
 ### Added
 
 - `compute_orientation_transform()` and `apply_orientation_transform()` to apply MemPro orientations to a full structure via rigid-body fit
@@ -14,7 +16,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- MemPro Apply in Visualize transforms the loaded structure instead of replacing it with MemPro output, preserving ligands, water, and other molecules
 - Secondary structure assignment still tries PSIQUE first; if PSIQUE fails or returns no results (e.g. on Windows), the API falls through to PDB HELIX/SHEET records and then the CA-angle heuristic instead of leaving SS unassigned
 - Export `assign_secondary_structure_map()` for callers that need per-residue SS without StructureManager
 - Preparation shell script exports `AMBERHOME` and `CONDA_PREFIX/bin` on `PATH` for tleap on macOS
@@ -428,7 +429,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive API documentation
 - User guide and troubleshooting documentation
 
-[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.39...HEAD
+[Unreleased]: https://github.com/maurobedoya/gatewizard/compare/v1.0.40...HEAD
+[1.0.40]: https://github.com/maurobedoya/gatewizard/compare/v1.0.39...v1.0.40
 [1.0.39]: https://github.com/maurobedoya/gatewizard/compare/v1.0.37...v1.0.39
 [1.0.37]: https://github.com/maurobedoya/gatewizard/compare/v1.0.36...v1.0.37
 [1.0.36]: https://github.com/maurobedoya/gatewizard/compare/v1.0.35...v1.0.36
