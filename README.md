@@ -11,9 +11,9 @@ Python library for membrane protein preparation, system building, equilibration 
 
 **This repository is the API only.** It does not include a graphical interface.
 
-If you want a desktop app, use **[gatewizard-gui](https://github.com/maurobedoya/gatewizard-gui)**, a separate project that calls this library. You can use the API without the GUI, and the GUI without cloning this repo (it installs the API via pip).
+If you want a desktop app, use **[gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui)**, a separate project that calls this library. You can use the API without the GUI, and the GUI without cloning this repo (it installs the API via pip).
 
-📖 [Documentation](https://maurobedoya.github.io/gatewizard/)
+📖 [Documentation](https://maurobedoya.github.io/gatewizard/) · 💬 [Discussions](https://github.com/maurobedoya/gatewizard/discussions) (API + GUI community forum)
 
 <br clear="left" />
 
@@ -144,4 +144,15 @@ python -c "import openmm; print([openmm.Platform.getPlatform(i).getName() for i 
 ## Desktop GUI
 
 **[gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui)** — Electron app for the same workflow with a visual interface. It manages its own Python runtime and can update the API from the app.
+
+## Community and support
+
+| Need | Where |
+|------|--------|
+| Questions, workflows, methodology | [Discussions](https://github.com/maurobedoya/gatewizard/discussions) — central forum for **API and GUI** (use labels like `api`, `gui`, `api:installation`, `gui:installation`) |
+| API bug or feature | [Issues](https://github.com/maurobedoya/gatewizard/issues/new/choose) in this repo |
+| GUI bug or feature | [Issues](https://github.com/franciscoadasme/gatewizard-gui/issues/new/choose) in gatewizard-gui |
+| Docs and troubleshooting | [Documentation](https://maurobedoya.github.io/gatewizard/) |
+
+New to the project? Read the [welcome post](https://github.com/maurobedoya/gatewizard/discussions/36) and say hello in the comments.
 
