@@ -87,7 +87,8 @@ If you need additional help:
 
 1. Check the [Troubleshooting Guide](../troubleshooting.md)
 2. Review the [User Guide](../user-guide.md) for practical examples
-3. See complete workflow examples in the `examples/` directory
+3. Ask in [GitHub Discussions](https://github.com/maurobedoya/gatewizard/discussions) or report bugs via [issues](https://github.com/maurobedoya/gatewizard/issues/new/choose)
+4. See complete workflow examples in the `tests/` example directories
 
 ## Module Organization
 

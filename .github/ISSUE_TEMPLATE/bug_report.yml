@@ -1,0 +1,99 @@
+name: Bug report
+description: Report a bug in the Python API, docs, or examples
+title: "[Bug]: "
+labels: ["bug", "api"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. For **usage questions** or workflow advice, use [Discussions](https://github.com/maurobedoya/gatewizard/discussions) instead.
+
+        For **GUI** bugs (desktop app, installer, UI), open an issue in [gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui/issues/new/choose).
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Preparation
+        - Membrane builder
+        - Equilibration
+        - Analysis
+        - Documentation
+        - Examples / tests
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the bug and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Minimal Python script or commands, if possible.
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: gatewizard version
+      description: Output of `python -c "import gatewizard; print(gatewizard.__version__)"`
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      description: Output of `python --version`
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - WSL
+        - macOS
+        - Windows
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: interface
+    attributes:
+      label: How are you using GateWizard?
+      options:
+        - Python API / scripts only
+        - Jupyter / notebook
+        - GUI (gatewizard-gui)
+        - Both API and GUI
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error output / logs
+      description: Full traceback or relevant log excerpt.
+      render: shell
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Input files, force field, MD engine (NAMD / GROMACS / OpenMM), etc.

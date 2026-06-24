@@ -1,0 +1,47 @@
+name: Feature request
+description: Suggest an improvement to the Python API or docs
+title: "[Feature]: "
+labels: ["enhancement", "api"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For **GUI-specific** features (UI, installer, desktop workflow), open a request in [gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui/issues/new/choose).
+
+        For open-ended ideas or design discussion first, consider [Discussions → Ideas](https://github.com/maurobedoya/gatewizard/discussions/categories/ideas).
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What workflow or task is difficult today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How would you like the API or docs to behave?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you thought about.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Preparation
+        - Membrane builder
+        - Equilibration
+        - Analysis
+        - Documentation
+        - Other
+    validations:
+      required: true

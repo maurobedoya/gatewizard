@@ -433,17 +433,19 @@ If you're still experiencing issues:
 
 1. **Check logs**: Look at `gatewizard_logging.log` in working directory
 2. **Run in debug mode**: `gatewizard --debug`
-3. **Search issues**: Check GitHub issues (if repository is public)
-4. **Provide details**: When asking for help, include:
+3. **Search existing threads**: [Discussions](https://github.com/maurobedoya/gatewizard/discussions) and [GitHub issues](https://github.com/maurobedoya/gatewizard/issues)
+4. **Ask the community**: Post in [Discussions](https://github.com/maurobedoya/gatewizard/discussions) (use labels `api` or `gui` as appropriate). For GUI install logs, see the [gatewizard-gui README](https://github.com/franciscoadasme/gatewizard-gui#install).
+5. **Provide details**: When asking for help, include:
    - Operating system
    - Python version (`python --version`)
    - GateWizard version (`gatewizard --version`)
    - Error messages (full traceback)
    - Steps to reproduce
 
-5. **Contact developers**:
+6. **Contact developers**:
    - Constanza González: constanza.gonzalez.villagra@gmail.com
    - Mauricio Bedoya: mbedoya@ucm.cl
+   - Francisco Adasme: fadasme@ucm.cl
 
 ## FAQ
 

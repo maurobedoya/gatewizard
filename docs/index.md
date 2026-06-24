@@ -68,7 +68,8 @@ If you encounter issues or have questions:
 
 1. Check the [Troubleshooting Guide](troubleshooting.md)
 2. Review the [User Guide](user-guide.md) for usage instructions
-3. Submit an issue on GitHub (if repository is public)
+3. Ask in [GitHub Discussions](https://github.com/maurobedoya/gatewizard/discussions) — community forum for the API and [GUI](https://github.com/franciscoadasme/gatewizard-gui)
+4. Report bugs via [API issues](https://github.com/maurobedoya/gatewizard/issues/new/choose) or [GUI issues](https://github.com/franciscoadasme/gatewizard-gui/issues/new/choose), depending on where the problem is
 
 ## Contributing
 

@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and community help
+    url: https://github.com/maurobedoya/gatewizard/discussions
+    about: Ask usage questions, workflows, and GUI help in Discussions (API + GUI).
+  - name: Documentation
+    url: https://maurobedoya.github.io/gatewizard/
+    about: Installation, user guide, API reference, and troubleshooting.
+  - name: GUI bugs and features
+    url: https://github.com/franciscoadasme/gatewizard-gui/issues/new/choose
+    about: Desktop app, installer, or UI issues belong in the GUI repository.
