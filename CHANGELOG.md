@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.42] - 2026-06-26
+
+### Fixed
+
+- PSIQUE SS results are re-keyed to structure chain IDs (e.g. `PROT` segid → `A`) so assignments are not silently dropped as coil
+- Fall through to PDB records / CA-angle heuristic when PSIQUE returns no helix or strand coverage
+- Protein-only PSIQUE input PDB now uses normalized chain IDs from our structure writer
+
 ## [1.0.41] - 2026-06-26
 
 ### Fixed

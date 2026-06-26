@@ -694,20 +694,81 @@ def _run_psique_assign(filepath: str) -> Optional[Dict[Tuple[str, int], str]]:
 
 
 def _write_protein_only_pdb(filepath: str) -> Optional[str]:
-    """Write protein atoms to a temp PDB (skips ions/water with unknown elements)."""
+    """Write protein atoms to a temp PDB with normalized chain IDs."""
     try:
-        import MDAnalysis as mda
-
-        u = mda.Universe(filepath)
-        protein = u.select_atoms("protein")
-        if protein.n_atoms == 0:
+        struct = _load_structure_from_mdanalysis(filepath, build_bonds=False)
+        protein_atoms = [a for a in struct.atoms if a.res_name in AA_NAMES]
+        if not protein_atoms:
             return None
+        protein = ProteinStructure()
+        protein.atoms = protein_atoms
+        protein._rebuild_residues_and_chains()
         fd, path = tempfile.mkstemp(suffix=".pdb")
         os.close(fd)
-        protein.write(path)
+        protein.write_pdb(path)
         return path
     except Exception:
         return None
+
+
+def _protein_residues(struct: ProteinStructure) -> List[Residue]:
+    return [r for r in struct.residues if r.name in AA_NAMES]
+
+
+_NON_COIL_SS = frozenset({"H", "h", "E", "e", "G", "g", "I", "i", "T", "t", "B", "b"})
+
+
+def _remap_ss_map_to_struct(
+    struct: ProteinStructure, ss_map: Dict[Tuple[str, int], str]
+) -> Dict[Tuple[str, int], str]:
+    """Re-key an SS map onto structure ``(chain_id, seq_id)`` keys."""
+    if not ss_map:
+        return ss_map
+
+    protein_res = _protein_residues(struct)
+    if not protein_res:
+        return ss_map
+
+    direct_hits = sum(
+        1 for r in protein_res if (r.chain_id, r.seq_id) in ss_map
+    )
+    if direct_hits >= max(1, len(protein_res) // 4):
+        return ss_map
+
+    by_resid: Dict[int, Dict[str, str]] = defaultdict(dict)
+    for (chain, resid), code in ss_map.items():
+        by_resid[int(resid)][str(chain).strip() or "A"] = code
+
+    remapped: Dict[Tuple[str, int], str] = {}
+    for r in protein_res:
+        codes = by_resid.get(int(r.seq_id))
+        if not codes:
+            continue
+        code = codes.get(r.chain_id)
+        if code is None and len(codes) == 1:
+            code = next(iter(codes.values()))
+        elif code is None:
+            code = next(iter(codes.values()), None)
+        if code is not None:
+            remapped[(r.chain_id, r.seq_id)] = code
+
+    return remapped if remapped else ss_map
+
+
+def _ss_map_covers_structure(
+    struct: ProteinStructure, ss_map: Dict[Tuple[str, int], str]
+) -> bool:
+    protein_res = _protein_residues(struct)
+    if not protein_res or not ss_map:
+        return False
+    overlap = sum(1 for r in protein_res if (r.chain_id, r.seq_id) in ss_map)
+    return overlap >= max(1, len(protein_res) // 10)
+
+
+def _structure_has_non_coil_ss(struct: ProteinStructure) -> bool:
+    return any(
+        r.name in AA_NAMES and r.ss in _NON_COIL_SS for r in struct.residues
+    )
 
 
 def _assign_ss_psique(filepath: str) -> Optional[Dict]:
@@ -763,12 +824,17 @@ def _assign_secondary_structure(
     if filepath:
         ss_map = _assign_ss_psique(filepath)
         if ss_map:
-            _apply_ss_map(struct, ss_map)
-            return
+            ss_map = _remap_ss_map_to_struct(struct, ss_map)
+            if _ss_map_covers_structure(struct, ss_map):
+                _apply_ss_map(struct, ss_map)
+                if _structure_has_non_coil_ss(struct):
+                    return
         ss_map = _read_ss_from_pdb_records(filepath)
         if ss_map:
+            ss_map = _remap_ss_map_to_struct(struct, ss_map)
             _apply_ss_map(struct, ss_map)
-            return
+            if _structure_has_non_coil_ss(struct):
+                return
     struct.assign_secondary_structure_heuristic()
 
 

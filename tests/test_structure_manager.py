@@ -162,6 +162,39 @@ class TestStructureManager:
         assert ("A", 1) in ss_map
         assert ("PROT", 1) not in ss_map
 
+    def test_assign_secondary_structure_map_remaps_psique_chain_keys(
+        self, tmp_path, monkeypatch
+    ):
+        import gatewizard.core.structure_manager as sm
+
+        p = tmp_path / "charmm.pdb"
+        p.write_text(CHARMM_SEGID_PDB)
+        monkeypatch.setattr(
+            sm,
+            "_assign_ss_psique",
+            lambda _path: {("PROT", 1): "H", ("PROT", 2): "E"},
+        )
+        ss_map = assign_secondary_structure_map(str(p), method="auto")
+        assert ss_map.get(("A", 1)) == "H"
+        assert ss_map.get(("A", 2)) == "E"
+
+    def test_assign_secondary_structure_falls_back_when_psique_all_coil(
+        self, tmp_path, monkeypatch
+    ):
+        import gatewizard.core.structure_manager as sm
+
+        p = tmp_path / "charmm.pdb"
+        p.write_text(CHARMM_SEGID_PDB)
+        monkeypatch.setattr(
+            sm,
+            "_assign_ss_psique",
+            lambda _path: {("Z", 999): "C"},
+        )
+        ss_map = assign_secondary_structure_map(str(p), method="auto")
+        assert isinstance(ss_map, dict)
+        assert ss_map
+        assert any(code in {"H", "E"} for code in ss_map.values())
+
     def test_assign_ss_psique_falls_back_to_protein_only(
         self, tmp_path, monkeypatch
     ):
