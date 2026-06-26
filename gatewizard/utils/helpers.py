@@ -532,6 +532,24 @@ def create_directory_robust(
     # If we get here, all retries failed
 
 
+def resolve_pdb_chain_id(
+    segid: Optional[str] = None, chain_id: Optional[str] = None
+) -> str:
+    """Resolve the chain identifier used for residue keys.
+
+    CHARMM/NAMD PDBs use long segids (e.g. ``PROT``, ``MEMB``) while keeping the
+    one-letter chain in the PDB ``chainID`` column.  Standard PDBs leave segid
+    empty and store the chain letter in ``chainID`` only.
+    """
+    seg = (segid or "").strip()
+    cid = (chain_id or "").strip()
+    if len(seg) > 1:
+        return cid or seg[0]
+    if seg:
+        return seg
+    return cid or "A"
+
+
 def resolve_conda_executable(name: str) -> str:
     """Resolve a command under CONDA_PREFIX/bin, then PATH."""
     conda_prefix = os.environ.get("CONDA_PREFIX", "")

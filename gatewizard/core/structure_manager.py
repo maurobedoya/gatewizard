@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 import psique
 
+from gatewizard.utils.helpers import resolve_pdb_chain_id
 from gatewizard.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -683,23 +684,66 @@ def _read_ss_from_pdb_records(filepath: str) -> Optional[Dict]:
     return ss_map if found else None
 
 
+def _run_psique_assign(filepath: str) -> Optional[Dict[Tuple[str, int], str]]:
+    """Run PSIQUE on a single PDB path; return SS map or ``None`` if empty."""
+    ss_map: Dict[Tuple[str, int], str] = {}
+    for ss in psique.assign(filepath):
+        for i in range(ss.start.number, ss.end.number + 1):
+            ss_map[(ss.start.chain, i)] = ss.kind.value
+    return ss_map or None
+
+
+def _write_protein_only_pdb(filepath: str) -> Optional[str]:
+    """Write protein atoms to a temp PDB (skips ions/water with unknown elements)."""
+    try:
+        import MDAnalysis as mda
+
+        u = mda.Universe(filepath)
+        protein = u.select_atoms("protein")
+        if protein.n_atoms == 0:
+            return None
+        fd, path = tempfile.mkstemp(suffix=".pdb")
+        os.close(fd)
+        protein.write(path)
+        return path
+    except Exception:
+        return None
+
+
 def _assign_ss_psique(filepath: str) -> Optional[Dict]:
     """Run PSIQUE on PDB.
+
+    Tries the full structure first, then a protein-only temp PDB so CHARMM/NAMD
+    systems with exotic atoms (e.g. EPW extra-point waters) can still use PSIQUE.
 
     Returns
     -------
     dict or None
         SS mapping, or ``None`` if PSIQUE is unavailable or produced no SS records.
     """
+    protein_path = _write_protein_only_pdb(filepath)
+    paths = [filepath]
+    if protein_path and protein_path != filepath:
+        paths.append(protein_path)
+
+    last_exc: Optional[Exception] = None
     try:
-        ss_map: Dict[Tuple[str, int], str] = {}
-        for ss in psique.assign(filepath):
-            for i in range(ss.start.number, ss.end.number + 1):
-                ss_map[(ss.start.chain, i)] = ss.kind.value
-        return ss_map or None
-    except Exception as exc:
-        logger.warning("PSIQUE secondary structure assignment failed: %s", exc)
+        for path in paths:
+            try:
+                ss_map = _run_psique_assign(path)
+                if ss_map:
+                    return ss_map
+            except Exception as exc:
+                last_exc = exc
+        if last_exc is not None:
+            logger.warning("PSIQUE secondary structure assignment failed: %s", last_exc)
         return None
+    finally:
+        if protein_path and protein_path != filepath:
+            try:
+                os.unlink(protein_path)
+            except OSError:
+                pass
 
 
 def _apply_ss_map(struct: ProteinStructure, ss_map: Dict[Tuple[str, int], str]):
@@ -816,20 +860,10 @@ def _load_structure_from_mdanalysis(
         # CHARMM/MemPrO files populate segid (e.g. "PROT", "MEMB");
         # standard PDB files (e.g. packmol-memgen) leave segid empty and
         # store the chain letter in chainID (col 22).  Fall back accordingly.
-        chain_id = (ag_atom.segid or "").strip()
-        if len(chain_id) > 1:
-            # Long segid (CHARMM style) – prefer the single-char chainID
-            try:
-                chain_id = ag_atom.chainID
-            except AttributeError:
-                chain_id = chain_id[0]
-        if not chain_id:
-            # segid was empty – try the PDB chainID column
-            try:
-                chain_id = (ag_atom.chainID or "").strip()
-            except AttributeError:
-                pass
-        chain_id = chain_id or "A"
+        chain_id = resolve_pdb_chain_id(
+            ag_atom.segid,
+            getattr(ag_atom, "chainID", None),
+        )
         element = (
             ag_atom.element
             if hasattr(ag_atom, "element") and ag_atom.element

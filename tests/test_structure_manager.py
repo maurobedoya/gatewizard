@@ -30,6 +30,7 @@ import importlib.util
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from gatewizard.utils.helpers import resolve_pdb_chain_id
 from gatewizard.core.structure_manager import (
     StructureManager,
     ProteinStructure,
@@ -56,6 +57,19 @@ ATOM      8  O   GLY A   2       6.500   2.000   3.000  1.00  0.00           O
 HETATM    9  O   HOH A 100      20.000  20.000  20.000  1.00  0.00           O
 HETATM   10  C1  LIG B   1      30.000  30.000  30.000  1.00  0.00           C
 HETATM   11  C2  LIG B   1      31.000  30.000  30.000  1.00  0.00           C
+END
+"""
+
+CHARMM_SEGID_PDB = """\
+ATOM      1  N   ALA A   1       1.000   2.000   3.000  1.00  0.00           N  PROT
+ATOM      2  CA  ALA A   1       2.000   2.000   3.000  1.00  0.00           C  PROT
+ATOM      3  C   ALA A   1       3.000   2.000   3.000  1.00  0.00           C  PROT
+ATOM      4  O   ALA A   1       3.500   3.000   3.000  1.00  0.00           O  PROT
+ATOM      5  N   GLY A   2       4.000   1.000   3.000  1.00  0.00           N  PROT
+ATOM      6  CA  GLY A   2       5.000   1.000   3.000  1.00  0.00           C  PROT
+ATOM      7  C   GLY A   2       6.000   1.000   3.000  1.00  0.00           C  PROT
+ATOM      8  O   GLY A   2       6.500   2.000   3.000  1.00  0.00           O  PROT
+HETATM    9  EPW WAT A 100      20.000  20.000  20.000  1.00  0.00          EPW  SOLV
 END
 """
 
@@ -129,6 +143,46 @@ class TestStructureManager:
         assert isinstance(ss_map, dict)
         assert ss_map
         assert all(code in {"H", "E", "C", "G", "I", "T"} for code in ss_map.values())
+
+    def test_resolve_pdb_chain_id_charmm_style(self):
+        assert resolve_pdb_chain_id("PROT", "A") == "A"
+        assert resolve_pdb_chain_id("PROT", "") == "P"
+        assert resolve_pdb_chain_id("", "B") == "B"
+        assert resolve_pdb_chain_id("", "") == "A"
+
+    def test_assign_secondary_structure_map_charmm_chain_keys(
+        self, tmp_path, monkeypatch
+    ):
+        import gatewizard.core.structure_manager as sm
+
+        p = tmp_path / "charmm.pdb"
+        p.write_text(CHARMM_SEGID_PDB)
+        monkeypatch.setattr(sm, "_assign_ss_psique", lambda _path: None)
+        ss_map = assign_secondary_structure_map(str(p), method="auto")
+        assert ("A", 1) in ss_map
+        assert ("PROT", 1) not in ss_map
+
+    def test_assign_ss_psique_falls_back_to_protein_only(
+        self, tmp_path, monkeypatch
+    ):
+        import gatewizard.core.structure_manager as sm
+
+        p = tmp_path / "charmm.pdb"
+        p.write_text(CHARMM_SEGID_PDB)
+        calls: list[str] = []
+
+        def fake_psique(path):
+            calls.append(path)
+            if path == str(p):
+                raise RuntimeError("Could not guess element")
+            return {("A", 1): "H", ("A", 2): "C"}
+
+        monkeypatch.setattr(sm, "_run_psique_assign", fake_psique)
+        ss_map = sm._assign_ss_psique(str(p))
+        assert ss_map == {("A", 1): "H", ("A", 2): "C"}
+        assert len(calls) == 2
+        assert calls[0] == str(p)
+        assert calls[1] != str(p)
 
     def test_select_by_criteria_all(self, viewer):
         idx = viewer.select_by_criteria("All")
