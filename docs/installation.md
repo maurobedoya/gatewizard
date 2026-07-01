@@ -24,9 +24,11 @@ conda activate gatewizard
 # 3. Install GateWizard from PyPI
 pip install gatewizard
 
-# 4. Launch GateWizard
-gatewizard
+# 4. Verify the API package
+python -c "import gatewizard; print(gatewizard.__version__)"
 ```
+
+For the **desktop app**, install [gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui/releases) separately.
 
 ## Alternative: Development Installation
 
@@ -46,8 +48,8 @@ conda activate gatewizard
 # 4. Install in development mode
 pip install -e .
 
-# 5. Launch GateWizard
-gatewizard
+# 5. Verify the API package
+python -c "import gatewizard; print(gatewizard.__version__)"
 ```
 
 ## Platform-Specific Instructions
@@ -70,13 +72,10 @@ GateWizard works on macOS with some considerations:
 # If you encounter display issues:
 conda install -c conda-forge python.app
 
-# Run using pythonw instead of python
-pythonw -m gatewizard
 ```
 
 **Known Issues:**
 - On Apple Silicon (M1/M2), some dependencies may require Rosetta 2
-- CustomTkinter may have scaling issues on Retina displays
 
 ### Windows
 
@@ -99,8 +98,10 @@ export DISPLAY=:0
 conda create -n gatewizard -c conda-forge python sqlite ambertools=24 parmed=4.3.0 -y
 conda activate gatewizard
 pip install gatewizard
-gatewizard
+python -c "import gatewizard; print(gatewizard.__version__)"
 ```
+
+For the desktop app on Windows, use the [gatewizard-gui Windows installer](https://github.com/franciscoadasme/gatewizard-gui/releases) or the Linux/WSL build for the full MD workflow.
 
 ## Dependencies
 
@@ -147,8 +148,8 @@ python -c "import parmed; print('ParmEd:', parmed.__version__)"
 # Check AmberTools
 which pdb4amber  # Should show path in conda environment
 
-# Launch GateWizard
-gatewizard --version
+# Verify GateWizard API
+python -c "import gatewizard; print(gatewizard.__version__)"
 ```
 
 ## Upgrading GateWizard
@@ -163,7 +164,7 @@ conda activate gatewizard
 pip install --upgrade gatewizard
 
 # Verify new version
-gatewizard --version
+python -c "import gatewizard; print(gatewizard.__version__)"
 ```
 
 **Check for updates:**
@@ -250,8 +251,8 @@ conda env update -f environment.yml
 # Reinstall
 pip install -e . --force-reinstall
 
-# Restart GateWizard
-gatewizard
+# Re-verify import
+python -c "import gatewizard; print(gatewizard.__version__)"
 ```
 
 ## Uninstallation

@@ -32,10 +32,15 @@ conda activate gatewizard
 pip install gatewizard
 ```
 
-### Launch
+### Desktop app
 
-```bash
-gatewizard
+The graphical interface is a separate project: **[gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui)**. Install it from [Releases](https://github.com/franciscoadasme/gatewizard-gui/releases) — do not expect a `gatewizard` terminal command after `pip install gatewizard`.
+
+Use the library from Python:
+
+```python
+import gatewizard
+print(gatewizard.__version__)
 ```
 
 ### Upgrade

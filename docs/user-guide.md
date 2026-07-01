@@ -16,16 +16,7 @@ This guide covers the main features and workflows in GateWizard.
 
 ### Launching GateWizard
 
-```bash
-# Basic launch
-gatewizard
-
-# Launch on secondary monitor
-gatewizard --screen 1
-
-# Enable debug logging
-gatewizard --debug
-```
+The desktop app is **[gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui)** — install it from [Releases](https://github.com/franciscoadasme/gatewizard-gui/releases). The `gatewizard` pip package is the Python API only and does not provide a terminal launcher.
 
 ## Main Interface
 

@@ -69,11 +69,8 @@ export DISPLAY=:0
 
 **On macOS**:
 ```bash
-# Install python.app for GUI support
-conda install -c conda-forge python.app
-
-# Run with pythonw
-pythonw -m gatewizard
+# For the desktop app, use gatewizard-gui from Applications
+# See https://github.com/franciscoadasme/gatewizard-gui#macos
 ```
 
 **On Windows WSL**:
@@ -99,12 +96,7 @@ python -c "import MDAnalysis"
 python -c "import parmed"
 ```
 
-**Check 3**: Run with debug mode
-```bash
-gatewizard --debug
-```
-
-**Solution**: Look at error messages and reinstall problematic packages.
+**Check 3**: For the desktop app, check install logs (see [gatewizard-gui README](https://github.com/franciscoadasme/gatewizard-gui#install))
 
 ### Issue: GUI appears but is unresponsive
 
@@ -398,9 +390,9 @@ This can happen after a crash, a display configuration change, or when the WSLg 
 
 **Solution (step by step)**:
 
-1. Kill any running gatewizard process:
+1. Kill any running GateWizard GUI process:
 ```bash
-pkill -f gatewizard
+pkill -f gatewizard-gui
 ```
 
 2. Reset the saved window position:
@@ -423,7 +415,7 @@ print('Window position reset')
 # Run in PowerShell (Windows side)
 wsl --shutdown
 ```
-Then reopen your WSL terminal and launch gatewizard again. WSLg restarts automatically.
+Then reopen your WSL terminal and launch **gatewizard-gui-linux** again. WSLg restarts automatically.
 
 > **Note**: If you use VcXsrv or X410 instead of WSLg, close and reopen the X server application instead.
 
@@ -431,18 +423,17 @@ Then reopen your WSL terminal and launch gatewizard again. WSLg restarts automat
 
 If you're still experiencing issues:
 
-1. **Check logs**: Look at `gatewizard_logging.log` in working directory
-2. **Run in debug mode**: `gatewizard --debug`
-3. **Search existing threads**: [Discussions](https://github.com/maurobedoya/gatewizard/discussions) and [GitHub issues](https://github.com/maurobedoya/gatewizard/issues)
-4. **Ask the community**: Post in [Discussions](https://github.com/maurobedoya/gatewizard/discussions) (use labels `api` or `gui` as appropriate). For GUI install logs, see the [gatewizard-gui README](https://github.com/franciscoadasme/gatewizard-gui#install).
-5. **Provide details**: When asking for help, include:
+1. **Check logs**: GUI runtime log at `~/.config/gatewizard-gui/runtime-install.log` (Linux/WSL) — see [gatewizard-gui install docs](https://github.com/franciscoadasme/gatewizard-gui#install)
+2. **Search existing threads**: [Discussions](https://github.com/maurobedoya/gatewizard/discussions) and [GitHub issues](https://github.com/maurobedoya/gatewizard/issues)
+3. **Ask the community**: Post in [Discussions](https://github.com/maurobedoya/gatewizard/discussions) (use labels `api` or `gui` as appropriate).
+4. **Provide details**: When asking for help, include:
    - Operating system
    - Python version (`python --version`)
-   - GateWizard version (`gatewizard --version`)
+   - GateWizard API version (`python -c "import gatewizard; print(gatewizard.__version__)"`)
    - Error messages (full traceback)
    - Steps to reproduce
 
-6. **Contact developers**:
+5. **Contact developers**:
    - Constanza González: constanza.gonzalez.villagra@gmail.com
    - Mauricio Bedoya: mbedoya@ucm.cl
    - Francisco Adasme: fadasme@ucm.cl
@@ -453,7 +444,7 @@ If you're still experiencing issues:
 A: Minimum 4GB, 8GB+ recommended. Large trajectories may need 16GB+.
 
 **Q: Can I run GateWizard remotely?**
-A: Yes, with X forwarding: `ssh -X user@server` then run `gatewizard`
+A: For the desktop app, use X forwarding or WSLg on a remote WSL host and launch **gatewizard-gui-linux**. For scripting, use the Python API (`import gatewizard`).
 
 **Q: Does GateWizard work with GPU acceleration?**
 A: Not currently. Analysis is CPU-based.

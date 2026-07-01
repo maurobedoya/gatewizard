@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.43] - 2026-07-01
+
+### Removed
+
+- The `gatewizard` console command — this package is a Python library only; use [gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui) for the desktop app
+
 ## [1.0.42] - 2026-06-26
 
 ### Fixed
