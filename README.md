@@ -1,5 +1,4 @@
 # GateWizard (API)
-<img src="./resources/gatewizard_logo_black_back-white.png" alt="GateWizard" width="140" align="right" />
 
 [![PyPI version](https://img.shields.io/pypi/v/gatewizard.svg)](https://pypi.org/project/gatewizard/)
 [![Documentation](https://img.shields.io/badge/docs-latest-blue.svg)](https://maurobedoya.github.io/gatewizard/)
