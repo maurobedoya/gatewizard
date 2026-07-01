@@ -32,3 +32,7 @@ jobs:
     
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        # Rekor (sigstore) attestation uploads fail intermittently with
+        # ChunkedEncodingError / 502 — not a package build issue.
+        attestations: false
