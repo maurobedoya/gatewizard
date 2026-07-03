@@ -42,7 +42,8 @@ Builder()
 | `salt_concentration` | `0.15` | Salt concentration in M (molar) |
 | `cation` | `"K+"` | Cation type for salt |
 | `anion` | `"Cl-"` | Anion type for salt |
-| `dist_wat` | `17.5` | Water layer thickness in Å |
+| `dist` | `12` | Minimum solute-to-box-boundary distance in Å |
+| `dist_wat` | `26` | Water layer thickness in Å |
 | `notprotonate` | `False` | Skip protonation (preserve residue names) |
 
 ### Example 1: Basic Configuration
@@ -79,7 +80,8 @@ set_configuration(**kwargs)
 | `salt_concentration` | `float` | `0.15` | Salt concentration in M |
 | `cation` | `str` | `"K+"` | Cation type (Na+, K+, etc.) |
 | `anion` | `str` | `"Cl-"` | Anion type (Cl-, Br-, etc.) |
-| `dist_wat` | `float` | `17.5` | Water layer thickness in Å |
+| `dist` | `float` | `12` | Minimum solute-to-box-boundary distance in Å |
+| `dist_wat` | `float` | `26` | Water layer thickness in Å |
 | `notprotonate` | `bool` | `False` | Skip protonation during parametrization |
 | `add_salt` | `bool` | `True` | Whether to add salt to system |
 
@@ -99,6 +101,7 @@ builder.set_configuration(
     salt_concentration=0.15,
     cation="Na+",
     anion="Cl-",
+    dist=12,  # Minimum distance to box boundaries
     dist_wat=20.0,  # Larger water layer
     preoriented=True
 )
@@ -662,7 +665,8 @@ builder.set_configuration(
     preoriented=True,
     parametrize=True,
     salt_concentration=0.15,
-    dist_wat=17.5,
+    dist=12,
+    dist_wat=26,
     notprotonate=True,
     ligand_params=ligand_results,
 )
@@ -1052,10 +1056,15 @@ cat systems/popc_membrane/status.json
 
 ### Water Layer Thickness
 
-**Default (17.5 Å):**
+**Default (26 Å):**
 
 - Sufficient for most membrane proteins
 - ~3-4 water layers above/below membrane
+
+**Boundary distance (12 Å default):**
+
+- Set `dist` to control the minimum distance from the solute extents to box boundaries
+- packmol-memgen may choose a larger real distance because it uses the worst-case scenario
 
 **Large proteins or complexes:**
 
@@ -1123,7 +1132,7 @@ cat systems/popc_membrane/status.json
 - Use symmetric membranes (same upper/lower)
 - Fewer lipid types (1-2 per leaflet)
 - Pre-oriented proteins
-- Smaller water layers (15-17.5 Å)
+- Smaller water layers (15-20 Å)
 
 **More realistic systems:**
 
@@ -1810,7 +1819,8 @@ builder.set_configuration(
     preoriented=True,
     parametrize=True,
     salt_concentration=0.15,
-    dist_wat=17.5,
+    dist=12,
+    dist_wat=26,
     notprotonate=True,
     ligand_params=ligand_results,  # Pass parametrized ligand files
 )

@@ -68,7 +68,8 @@ class TestBuilder:
         assert builder.config["salt_concentration"] == 0.15
         assert builder.config["cation"] == "K+"
         assert builder.config["anion"] == "Cl-"
-        assert builder.config["dist_wat"] == 17.5
+        assert builder.config["dist"] == 12
+        assert builder.config["dist_wat"] == 26
         assert builder.config["preoriented"] == True
         assert builder.config["parametrize"] == True
         assert builder.config["notprotonate"] == False
@@ -79,11 +80,12 @@ class TestBuilder:
     def test_set_configuration(self, builder):
         """Test configuration update."""
         builder.set_configuration(
-            water_model="tip4p", salt_concentration=0.5, dist_wat=20.0
+            water_model="tip4p", salt_concentration=0.5, dist=14.0, dist_wat=20.0
         )
 
         assert builder.config["water_model"] == "tip4p"
         assert builder.config["salt_concentration"] == 0.5
+        assert builder.config["dist"] == 14.0
         assert builder.config["dist_wat"] == 20.0
         # Other values should remain unchanged
         assert builder.config["protein_ff"] == "ff19SB"
@@ -118,6 +120,8 @@ class TestBuilder:
             "water_model": "opc",
             "protein_ff": "ff19SB",
             "lipid_ff": "lipid21",
+            "dist": 14,
+            "dist_wat": 26,
             "nloop": 30,
             "nloop_all": 120,
             "tolerance": 1.5,
@@ -126,6 +130,8 @@ class TestBuilder:
             pdb_file, ["POPC"], ["POPC"], "1//1", config
         )
         cmd_str = " ".join(cmd)
+        assert "--dist 14" in cmd_str
+        assert "--dist_wat 26" in cmd_str
         assert "--nloop 30" in cmd_str
         assert "--nloop_all 120" in cmd_str
         assert "--tolerance 1.5" in cmd_str

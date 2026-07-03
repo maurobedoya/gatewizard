@@ -47,7 +47,8 @@ builder.set_configuration(
     preoriented=True,
     parametrize=True,
     salt_concentration=0.15,
-    dist_wat=17.5,
+    dist=12,
+    dist_wat=26,
     notprotonate=True,
     ligand_params=ligand_results,
 )

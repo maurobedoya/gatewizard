@@ -60,7 +60,8 @@ class Builder:
             "salt_concentration": 0.15,
             "cation": "K+",
             "anion": "Cl-",
-            "dist_wat": 17.5,  # Default water layer thickness in Angstroms
+            "dist": 12,  # Minimum solute-to-box-boundary distance in Angstroms
+            "dist_wat": 26,  # Default water layer thickness in Angstroms
             "dims": None,  # Explicit box dimensions [X, Y, Z] in Angstroms
             "notprotonate": False,  # False = allow protonation (default)
             "two_stage_process": False,  # Enable two-stage packing + parametrization
@@ -484,6 +485,10 @@ class Builder:
                 cmd.extend(["--salt_c", config["cation"]])
             if config.get("anion") and config["anion"] != "Cl-":
                 cmd.extend(["--salt_a", config["anion"]])
+
+        # Add box boundary distance (include even if default value for explicit control)
+        if config.get("dist") is not None:
+            cmd.extend(["--dist", str(config["dist"])])
 
         # Add water layer distance (include even if default value for explicit control)
         if config.get("dist_wat") is not None:

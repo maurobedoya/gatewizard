@@ -1,10 +1,10 @@
 {
   "schema": 1,
-  "released_at": "2026-07-01",
+  "released_at": "2026-07-03",
   "gatewizard": {
-    "latest": "1.0.43",
-    "min_for_gui": "1.0.43",
-    "install": "gatewizard[full]>=1.0.43"
+    "latest": "1.0.44",
+    "min_for_gui": "1.0.44",
+    "install": "gatewizard[full]>=1.0.44"
   },
   "mempro": {
     "latest": "0.1.0",
@@ -12,15 +12,16 @@
     "install": "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.1.0"
   },
   "gui": {
-    "latest": "1.0.5",
-    "min_gatewizard": "1.0.42",
-    "release_page": "https://github.com/franciscoadasme/gatewizard-gui/releases/tag/v1.0.5",
+    "latest": "1.0.7",
+    "min_gatewizard": "1.0.44",
+    "release_page": "https://github.com/franciscoadasme/gatewizard-gui/releases/tag/v1.0.7",
     "downloads": {
-      "linux_appimage": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.5/gatewizard-gui-1.0.5-linux-x86_64.AppImage",
-      "linux_deb": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.5/gatewizard-gui-1.0.5-linux-amd64.deb",
-      "linux": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.5/gatewizard-gui-1.0.5-linux-x86_64.AppImage",
-      "win": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.5/gatewizard-gui-1.0.5-win-x64-setup.exe",
-      "mac": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.5/gatewizard-gui-1.0.5-mac-arm64.dmg"
+      "linux_appimage": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.7/gatewizard-gui-1.0.7-linux-x86_64.AppImage",
+      "linux_deb": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.7/gatewizard-gui-1.0.7-linux-amd64.deb",
+      "linux": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.7/gatewizard-gui-1.0.7-linux-x86_64.AppImage",
+      "mac": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.7/gatewizard-gui-1.0.7-mac-arm64.dmg",
+      "mac_arm64": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.7/gatewizard-gui-1.0.7-mac-arm64.dmg",
+      "mac_x64": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.7/gatewizard-gui-1.0.7-mac-x64.dmg"
     }
   },
   "notes": "GUI repo: franciscoadasme/gatewizard-gui. CI updates this file when UPDATE_MANIFEST_TOKEN is set on the GUI repo."

@@ -202,10 +202,14 @@ The Builder tab automates the process of:
 - Cation: K+ (default)
 - Anion: Cl- (default)
 
-**Water layer thickness**: 17.5 Å (default)
+**Water layer thickness**: 26 Å (default)
 
 - Distance of water above and below membrane/protein
 - Adjust for larger proteins or specific requirements
+
+**Boundary distance**: 12 Å (default)
+
+- Minimum distance from the solute extents to the box boundaries
 
 **Skip protonation (preserve propka results)** (checked by default)
 

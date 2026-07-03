@@ -76,7 +76,8 @@ from gatewizard.core.builder import Builder
 builder = Builder()
 builder.set_configuration(
     salt_concentration=0.15,
-    dist_wat=17.5
+    dist=12,
+    dist_wat=26
 )
 
 success, msg, job_dir = builder.prepare_system(

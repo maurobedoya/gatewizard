@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.44] - 2026-07-03
+
+### Added
+
+- Builder passes packmol-memgen `--dist` with GateWizard default `12 Å`
+
+### Changed
+
+- Builder default water layer thickness (`dist_wat`) is now `26 Å`
+
 ## [1.0.43] - 2026-07-01
 
 ### Removed
