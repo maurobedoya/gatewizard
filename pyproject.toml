@@ -57,7 +57,7 @@ full = [
 packages = {find = {}}
 
 [tool.setuptools.package-data]
-gatewizard = ["**/*.yml", "**/*.yaml", "**/*.json", "**/*.txt", "tools/psique"]
+gatewizard = ["**/*.yml", "**/*.yaml", "**/*.json", "**/*.txt", "**/*.pdb", "tools/psique"]
 equilibration = ["**/*.inp", "**/*.mdp", "**/*.py"]
 
 [tool.pytest.ini_options]

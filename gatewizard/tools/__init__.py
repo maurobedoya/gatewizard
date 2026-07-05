@@ -28,6 +28,18 @@ from gatewizard.tools.ligand_parametrization import (
     LIGHT_PALETTE,
 )
 from gatewizard.tools.equilibration import EquilibrationStage
+from gatewizard.tools.packmol_hydration import (
+    build_hydrate_inp_text,
+    check_packmol_available,
+    detect_hydrogen_status,
+    estimate_cavity_volume,
+    hydrate_cavity,
+    prepare_hydration_job,
+    preview_hydrate_inp,
+    run_custom_packmol,
+    run_packmol,
+    PackmolHydrationError,
+)
 
 __all__ = [
     "ForceFieldManager",
@@ -51,4 +63,14 @@ __all__ = [
     "RECOMMENDED_COMBOS",
     "NON_RECOMMENDED_COMBOS",
     "LIGHT_PALETTE",
+    "build_hydrate_inp_text",
+    "check_packmol_available",
+    "detect_hydrogen_status",
+    "estimate_cavity_volume",
+    "hydrate_cavity",
+    "prepare_hydration_job",
+    "preview_hydrate_inp",
+    "run_custom_packmol",
+    "run_packmol",
+    "PackmolHydrationError",
 ]
