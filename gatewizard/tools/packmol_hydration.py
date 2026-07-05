@@ -33,6 +33,7 @@ logger = get_logger(__name__)
 
 WATER_NUMBER_DENSITY_A3 = 1.0 / 30.0  # ~1 molecule per 30 Å³
 MAX_GRID_POINTS = 2_000_000
+MAX_GHOST_GRID_POINTS = 3_000
 DEFAULT_GRID_SPACING = 0.5
 DEFAULT_TOLERANCE = 2.0
 DEFAULT_NLOOP = 20
@@ -128,6 +129,7 @@ class VolumeEstimate:
     exclusion_mode: ExclusionMode
     packing_efficiency: float
     grid_spacing_used: float
+    free_grid_points: List[List[float]]
 
     def as_dict(self) -> Dict[str, Any]:
         return {
@@ -139,6 +141,7 @@ class VolumeEstimate:
             "exclusion_mode": self.exclusion_mode,
             "packing_efficiency": self.packing_efficiency,
             "grid_spacing_used": self.grid_spacing_used,
+            "free_grid_points": self.free_grid_points,
         }
 
 
@@ -412,13 +415,29 @@ def _atoms_near_box(
     return kept_coords, kept_radii
 
 
-def _count_free_cells_numpy(
+def _subsample_grid_points(
+    points: Sequence[Sequence[float]],
+    max_points: int = MAX_GHOST_GRID_POINTS,
+) -> List[List[float]]:
+    """Uniformly subsample grid centers for UI ghost-water preview."""
+    pts = list(points)
+    n = len(pts)
+    if n <= max_points:
+        return [[float(x), float(y), float(z)] for x, y, z in pts]
+    step = n / max_points
+    return [
+        [float(pts[i][0]), float(pts[i][1]), float(pts[i][2])]
+        for i in (int(j * step) for j in range(max_points))
+    ]
+
+
+def _analyze_grid_numpy(
     bmin: BoxTuple,
     bmax: BoxTuple,
     spacing: float,
     atom_coords: Sequence[Tuple[float, float, float]],
     atom_radii: Sequence[float],
-) -> Tuple[int, int]:
+) -> Tuple[int, int, List[List[float]]]:
     import numpy as np
 
     nx = max(1, int(math.ceil((bmax[0] - bmin[0]) / spacing)))
@@ -426,14 +445,16 @@ def _count_free_cells_numpy(
     nz = max(1, int(math.ceil((bmax[2] - bmin[2]) / spacing)))
     total_cells = nx * ny * nz
 
-    if not atom_coords:
-        return total_cells, total_cells
-
     xs = bmin[0] + (np.arange(nx) + 0.5) * spacing
     ys = bmin[1] + (np.arange(ny) + 0.5) * spacing
     zs = bmin[2] + (np.arange(nz) + 0.5) * spacing
     gx, gy, gz = np.meshgrid(xs, ys, zs, indexing="ij")
     points = np.stack([gx.ravel(), gy.ravel(), gz.ravel()], axis=1)
+
+    if not atom_coords:
+        free_cells = total_cells
+        ghost = _subsample_grid_points(points.tolist())
+        return free_cells, total_cells, ghost
 
     occupied = np.zeros(points.shape[0], dtype=bool)
     coords = np.array(atom_coords, dtype=float)
@@ -443,22 +464,25 @@ def _count_free_cells_numpy(
         dist2 = np.einsum("ij,ij->i", d, d)
         occupied |= dist2 <= radii[i] * radii[i]
 
-    free_cells = int(total_cells - occupied.sum())
-    return free_cells, total_cells
+    free_mask = ~occupied
+    free_cells = int(free_mask.sum())
+    ghost = _subsample_grid_points(points[free_mask].tolist())
+    return free_cells, total_cells, ghost
 
 
-def _count_free_cells_python(
+def _analyze_grid_python(
     bmin: BoxTuple,
     bmax: BoxTuple,
     spacing: float,
     atom_coords: Sequence[Tuple[float, float, float]],
     atom_radii: Sequence[float],
-) -> Tuple[int, int]:
+) -> Tuple[int, int, List[List[float]]]:
     nx = max(1, int(math.ceil((bmax[0] - bmin[0]) / spacing)))
     ny = max(1, int(math.ceil((bmax[1] - bmin[1]) / spacing)))
     nz = max(1, int(math.ceil((bmax[2] - bmin[2]) / spacing)))
     total_cells = nx * ny * nz
     free_cells = 0
+    free_points: List[Tuple[float, float, float]] = []
 
     for ix in range(nx):
         x = bmin[0] + (ix + 0.5) * spacing
@@ -474,7 +498,9 @@ def _count_free_cells_python(
                         break
                 if not occupied:
                     free_cells += 1
-    return free_cells, total_cells
+                    free_points.append((x, y, z))
+    ghost = _subsample_grid_points(free_points)
+    return free_cells, total_cells, ghost
 
 
 def estimate_cavity_volume(
@@ -509,11 +535,11 @@ def estimate_cavity_volume(
 
     cell_volume = spacing ** 3
     try:
-        free_cells, _total = _count_free_cells_numpy(
+        free_cells, _total, free_grid_points = _analyze_grid_numpy(
             bmin, bmax, spacing, near_coords, near_radii
         )
     except Exception:
-        free_cells, _total = _count_free_cells_python(
+        free_cells, _total, free_grid_points = _analyze_grid_python(
             bmin, bmax, spacing, near_coords, near_radii
         )
 
@@ -533,12 +559,33 @@ def estimate_cavity_volume(
         exclusion_mode=mode,
         packing_efficiency=efficiency,
         grid_spacing_used=spacing,
+        free_grid_points=free_grid_points,
     )
 
 
 # ---------------------------------------------------------------------------
 # PACKMOL input
 # ---------------------------------------------------------------------------
+
+
+def _packmol_inp_path(path: str, job_dir: Optional[Path] = None) -> str:
+    """
+    Format a filesystem path for PACKMOL Fortran input.
+
+    PACKMOL mis-parses Windows backslashes (``\\``) as escapes; prefer job-relative
+    names when ``job_dir`` is set, otherwise forward slashes (``as_posix()``).
+    """
+    raw = Path(path)
+    if job_dir is not None:
+        try:
+            token = raw.resolve().relative_to(job_dir.resolve()).as_posix()
+        except ValueError:
+            token = raw.resolve().as_posix()
+    else:
+        token = raw.as_posix()
+    if any(ch in token for ch in (" ", "\t", "(", ")")):
+        return f'"{token}"'
+    return token
 
 
 def build_hydrate_inp_text(
@@ -551,23 +598,30 @@ def build_hydrate_inp_text(
     solute_radius: float = DEFAULT_SOLUTE_RADIUS_HEAVY,
     tolerance: float = DEFAULT_TOLERANCE,
     nloop: int = DEFAULT_NLOOP,
+    job_dir: Optional[str] = None,
 ) -> str:
     """Build PACKMOL input text for cavity hydration."""
     bmin, bmax = _parse_box(box_min, box_max)
     if n_waters < 1:
         raise ValueError("n_waters must be at least 1")
 
+    base = Path(job_dir) if job_dir else None
+    out = _packmol_inp_path(output_pdb, base)
+    protein = _packmol_inp_path(protein_path, base)
+    tip3p = _packmol_inp_path(tip3p_path, base)
+
     lines = [
         f"tolerance {tolerance}",
         "filetype pdb",
-        f"output {output_pdb}",
+        f"output {out}",
         "",
-        f"structure {protein_path}",
+        f"structure {protein}",
         "  number 1",
+        "  fixed 0. 0. 0. 0. 0. 0.",
         f"  radius {solute_radius}",
         "end structure",
         "",
-        f"structure {tip3p_path}",
+        f"structure {tip3p}",
         f"  nloop {nloop}",
         f"  number {n_waters}",
         "  inside box "
@@ -630,18 +684,19 @@ def prepare_hydration_job(
     output_path = job_path / output_name
 
     inp_text = build_hydrate_inp_text(
-        protein_path=str(protein_dest.resolve()),
-        tip3p_path=str(tip3p_dest.resolve()),
-        output_pdb=str(output_path.resolve()),
+        protein_path=str(protein_dest),
+        tip3p_path=str(tip3p_dest),
+        output_pdb=str(output_path),
         box_min=box_min,
         box_max=box_max,
         n_waters=n_waters,
         solute_radius=radius,
         tolerance=tolerance,
         nloop=nloop,
+        job_dir=str(job_path),
     )
     inp_path = job_path / "packmol.inp"
-    inp_path.write_text(inp_text, encoding="utf-8")
+    inp_path.write_text(inp_text, encoding="utf-8", newline="\n")
 
     return {
         "job_dir": str(job_path.resolve()),
@@ -716,16 +771,20 @@ def run_packmol(
         )
 
     work_dir = cwd or str(Path(inp_path).parent)
-    cmd = [packmol, "-i", str(Path(inp_path).name)]
+    inp_file = Path(inp_path)
+    # AmberTools Packmol Memgen (20.x) reads input from stdin only; ``-i`` is ignored
+    # and leaves filetype/output unparsed (STOP 171).
     try:
-        proc = subprocess.run(
-            cmd,
-            cwd=work_dir,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-        )
+        with inp_file.open("r", encoding="utf-8", newline="\n") as inp_f:
+            proc = subprocess.run(
+                [packmol],
+                cwd=work_dir,
+                stdin=inp_f,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
     except subprocess.TimeoutExpired as exc:
         log = (exc.stdout or "") + (exc.stderr or "")
         return False, log + "\nPACKMOL timed out."

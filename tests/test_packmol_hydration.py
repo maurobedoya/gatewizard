@@ -117,9 +117,26 @@ class TestPackmolHydrationUnit:
             solute_radius=2.5,
         )
         assert "tolerance 2.0" in text
+        assert "fixed 0. 0. 0. 0. 0. 0." in text
         assert "radius 2.5" in text
         assert "number 5" in text
         assert "inside box" in text
+
+    def test_build_hydrate_inp_text_no_windows_backslashes(self, tmp_path):
+        job = tmp_path / "job"
+        job.mkdir()
+        text = build_hydrate_inp_text(
+            protein_path=str(job / "protein.pdb"),
+            tip3p_path=str(job / "TIP3P.pdb"),
+            output_pdb=str(job / "out.pdb"),
+            box_min=(0, 0, 0),
+            box_max=(10, 10, 10),
+            n_waters=3,
+            job_dir=str(job),
+        )
+        assert "\\" not in text
+        assert "output out.pdb" in text
+        assert "structure protein.pdb" in text
 
     def test_prepare_hydration_job(self, mini_pdb, tmp_path):
         job = prepare_hydration_job(
@@ -132,6 +149,38 @@ class TestPackmolHydrationUnit:
         assert Path(job["packmol_inp_path"]).is_file()
         assert Path(job["tip3p_path"]).is_file()
         assert "inp_text" in job
+        inp_body = Path(job["packmol_inp_path"]).read_text(encoding="utf-8")
+        assert "\\" not in inp_body
+        assert "output " in inp_body
+
+    def test_tip3p_template_pdb_columns(self):
+        tip3p = (
+            Path(__file__).parent.parent / "gatewizard" / "resources" / "water" / "TIP3P.pdb"
+        )
+        lines = tip3p.read_text(encoding="utf-8").splitlines()
+        atom_lines = [ln for ln in lines if ln.startswith("ATOM")]
+        assert len(atom_lines) == 3
+        for ln in atom_lines:
+            assert ln[17:20].strip()  # 3-char residue name
+            assert ln[22:26].strip().isdigit()  # residue number in cols 23-26
+        o_line = atom_lines[0]
+        assert o_line[12:16].strip() == "OH2"
+        ox, oy, oz = (float(o_line[30:38]), float(o_line[38:46]), float(o_line[46:54]))
+        assert ox == pytest.approx(0.0)
+        assert oy == pytest.approx(0.0)
+        assert oz == pytest.approx(0.0)
+
+    def test_estimate_cavity_volume_returns_free_grid_points(self, mini_pdb):
+        result = estimate_cavity_volume(
+            mini_pdb,
+            box_min=(-5, -5, -5),
+            box_max=(5, 5, 5),
+        )
+        assert isinstance(result.free_grid_points, list)
+        assert len(result.free_grid_points) > 0
+        assert len(result.free_grid_points) <= 3000
+        x, y, z = result.free_grid_points[0]
+        assert -5 <= x <= 5 and -5 <= y <= 5 and -5 <= z <= 5
 
     def test_run_packmol_mocked(self, tmp_path):
         inp = tmp_path / "packmol.inp"
@@ -139,7 +188,9 @@ class TestPackmolHydrationUnit:
         out_pdb = tmp_path / "out.pdb"
         out_pdb.write_text("END\n", encoding="utf-8")
 
-        def fake_run(cmd, cwd, capture_output, text, timeout, check):
+        def fake_run(cmd, cwd, capture_output, text, timeout, check, stdin=None):
+            assert cmd == ["/usr/bin/packmol"]
+            assert stdin is not None
             class R:
                 returncode = 0
                 stdout = "SUCCESS\n"
@@ -157,7 +208,7 @@ class TestPackmolHydrationUnit:
 
     @pytest.mark.skipif(not PDB_6RV3.is_file(), reason="6RV3_AB.pdb not found")
     def test_hydrate_cavity_mocked(self, tmp_path):
-        def fake_run(cmd, cwd, capture_output, text, timeout, check):
+        def fake_run(cmd, cwd, capture_output, text, timeout, check, **kwargs):
             out = Path(cwd) / "6RV3_AB_hydrated.pdb"
             out.write_text("END\n", encoding="utf-8")
             class R:
