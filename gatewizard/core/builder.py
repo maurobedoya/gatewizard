@@ -416,8 +416,10 @@ class Builder:
         else:
             # Use default naming scheme
             pdb_name = os.path.splitext(os.path.basename(pdb_file))[0]
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            job_dir = work_dir / f"membrane_{pdb_name}_{timestamp}"
+            job_dir = work_dir / f"02_build_{pdb_name}"
+            if job_dir.exists():
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                job_dir = work_dir / f"02_build_{pdb_name}_{timestamp}"
 
         job_dir.mkdir(parents=True, exist_ok=True)
 
