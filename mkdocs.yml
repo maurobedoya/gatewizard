@@ -63,6 +63,7 @@ nav:
       - Preparation Module: api/preparation.md
       - Builder Module: api/builder.md
       - MemPrO Module: api/mempro.md
+      - Hydration Module: api/hydration.md
       - Equilibration: api/equilibration.md
       - Analysis: api/analysis.md
       - Quick Reference: QUICK_REFERENCE.md

@@ -43,6 +43,20 @@ Module for orienting membrane proteins using MemPrO.
 
 ---
 
+### [Hydration Module](hydration.md)
+Module for cavity hydration with standalone PACKMOL (AmberTools TIP3P waters).
+
+**Key Features:**
+- PACKMOL availability check
+- Hydrogen status detection (heavy-atom-safe mode)
+- Cavity volume estimation inside a 3D box
+- PACKMOL input generation and execution
+- Custom PACKMOL input support
+
+**Main Functions:** `check_packmol_available`, `estimate_cavity_volume`, `hydrate_cavity`
+
+---
+
 ### [Equilibration Module](equilibration.md)
 Module for managing equilibration protocols and workflows for NAMD, GROMACS, and OpenMM.
 
