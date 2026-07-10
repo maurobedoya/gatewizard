@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.45] - 2026-07-10
+
+### Added
+
+- **Packmol hydration:** cavity fill via PACKMOL (volume estimate, job prep, run, custom input)
+- Bundled TIP3P water template, tests, examples, and API docs
+
+### Fixed
+
+- PACKMOL runs via stdin on AmberTools Memgen (fixes input parsing errors)
+- Job-relative paths, fixed solute in input, corrected TIP3P geometry
+- Volume estimate returns free grid points for GUI ghost-water preview
+
+### Changed
+
+- Builder default `notprotonate=True` so packmol-memgen keeps PropKa residue names (GLH/ASH/…)
+
 ## [1.0.44] - 2026-07-03
 
 ### Added

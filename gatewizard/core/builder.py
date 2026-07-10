@@ -63,7 +63,7 @@ class Builder:
             "dist": 12,  # Minimum solute-to-box-boundary distance in Angstroms
             "dist_wat": 26,  # Default water layer thickness in Angstroms
             "dims": None,  # Explicit box dimensions [X, Y, Z] in Angstroms
-            "notprotonate": False,  # False = allow protonation (default)
+            "notprotonate": True,  # Preserve PropKa residue names (GLH/ASH/…); skip reduce re-protonation
             "two_stage_process": False,  # Enable two-stage packing + parametrization
             "pack_only": False,  # Only perform packing stage
             "parametrize_only": False,  # Only perform parametrization stage
@@ -474,8 +474,9 @@ class Builder:
         if config.get("parametrize", True):
             cmd.append("--parametrize")
 
-        # Only add notprotonate if specifically requested for legacy support
-        if config.get("notprotonate", False):
+        # Preserve PropKa / preparation protonation (GLH, ASH, HIP, …).
+        # Without this, packmol-memgen's reduce can rename atoms (e.g. HA→HCA) and break tleap.
+        if config.get("notprotonate", True):
             cmd.append("--notprotonate")
 
         # Add salt options (only for packing stage or single-stage)
