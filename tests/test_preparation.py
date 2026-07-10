@@ -1057,5 +1057,80 @@ class TestPropkaComplexStructures:
                 print(f"  {r['id']}: {r['shift']:+.2f} units")
 
 
+class TestStripProteinHydrogens:
+    """Protein-only hydrogen stripping (ligands / hetero H kept)."""
+
+    def _write_pdb(self, tmp_path, content: str) -> Path:
+        path = Path(tmp_path) / "sample.pdb"
+        path.write_text(content)
+        return path
+
+    def test_count_and_strip_keeps_ligand_h(self, tmp_path):
+        from gatewizard.core.preparation import (
+            count_protein_hydrogens,
+            strip_protein_hydrogens,
+        )
+
+        pdb = self._write_pdb(
+            tmp_path,
+            """\
+ATOM      1  N   ALA A   1      11.104  13.556   9.648  1.00  0.00           N  
+ATOM      2  CA  ALA A   1      12.271  12.722   9.648  1.00  0.00           C  
+ATOM      3  HA  ALA A   1      12.800  12.900  10.550  1.00  0.00           H  
+HETATM    4  C1  LIG A   2      20.000  20.000  20.000  1.00  0.00           C  
+HETATM    5  H1  LIG A   2      20.500  20.500  20.500  1.00  0.00           H  
+ATOM      6  H   ACE A   3      15.000  15.000  15.000  1.00  0.00           H  
+END
+""",
+        )
+        assert count_protein_hydrogens(str(pdb)) == 2
+        out = Path(tmp_path) / "out.pdb"
+        result = strip_protein_hydrogens(str(pdb), str(out))
+        assert result["removed"] == 2
+        text = out.read_text()
+        assert "HA  ALA" not in text
+        assert "H   ACE" not in text
+        assert "H1  LIG" in text
+        assert "CA  ALA" in text
+        assert count_protein_hydrogens(str(out)) == 0
+
+    def test_builder_warns_unless_remove_flag(self, tmp_path):
+        from gatewizard.core.builder import Builder
+
+        pdb = self._write_pdb(
+            tmp_path,
+            """\
+ATOM      1  N   ALA A   1      11.104  13.556   9.648  1.00  0.00           N  
+ATOM      2  HA  ALA A   1      12.800  12.900  10.550  1.00  0.00           H  
+END
+""",
+        )
+        builder = Builder()
+        ok, msg = builder.validate_system_inputs(
+            str(pdb),
+            ["POPC"],
+            ["POPC"],
+            "1.0//1.0",
+            water_model="opc",
+            protein_ff="ff19SB",
+            lipid_ff="lipid21",
+        )
+        assert ok
+        assert "Remove protein hydrogens" in msg
+
+        ok2, msg2 = builder.validate_system_inputs(
+            str(pdb),
+            ["POPC"],
+            ["POPC"],
+            "1.0//1.0",
+            water_model="opc",
+            protein_ff="ff19SB",
+            lipid_ff="lipid21",
+            remove_protein_h=True,
+        )
+        assert ok2
+        assert "Remove protein hydrogens" not in msg2
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])

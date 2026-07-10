@@ -43,6 +43,151 @@ PROTONATION_STATES = {
     "CTE": {"capped": "NME", "deprotonated": "COO"},  # C-terminus caps
 }
 
+# Standard / Amber protein residues (+ caps). Used to strip protein H only —
+# ligands, waters, ions, and other hetero residues are left untouched.
+PROTEIN_RESIDUE_NAMES = frozenset(
+    {
+        "ALA",
+        "ARG",
+        "ASN",
+        "ASP",
+        "CYS",
+        "GLN",
+        "GLU",
+        "GLY",
+        "HIS",
+        "ILE",
+        "LEU",
+        "LYS",
+        "MET",
+        "PHE",
+        "PRO",
+        "SER",
+        "THR",
+        "TRP",
+        "TYR",
+        "VAL",
+        # Amber / CHARMM protonation variants
+        "HID",
+        "HIE",
+        "HIP",
+        "HSD",
+        "HSE",
+        "HSP",
+        "ASH",
+        "GLH",
+        "LYN",
+        "CYX",
+        "CYM",
+        "TYM",
+        "ARN",
+        # Terminal caps
+        "ACE",
+        "NME",
+        "NHE",
+    }
+)
+
+
+def is_pdb_hydrogen_atom(line: str) -> bool:
+    """Return True if a PDB ATOM/HETATM line is a hydrogen (or deuterium)."""
+    if not line.startswith(("ATOM", "HETATM")):
+        return False
+    if len(line) >= 78:
+        elem = line[76:78].strip().upper()
+        if elem in {"H", "D"}:
+            return True
+        if elem and elem not in {"H", "D"}:
+            return False
+    name = line[12:16].strip().upper()
+    if not name:
+        return False
+    if name[0] in {"H", "D"}:
+        return True
+    return len(name) >= 2 and name[0].isdigit() and name[1] in {"H", "D"}
+
+
+def is_protein_residue_name(res_name: str) -> bool:
+    """Return True if *res_name* is a standard protein / cap residue."""
+    return (res_name or "").strip().upper() in PROTEIN_RESIDUE_NAMES
+
+
+def count_protein_hydrogens(pdb_file: str) -> int:
+    """Count hydrogen atoms belonging to protein residues only."""
+    count = 0
+    with open(pdb_file, "r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            if not line.startswith(("ATOM", "HETATM")):
+                continue
+            res_name = line[17:20].strip()
+            if is_protein_residue_name(res_name) and is_pdb_hydrogen_atom(line):
+                count += 1
+    return count
+
+
+def strip_protein_hydrogens(
+    input_pdb: str,
+    output_pdb: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Remove hydrogen atoms from protein residues only.
+
+    Ligands, waters, ions, and other hetero residues keep their hydrogens.
+    Non-ATOM/HETATM records are preserved unchanged.
+
+    Args:
+        input_pdb: Path to input PDB
+        output_pdb: Path to write (defaults to *input_pdb*, in-place)
+
+    Returns:
+        Dict with ``output_file``, ``removed``, ``kept_protein_heavy``,
+        and ``kept_other`` counts.
+    """
+    if not os.path.isfile(input_pdb):
+        raise FileNotFoundError(f"PDB file not found: {input_pdb}")
+
+    out_path = output_pdb or input_pdb
+    kept_lines: List[str] = []
+    removed = 0
+    kept_protein_heavy = 0
+    kept_other = 0
+
+    with open(input_pdb, "r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            if not line.startswith(("ATOM", "HETATM")):
+                kept_lines.append(line)
+                continue
+            res_name = line[17:20].strip()
+            if is_protein_residue_name(res_name) and is_pdb_hydrogen_atom(line):
+                removed += 1
+                continue
+            if is_protein_residue_name(res_name):
+                kept_protein_heavy += 1
+            else:
+                kept_other += 1
+            kept_lines.append(line)
+
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with open(out, "w", encoding="utf-8", newline="\n") as handle:
+        handle.writelines(kept_lines)
+
+    logger.info(
+        "Stripped %s protein hydrogen(s) from %s → %s "
+        "(kept %s protein heavy, %s non-protein atoms)",
+        removed,
+        input_pdb,
+        out_path,
+        kept_protein_heavy,
+        kept_other,
+    )
+    return {
+        "output_file": str(out_path),
+        "removed": removed,
+        "kept_protein_heavy": kept_protein_heavy,
+        "kept_other": kept_other,
+    }
+
 
 class PreparationError(Exception):
     """Custom exception for preparation-related errors."""

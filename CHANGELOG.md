@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Preparation:** `strip_protein_hydrogens()` / `count_protein_hydrogens()` — remove protein H only (ligands/hetero kept)
+- **Builder:** optional `remove_protein_h`; warns when protein hydrogens are detected
+
 ## [1.0.45] - 2026-07-10
 
 ### Added

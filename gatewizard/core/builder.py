@@ -19,7 +19,11 @@ from typing import List, Dict, Any, Optional, Tuple
 
 from gatewizard.utils.logger import get_logger
 from gatewizard.utils.helpers import get_clean_env, get_clean_env_shell_snippet, resolve_conda_executable, subprocess_argv_for_script
-from gatewizard.core.preparation import _resolve_pdb4amber_executable
+from gatewizard.core.preparation import (
+    _resolve_pdb4amber_executable,
+    count_protein_hydrogens,
+    strip_protein_hydrogens,
+)
 from gatewizard.tools.force_fields import ForceFieldManager
 from gatewizard.tools.validators import SystemValidator
 from gatewizard.tools.ligand_parametrization import (
@@ -64,6 +68,7 @@ class Builder:
             "dist_wat": 26,  # Default water layer thickness in Angstroms
             "dims": None,  # Explicit box dimensions [X, Y, Z] in Angstroms
             "notprotonate": True,  # Preserve PropKa residue names (GLH/ASH/…); skip reduce re-protonation
+            "remove_protein_h": False,  # Strip protein H before packmol-memgen (keep ligand/hetero H)
             "two_stage_process": False,  # Enable two-stage packing + parametrization
             "pack_only": False,  # Only perform packing stage
             "parametrize_only": False,  # Only perform parametrization stage
@@ -98,11 +103,39 @@ class Builder:
             **kwargs: Additional parameters to validate
 
         Returns:
-            Tuple of (is_valid, error_message)
+            Tuple of (is_valid, error_message). When valid with a non-empty
+            message, the message is a warning (e.g. force-field note or
+            protein hydrogens detected).
         """
-        return self.validator.validate_system_inputs(
+        valid, error_msg = self.validator.validate_system_inputs(
             pdb_file, upper_lipids, lower_lipids, lipid_ratios, **kwargs
         )
+        if not valid:
+            return False, error_msg
+
+        warnings: List[str] = []
+        if error_msg:
+            warnings.append(error_msg)
+
+        # Foreign / non-Amber protein H often break tleap after packmol-memgen.
+        # Skip the warning when the user already opted to strip them.
+        if not kwargs.get("remove_protein_h", False):
+            try:
+                n_h = count_protein_hydrogens(pdb_file)
+            except OSError as exc:
+                logger.warning(f"Could not scan protein hydrogens: {exc}")
+                n_h = 0
+            if n_h > 0:
+                warnings.append(
+                    f"Protein has {n_h} hydrogen atom(s). Hydrogens from other "
+                    "software (e.g. Schrödinger) can break tleap after "
+                    "packmol-memgen. Open Advanced settings and enable "
+                    "'Remove protein hydrogens' before generating input files. "
+                    "Only protein hydrogens are removed; ligands and other "
+                    "heteroatoms keep theirs."
+                )
+
+        return True, "\n\n".join(warnings)
 
     def prepare_system(
         self,
@@ -153,8 +186,10 @@ class Builder:
                 pdb_file, working_dir, custom_output_name
             )
 
-            # Copy PDB file to job directory
-            local_pdb = self._prepare_input_files(pdb_file, job_dir)
+            # Copy PDB file to job directory (optionally strip protein H)
+            local_pdb = self._prepare_input_files(
+                pdb_file, job_dir, remove_protein_h=bool(config.get("remove_protein_h"))
+            )
 
             # Check if we need to use the notprotonate approach
             # When notprotonate=True, the user should have already prepared the PDB
@@ -228,7 +263,9 @@ class Builder:
             job_dir = self._create_job_directory(
                 pdb_file, working_dir, custom_output_name
             )
-            local_pdb = self._prepare_input_files(pdb_file, job_dir)
+            local_pdb = self._prepare_input_files(
+                pdb_file, job_dir, remove_protein_h=bool(config.get("remove_protein_h"))
+            )
 
             if config.get("notprotonate", False):
                 logger.info(
@@ -429,11 +466,23 @@ class Builder:
         logger.info(f"Created job directory: {job_dir}")
         return job_dir
 
-    def _prepare_input_files(self, pdb_file: str, job_dir: Path) -> Path:
-        """Copy input files to job directory."""
+    def _prepare_input_files(
+        self,
+        pdb_file: str,
+        job_dir: Path,
+        remove_protein_h: bool = False,
+    ) -> Path:
+        """Copy input PDB into the job directory; optionally strip protein H."""
         pdb_name = os.path.splitext(os.path.basename(pdb_file))[0]
         local_pdb = job_dir / f"{pdb_name}.pdb"
         shutil.copy2(pdb_file, local_pdb)
+
+        if remove_protein_h:
+            result = strip_protein_hydrogens(str(local_pdb), str(local_pdb))
+            logger.info(
+                "Removed %s protein hydrogen atom(s) from Builder input PDB",
+                result["removed"],
+            )
 
         logger.info(f"Copied PDB file to: {local_pdb}")
         return local_pdb
