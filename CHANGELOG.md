@@ -7,10 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.46] - 2026-07-11
+
 ### Added
 
 - **Preparation:** `strip_protein_hydrogens()` / `count_protein_hydrogens()` — remove protein H only (ligands/hetero kept)
 - **Builder:** optional `remove_protein_h`; warns when protein hydrogens are detected
+- **GROMACS equilibration:** positional restraints for `water`, `ions`, `other`, and custom MDAnalysis selections (NAMD/OpenMM parity); MDP macros `POSRES_FC_WATER` / `ION` / `OTHER`
+- **Preparation:** `detect_terminal_caps()` / `is_already_capped()` to detect ACE/NME/NMA before re-capping
+
+### Fixed
+
+- **Preparation:** protein capping no longer drops ligands, waters, or ions that share a chain/segment with the protein
+- **Preparation:** hydrogen stripping works when PDB topology lacks an `elements` attribute (guess elements / name fallback)
+- **GROMACS equilibration:** POSRES use local atom indices for multi-copy ParmEd `system1` proteins; lipid includes target `system2` (not ions)
+- **Builder:** stop premature post-process after async launch (false “No bilayer PDB” / “File conversion failed” warnings)
 
 ## [1.0.45] - 2026-07-10
 
