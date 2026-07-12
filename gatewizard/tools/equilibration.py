@@ -14,8 +14,9 @@ import re
 import subprocess
 import shutil
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple, Set
 from dataclasses import dataclass, field, replace as _dc_replace
+from collections import defaultdict
 import json
 import tempfile
 
@@ -4981,8 +4982,10 @@ class GROMACSEquilibrationManager:
 
     Position restraints (POSRES) are handled via MDP ``define`` macros, identical
     to the CHARMM-GUI scheme: ``POSRES_FC_BB``, ``POSRES_FC_SC``,
-    ``POSRES_FC_LIPID``, ``DDIHRES_FC``.  Separate ``.itp`` files for backbone,
-    sidechain, and lipid-head atoms are generated and appended to ``topol.top``.
+    ``POSRES_FC_LIPID``, ``POSRES_FC_WATER``, ``POSRES_FC_ION``,
+    ``POSRES_FC_OTHER``, plus per-key macros for custom MDAnalysis selections.
+    Separate ``.itp`` files are generated and included into the matching
+    molecule types in ``topol.top``.
 
     Example::
 
@@ -5274,6 +5277,109 @@ class GROMACSEquilibrationManager:
                 for part in parts:
                     fh.write("\n" + part)
 
+    # Residue / molecule-type name sets (aligned with NAMD DEFAULT_SELECTIONS)
+    _WATER_MOLNAMES: frozenset = frozenset(
+        {
+            "SOL",
+            "TIP3",
+            "TIP3P",
+            "HOH",
+            "WAT",
+            "TIP4",
+            "TIP4P",
+            "SPC",
+            "SPCE",
+            "T3P",
+            "T4P",
+        }
+    )
+    _ION_MOLNAMES: frozenset = frozenset(
+        {
+            "NA",
+            "CL",
+            "K",
+            "CA",
+            "MG",
+            "ZN",
+            "FE",
+            "CU",
+            "SOD",
+            "CLA",
+            "POT",
+            "CAL",
+            "MAG",
+            "ZIN",
+            "IRN",
+            "COP",
+            "NA+",
+            "CL-",
+            "K+",
+            "CA2+",
+            "MG2+",
+            "ZN2+",
+            "FE2+",
+            "FE3+",
+            "CU2+",
+            "LIT",
+            "RUB",
+            "CES",
+            "BAR",
+        }
+    )
+    _LIPID_MOLNAMES: frozenset = frozenset(
+        {
+            "POPC",
+            "POPE",
+            "POPS",
+            "DPPC",
+            "DMPC",
+            "DOPC",
+            "DSPC",
+            "PC",
+            "PE",
+            "PS",
+            "PA",
+            "PG",
+            "PI",
+            "SM",
+            "OL",
+            "LA",
+            "MY",
+            "ST",
+            "AR",
+            "OLE",
+            "PAL",
+            "STE",
+            "LIN",
+            "CHOL",
+            "CHL",
+            "CHOLEST",
+            "PALM",
+            "OLEO",
+            "STEROL",
+        }
+    )
+    _STD_POSRES_KEYS: frozenset = frozenset(
+        {
+            "protein_backbone",
+            "protein_sidechain",
+            "lipid_head",
+            "lipid_tail",
+            "water",
+            "ions",
+            "ion",
+            "other",
+        }
+    )
+    _PROTEIN_LIPID_KEYS: frozenset = frozenset(
+        {
+            "protein_backbone",
+            "protein_sidechain",
+            "lipid_head",
+            "lipid_tail",
+        }
+    )
+
     @staticmethod
     def _parse_mol_atom_counts_from_top(top_path: Path) -> List[int]:
         """Return the number of atoms in each ``[ moleculetype ]`` block.
@@ -5290,33 +5396,308 @@ class GROMACSEquilibrationManager:
             for a system with a 496-atom protein, 134-atom lipid, two ion types,
             and water.
         """
-        counts: List[int] = []
+        type_defs = GROMACSEquilibrationManager._parse_moleculetype_defs(top_path)
+        return [n for _, n in type_defs]
+
+    @staticmethod
+    def _parse_moleculetype_defs(top_path: Path) -> List[Tuple[str, int]]:
+        """Return ``[(name, n_atoms), ...]`` for each ``[ moleculetype ]`` block."""
+        defs: List[Tuple[str, int]] = []
+        current_name: Optional[str] = None
         current_count = 0
         in_atoms = False
         in_mol = False
+        awaiting_name = False
         for raw in top_path.read_text().splitlines():
-            line = raw.split(";")[0].strip()  # strip inline comments
+            line = raw.split(";")[0].strip()
             if not line:
                 continue
             if line.startswith("["):
                 section = line.strip("[] ").lower()
                 if section == "moleculetype":
-                    if in_mol and current_count > 0:
-                        counts.append(current_count)
+                    if in_mol and current_name is not None and current_count > 0:
+                        defs.append((current_name, current_count))
+                    current_name = None
                     current_count = 0
                     in_mol = True
                     in_atoms = False
+                    awaiting_name = True
                 elif section == "atoms" and in_mol:
                     in_atoms = True
-                elif section != "atoms":
+                    awaiting_name = False
+                else:
                     in_atoms = False
+                    if section != "moleculetype":
+                        awaiting_name = False
+            elif awaiting_name and in_mol and current_name is None:
+                current_name = line.split()[0]
+                awaiting_name = False
             elif in_atoms:
                 parts = line.split()
                 if parts and parts[0].isdigit():
                     current_count += 1
-        if in_mol and current_count > 0:
-            counts.append(current_count)
-        return counts
+        if in_mol and current_name is not None and current_count > 0:
+            defs.append((current_name, current_count))
+        return defs
+
+    @staticmethod
+    def _parse_molecules_section(top_path: Path) -> List[Tuple[str, int]]:
+        """Return ``[(moltype_name, count), ...]`` from the ``[ molecules ]`` block."""
+        molecules: List[Tuple[str, int]] = []
+        in_molecules = False
+        for raw in top_path.read_text().splitlines():
+            line = raw.split(";")[0].strip()
+            if not line:
+                continue
+            if line.startswith("["):
+                section = line.strip("[] ").lower()
+                in_molecules = section == "molecules"
+                continue
+            if in_molecules:
+                parts = line.split()
+                if len(parts) >= 2 and parts[1].lstrip("+-").isdigit():
+                    molecules.append((parts[0], int(parts[1])))
+        return molecules
+
+    @classmethod
+    def _build_mol_copies(
+        cls, top_path: Path
+    ) -> Tuple[List[Tuple[str, int]], List[Dict[str, Any]]]:
+        """Build per-copy global atom ranges from a topology.
+
+        Returns:
+            ``(type_defs, copies)`` where *type_defs* is
+            ``[(name, n_atoms), ...]`` and *copies* is a list of dicts with
+            keys ``name``, ``n_atoms``, ``start``, ``end``, ``copy_idx``
+            (``start``/``end`` are 1-based global atom indices).
+            ``copy_idx`` is cumulative per molecule-type name even when the
+            same name appears in multiple ``[ molecules ]`` rows.
+        """
+        type_defs = cls._parse_moleculetype_defs(top_path)
+        type_atoms = {name: n for name, n in type_defs}
+        molecules = cls._parse_molecules_section(top_path)
+        if not molecules and type_defs:
+            molecules = [(name, 1) for name, _ in type_defs]
+
+        copies: List[Dict[str, Any]] = []
+        g = 1
+        name_copy_counters: Dict[str, int] = defaultdict(int)
+        for name, count in molecules:
+            n_atoms = type_atoms.get(name)
+            if n_atoms is None:
+                continue
+            for _ in range(count):
+                copy_idx = name_copy_counters[name]
+                name_copy_counters[name] += 1
+                copies.append(
+                    {
+                        "name": name,
+                        "n_atoms": n_atoms,
+                        "start": g,
+                        "end": g + n_atoms - 1,
+                        "copy_idx": copy_idx,
+                    }
+                )
+                g += n_atoms
+        return type_defs, copies
+
+    @classmethod
+    def _classify_moltype(cls, name: str) -> str:
+        """Classify a molecule type name as protein|lipid|water|ions|other."""
+        key = name.strip().upper()
+        bare = key.rstrip("+-0123456789")
+        if key in cls._WATER_MOLNAMES or bare in cls._WATER_MOLNAMES:
+            return "water"
+        if key in cls._ION_MOLNAMES or bare in cls._ION_MOLNAMES:
+            return "ions"
+        if key in cls._LIPID_MOLNAMES or bare in cls._LIPID_MOLNAMES:
+            return "lipid"
+        if key in {"PROTEIN", "PROT", "SYSTEM", "MOL", "PROA", "PROBE"}:
+            return "protein"
+        return "other"
+
+    @classmethod
+    def _pick_protein_lipid_molnames(
+        cls,
+        type_defs: List[Tuple[str, int]],
+        molecules: List[Tuple[str, int]],
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """Choose protein and lipid molecule-type names for POSRES includes.
+
+        ParmEd membrane topologies often name types ``system1`` / ``system2``
+        (not Protein/POPC).  When names are unclassified:
+
+        * protein → largest ``n_atoms`` among non-water/non-ion types
+        * lipid → most copies among remaining non-water/non-ion types
+
+        Never falls back to an ion type for lipids.
+        """
+        copy_counts: Dict[str, int] = defaultdict(int)
+        for name, count in molecules:
+            copy_counts[name] += int(count)
+
+        by_class = {name: cls._classify_moltype(name) for name, _ in type_defs}
+        protein = next(
+            (n for n, _ in type_defs if by_class[n] == "protein"),
+            None,
+        )
+        lipid = next(
+            (n for n, _ in type_defs if by_class[n] == "lipid"),
+            None,
+        )
+
+        others = [
+            (name, natoms, copy_counts.get(name, 1))
+            for name, natoms in type_defs
+            if by_class[name] == "other"
+        ]
+        if protein is None and others:
+            protein = max(others, key=lambda x: (x[1], x[2]))[0]
+            others = [c for c in others if c[0] != protein]
+        if lipid is None and others:
+            lipid = max(others, key=lambda x: (x[2], x[1]))[0]
+        return protein, lipid
+
+    @staticmethod
+    def _parse_ndx_group(index_path: Path, group_idx: int) -> List[int]:
+        """Return 1-based atom indices from a GROMACS ``.ndx`` group by index."""
+        groups: List[List[int]] = []
+        current: Optional[List[int]] = None
+        for line in Path(index_path).read_text().splitlines():
+            if line.startswith("["):
+                current = []
+                groups.append(current)
+            elif current is not None:
+                current.extend(int(x) for x in line.split() if x.lstrip("+-").isdigit())
+        if group_idx < 0 or group_idx >= len(groups):
+            return []
+        return groups[group_idx]
+
+    @staticmethod
+    def _local_indices_in_copy(
+        global_ids: List[int], copy: Dict[str, Any]
+    ) -> Set[int]:
+        """Map global 1-based indices into local 1-based indices for *copy*."""
+        start = int(copy["start"])
+        end = int(copy["end"])
+        return {g - start + 1 for g in global_ids if start <= int(g) <= end}
+
+    @staticmethod
+    def _posres_macro_name(key: str) -> str:
+        """Return a C-preprocessor-safe POSRES force-constant macro name."""
+        special = {
+            "water": "POSRES_FC_WATER",
+            "ions": "POSRES_FC_ION",
+            "ion": "POSRES_FC_ION",
+            "other": "POSRES_FC_OTHER",
+            "protein_backbone": "POSRES_FC_BB",
+            "protein_sidechain": "POSRES_FC_SC",
+            "lipid_head": "POSRES_FC_LIPID",
+            "lipid_tail": "POSRES_FC_LIPID",
+        }
+        if key in special:
+            return special[key]
+        safe = re.sub(r"[^A-Za-z0-9_]", "_", key).upper()
+        if not safe or safe[0].isdigit():
+            safe = "X_" + safe
+        return f"POSRES_FC_{safe}"
+
+    @staticmethod
+    def _safe_posres_filename(text: str) -> str:
+        """Sanitize a constraint/moltype name for use in an .itp filename."""
+        safe = re.sub(r"[^A-Za-z0-9_]+", "_", text.strip()).strip("_").lower()
+        return safe or "custom"
+
+    @staticmethod
+    def _write_posre_itp(
+        outfile: Path, local_indices: Set[int], macro: str
+    ) -> Path:
+        """Write a position-restraints .itp using *macro* as the FC placeholder."""
+        lines = [
+            f"; Position restraints generated by GateWizard ({macro})",
+            "[ position_restraints ]",
+            ";  i funct       fcx        fcy        fcz",
+        ]
+        for idx in sorted(local_indices):
+            lines.append(f"{idx:6d}     1  {macro} {macro} {macro}")
+        outfile.write_text("\n".join(lines) + "\n")
+        return outfile
+
+    def _map_selection_to_local_indices(
+        self,
+        structure_path: Path,
+        selection: str,
+        copies: List[Dict[str, Any]],
+    ) -> Tuple[Dict[str, Set[int]], bool]:
+        """Map an MDAnalysis selection to local indices per molecule type.
+
+        Returns:
+            ``(local_by_moltype, partial_copies)`` where *local_by_moltype*
+            maps molecule-type name → set of 1-based local atom indices, and
+            *partial_copies* is True when only some copies of a multi-copy
+            type were selected (GROMACS POSRES will still restrain all copies).
+        """
+        import MDAnalysis as mda  # type: ignore
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            u = mda.Universe(str(structure_path))
+            ag = u.select_atoms(selection)
+
+        if len(ag) == 0:
+            return {}, False
+
+        n_atoms_total = int(sum(c["n_atoms"] for c in copies))
+        lookup: List[Optional[Dict[str, Any]]] = [None] * n_atoms_total
+        for copy in copies:
+            for local in range(1, copy["n_atoms"] + 1):
+                g0 = copy["start"] + local - 2  # 0-based
+                if 0 <= g0 < len(lookup):
+                    lookup[g0] = {
+                        "name": copy["name"],
+                        "local": local,
+                        "copy_idx": copy["copy_idx"],
+                    }
+
+        n_copies: Dict[str, int] = defaultdict(int)
+        for copy in copies:
+            n_copies[copy["name"]] = max(n_copies[copy["name"]], copy["copy_idx"] + 1)
+
+        selected_by_type_copy: Dict[Tuple[str, int], Set[int]] = defaultdict(set)
+        for atom in ag:
+            g0 = int(atom.index)
+            if g0 < 0 or g0 >= len(lookup) or lookup[g0] is None:
+                continue
+            info = lookup[g0]
+            assert info is not None
+            selected_by_type_copy[(info["name"], info["copy_idx"])].add(info["local"])
+
+        local_by_moltype: Dict[str, Set[int]] = defaultdict(set)
+        for (molname, _copy_idx), locals_set in selected_by_type_copy.items():
+            local_by_moltype[molname].update(locals_set)
+
+        partial = False
+        for molname in local_by_moltype:
+            total = n_copies.get(molname, 1)
+            if total <= 1:
+                continue
+            hit_copies = {
+                cidx for (name, cidx) in selected_by_type_copy if name == molname
+            }
+            if len(hit_copies) < total:
+                partial = True
+                continue
+            ref = None
+            for cidx in range(total):
+                s = selected_by_type_copy.get((molname, cidx), set())
+                if ref is None:
+                    ref = s
+                elif s != ref:
+                    partial = True
+                    break
+
+        return dict(local_by_moltype), partial
 
     def _write_first_lipid_gro_from_range(
         self,
@@ -5349,15 +5730,12 @@ class GROMACSEquilibrationManager:
             return 0
         atom_lines = lines[2 : 2 + n_total]
         box_line = lines[2 + n_total] if len(lines) > 2 + n_total else ""
-        # Slice the requested range (convert to 0-based)
         lip_lines = atom_lines[start_global - 1 : end_global]
         n_lip = len(lip_lines)
         if n_lip == 0:
             return 0
-        out: List[str] = ["First lipid molecule for genrestr", str(n_lip)]
+        out = [lines[0], f"{n_lip:5d}"]
         for i, line in enumerate(lip_lines):
-            # GRO format: resnr(5) resname(5) atomname(5) atomnr(5) coords…
-            # Keep residue/atom names, renumber atomnr to local 1-based index.
             out.append(f"    1{line[5:15]}{i + 1:5d}{line[20:]}")
         out.append(box_line)
         output_path.write_text("\n".join(out) + "\n")
@@ -5371,50 +5749,54 @@ class GROMACSEquilibrationManager:
         top_path: Optional[Path] = None,
         pdb_path: Optional[Path] = None,
         selections: Optional[Dict[str, str]] = None,
-    ) -> Dict[str, Optional[Path]]:
+        constraints_max: Optional[Dict[str, float]] = None,
+    ) -> Dict[str, Any]:
         """Generate GROMACS position-restraint .itp files with macro force constants.
 
-        Creates three files using ``gmx genrestr``:
+        Creates protein/lipid files via index-local (or genrestr) POSRES and
+        water / ions / other / custom constraint files via MDAnalysis selections
+        mapped to per-moleculetype local indices.
 
-        - ``posre_protein_backbone.itp`` — with ``POSRES_FC_BB`` macro
-        - ``posre_protein_sidechain.itp`` — with ``POSRES_FC_SC`` macro
-        - ``posre_lipid.itp`` — with ``POSRES_FC_LIPID`` macro
+        Protein posres (groups 4=Backbone, 8=SideChain) are remapped to
+        **local** indices of the first protein molecule copy.  Full-system
+        ``gmx genrestr`` indices are wrong when the protein has multiple
+        copies (ParmEd ``system1`` × N) — GROMACS requires 1…n_atoms_local.
 
-        **Protein posres** (groups 4=Backbone, 8=SideChain): ``gmx genrestr``
-        outputs global atom numbers from the full-system GRO.  Because the
-        protein is the *first* molecule type in the topology, global atom
-        numbers equal the local (per-molecule) numbers, so this is correct.
+        Lipid posres extract the first lipid molecule into a mini-GRO so
+        ``gmx genrestr`` emits local indices 1…N.
 
-        **Lipid posres**: ``gmx genrestr`` on the full system would output
-        global atom numbers that exceed the per-molecule atom count (e.g. 693
-        out of bounds for a 134-atom POPC).  The fix is to extract the first
-        lipid molecule into a temporary mini-GRO with atoms renumbered 1…N,
-        then run ``gmx genrestr`` on that mini-GRO.  The resulting indices
-        (1…N) are valid local atom numbers within the lipid molecule type.
-
-        *top_path* is used to determine the protein and lipid atom counts.
-        If not supplied, the code looks for ``topol.top`` / ``topol_posres.top``
-        in the same directory as *gro_path*.
+        Water, ions, other, and custom keys use *selections* (or
+        :attr:`NAMDEquilibrationManager.DEFAULT_SELECTIONS`) and write
+        ``posre_<key>_<moltype>.itp`` files included into each affected
+        molecule type.  GROMACS POSRES apply to **all copies** of a molecule
+        type; a warning is logged when the selection hits only a subset.
 
         Args:
             gro_path: GRO structure file (full system).
             index_path: GROMACS index (.ndx) file.
             output_dir: Directory where .itp files are written.
-            top_path: Topology file; used to locate the first lipid molecule.
-            pdb_path: Unused; kept for API parity with OpenMM manager.
-            selections: Unused; kept for API parity with OpenMM manager.
+            top_path: Topology file; used for molecule ranges and includes.
+            pdb_path: Optional PDB for MDAnalysis (preferred over GRO).
+            selections: ``{constraint_key: mda_selection_string}`` overrides.
+            constraints_max: Max force (kcal/mol/Å²) per key across stages;
+                keys with force ≤ 0 are skipped for MDA-based posres.
 
         Returns:
-            Dict ``{"backbone": Path|None, "sidechain": Path|None, "lipid": Path|None}``.
+            Dict with ``backbone``, ``sidechain``, ``lipid`` (Path|None),
+            ``includes`` (``{moltype: [Path, ...]}``), and ``macros``
+            (list of POSRES_FC_* names used for MDA/custom keys).
         """
-        result: Dict[str, Optional[Path]] = {
+        result: Dict[str, Any] = {
             "backbone": None,
             "sidechain": None,
             "lipid": None,
+            "includes": {},
+            "macros": [],
         }
+        includes: Dict[str, List[Path]] = defaultdict(list)
+        macros_used: List[str] = []
 
         def _replace_fc(content: str, macro: str) -> str:
-            """Replace literal '1 1 1' FC triplet with macro names."""
             return re.sub(
                 r"(\s+1)(\s+1)(\s+1)\s*$",
                 f"  {macro}   {macro}   {macro}",
@@ -5466,23 +5848,9 @@ class GROMACSEquilibrationManager:
                 )
                 return None
 
-        # ------------------------------------------------------------------
-        # Protein backbone and sidechain (groups 4 and 8 from full system)
-        # Global atom numbers == local numbers because protein is molecule 1.
-        # ------------------------------------------------------------------
-        result["backbone"] = _genrestr(
-            4, output_dir / "posre_protein_backbone.itp", "POSRES_FC_BB"
-        )
-        result["sidechain"] = _genrestr(
-            8, output_dir / "posre_protein_sidechain.itp", "POSRES_FC_SC"
-        )
+        result["backbone"] = None
+        result["sidechain"] = None
 
-        # ------------------------------------------------------------------
-        # Lipid posres — extract first lipid molecule into a mini-GRO so
-        # that gmx genrestr outputs LOCAL indices 1…N_lip instead of global
-        # indices that would be out of bounds for the molecule type.
-        # ------------------------------------------------------------------
-        # Locate the topology to determine molecule atom counts
         if top_path is None:
             for candidate in (
                 gro_path.parent / "topol_posres.top",
@@ -5492,6 +5860,84 @@ class GROMACSEquilibrationManager:
                     top_path = candidate
                     break
 
+        type_defs: List[Tuple[str, int]] = []
+        copies: List[Dict[str, Any]] = []
+        molecules_sec: List[Tuple[str, int]] = []
+        protein_name: Optional[str] = None
+        lipid_name: Optional[str] = None
+        if top_path is not None and top_path.exists():
+            type_defs, copies = self._build_mol_copies(top_path)
+            molecules_sec = self._parse_molecules_section(top_path)
+            protein_name, lipid_name = self._pick_protein_lipid_molnames(
+                type_defs, molecules_sec
+            )
+            self.logger.debug(
+                f"Topology moltypes: {type_defs}; {len(copies)} molecule copies; "
+                f"protein={protein_name!r} lipid={lipid_name!r}"
+            )
+
+        prot_copy = next(
+            (
+                c
+                for c in copies
+                if protein_name
+                and c["name"] == protein_name
+                and c["copy_idx"] == 0
+            ),
+            None,
+        )
+        if prot_copy is not None and index_path.exists():
+            for group_idx, key, outfile, macro in (
+                (
+                    4,
+                    "backbone",
+                    output_dir / "posre_protein_backbone.itp",
+                    "POSRES_FC_BB",
+                ),
+                (
+                    8,
+                    "sidechain",
+                    output_dir / "posre_protein_sidechain.itp",
+                    "POSRES_FC_SC",
+                ),
+            ):
+                gids = self._parse_ndx_group(index_path, group_idx)
+                local = self._local_indices_in_copy(gids, prot_copy)
+                if not local:
+                    self.logger.warning(
+                        f"No {key} atoms inside first {protein_name} copy "
+                        f"(atoms {prot_copy['start']}–{prot_copy['end']}); "
+                        "falling back to full-system genrestr."
+                    )
+                    result[key] = _genrestr(group_idx, outfile, macro)
+                else:
+                    bad = [i for i in local if i < 1 or i > int(prot_copy["n_atoms"])]
+                    if bad:
+                        self.logger.warning(
+                            f"Invalid local {key} indices {bad[:5]}…; "
+                            "falling back to full-system genrestr."
+                        )
+                        result[key] = _genrestr(group_idx, outfile, macro)
+                    else:
+                        self._write_posre_itp(outfile, local, macro)
+                        result[key] = outfile
+                        self.logger.info(
+                            f"  Generated {outfile.name} "
+                            f"({len(local)} local atoms in {protein_name}, {macro})"
+                        )
+        else:
+            result["backbone"] = _genrestr(
+                4, output_dir / "posre_protein_backbone.itp", "POSRES_FC_BB"
+            )
+            result["sidechain"] = _genrestr(
+                8, output_dir / "posre_protein_sidechain.itp", "POSRES_FC_SC"
+            )
+            if result["backbone"] or result["sidechain"]:
+                self.logger.warning(
+                    "Protein molecule type not resolved; protein POSRES may use "
+                    "global indices and fail grompp if the protein has multiple copies."
+                )
+
         if top_path is None or not top_path.exists():
             self.logger.warning(
                 "Topology not found; cannot determine lipid atom range. "
@@ -5500,81 +5946,162 @@ class GROMACSEquilibrationManager:
             result["lipid"] = _genrestr(
                 12, output_dir / "posre_lipid.itp", "POSRES_FC_LIPID"
             )
-            return result
-
-        mol_atom_counts = self._parse_mol_atom_counts_from_top(top_path)
-        self.logger.debug(f"Molecule atom counts from topology: {mol_atom_counts}")
-
-        if len(mol_atom_counts) < 2:
-            self.logger.warning(
-                f"Only {len(mol_atom_counts)} molecule type(s) found in "
-                f"{top_path.name}; skipping lipid posres."
+        else:
+            lipid_copy = next(
+                (
+                    c
+                    for c in copies
+                    if lipid_name
+                    and c["name"] == lipid_name
+                    and c["copy_idx"] == 0
+                ),
+                None,
             )
-            return result
 
-        n_prot = mol_atom_counts[0]  # atoms in molecule 1 (protein)
-        n_lip = mol_atom_counts[1]  # atoms in molecule 2 (one lipid)
-        lip_start = n_prot + 1  # 1-based first lipid atom (global)
-        lip_end = n_prot + n_lip  # 1-based last atom of first lipid
-
-        self.logger.info(
-            f"  Lipid posres: extracting first lipid molecule "
-            f"(atoms {lip_start}–{lip_end}, {n_lip} atoms)"
-        )
-
-        with tempfile.TemporaryDirectory() as _tmpdir:
-            _tmpdir_p = Path(_tmpdir)
-            mini_gro = _tmpdir_p / "first_lipid.gro"
-            mini_ndx = _tmpdir_p / "first_lipid.ndx"
-
-            written = self._write_first_lipid_gro_from_range(
-                gro_path, mini_gro, lip_start, lip_end
-            )
-            if written == 0:
+            if lipid_copy is None:
                 self.logger.warning(
-                    f"Could not extract lipid atoms {lip_start}–{lip_end} "
-                    f"from {gro_path.name}; skipping lipid posres."
+                    "No lipid molecule type found; skipping lipid posres."
                 )
-                return result
+            else:
+                lip_start = int(lipid_copy["start"])
+                lip_end = int(lipid_copy["end"])
+                n_lip = int(lipid_copy["n_atoms"])
+                self.logger.info(
+                    f"  Lipid posres: extracting first {lipid_copy['name']} "
+                    f"(atoms {lip_start}–{lip_end}, {n_lip} atoms)"
+                )
+                with tempfile.TemporaryDirectory() as _tmpdir:
+                    _tmpdir_p = Path(_tmpdir)
+                    mini_gro = _tmpdir_p / "first_lipid.gro"
+                    mini_ndx = _tmpdir_p / "first_lipid.ndx"
+                    written = self._write_first_lipid_gro_from_range(
+                        gro_path, mini_gro, lip_start, lip_end
+                    )
+                    if written == 0:
+                        self.logger.warning(
+                            f"Could not extract lipid atoms {lip_start}–{lip_end} "
+                            f"from {gro_path.name}; skipping lipid posres."
+                        )
+                    else:
+                        try:
+                            subprocess.run(
+                                [
+                                    self.gmx_executable,
+                                    "make_ndx",
+                                    "-f",
+                                    str(mini_gro),
+                                    "-o",
+                                    str(mini_ndx),
+                                ],
+                                input="q\n",
+                                capture_output=True,
+                                text=True,
+                            )
+                            result["lipid"] = _genrestr(
+                                0,
+                                output_dir / "posre_lipid.itp",
+                                "POSRES_FC_LIPID",
+                                gro_override=mini_gro,
+                                ndx_override=mini_ndx,
+                            )
+                            if result["lipid"] is not None:
+                                includes[str(lipid_copy["name"])].append(
+                                    result["lipid"]
+                                )
+                        except FileNotFoundError:
+                            self.logger.warning(
+                                "gmx executable not found; skipping lipid posres."
+                            )
 
-            # Generate a minimal index for the mini-GRO
-            subprocess.run(
-                [
-                    self.gmx_executable,
-                    "make_ndx",
-                    "-f",
-                    str(mini_gro),
-                    "-o",
-                    str(mini_ndx),
-                ],
-                input="q\n",
-                capture_output=True,
-                text=True,
+        max_forces = {
+            k: float(v) for k, v in (constraints_max or {}).items() if float(v) > 0
+        }
+        mda_keys = sorted(k for k in max_forces if k not in self._PROTEIN_LIPID_KEYS)
+        if "ion" in mda_keys and "ions" in mda_keys:
+            mda_keys = [k for k in mda_keys if k != "ion"]
+
+        if mda_keys and copies:
+            structure = (
+                Path(pdb_path) if pdb_path and Path(pdb_path).exists() else gro_path
+            )
+            resolved = dict(NAMDEquilibrationManager.DEFAULT_SELECTIONS)
+            if selections:
+                resolved.update(selections)
+            if "ion" in resolved and "ions" not in resolved:
+                resolved["ions"] = resolved["ion"]
+
+            try:
+                for key in mda_keys:
+                    sel_key = "ions" if key == "ion" else key
+                    sel = resolved.get(sel_key) or resolved.get(key)
+                    if not sel:
+                        self.logger.warning(
+                            f"No MDAnalysis selection for constraint '{key}'; "
+                            "skipping GROMACS posres for this key."
+                        )
+                        continue
+                    try:
+                        local_by_mt, partial = self._map_selection_to_local_indices(
+                            structure, sel, copies
+                        )
+                    except Exception as exc:
+                        self.logger.warning(
+                            f"MDAnalysis selection failed for '{key}' "
+                            f"({sel!r}): {exc}"
+                        )
+                        continue
+                    if not local_by_mt:
+                        self.logger.warning(
+                            f"Selection for '{key}' matched no atoms; skipping."
+                        )
+                        continue
+                    if partial:
+                        self.logger.warning(
+                            f"Constraint '{key}' selected only a subset of copies "
+                            "of one or more molecule types. GROMACS POSRES will "
+                            "restrain ALL copies of those types."
+                        )
+                    macro = self._posres_macro_name(key)
+                    if macro not in macros_used:
+                        macros_used.append(macro)
+                    key_safe = self._safe_posres_filename(key)
+                    for molname, local_indices in local_by_mt.items():
+                        mol_safe = self._safe_posres_filename(molname)
+                        outfile = output_dir / f"posre_{key_safe}_{mol_safe}.itp"
+                        self._write_posre_itp(outfile, local_indices, macro)
+                        includes[molname].append(outfile)
+                        self.logger.info(
+                            f"  Generated {outfile.name} "
+                            f"({len(local_indices)} local atoms, {macro})"
+                        )
+            except ImportError:
+                self.logger.warning(
+                    "MDAnalysis not available; skipping water/ions/other/"
+                    "custom GROMACS position restraints."
+                )
+        elif mda_keys and not copies:
+            self.logger.warning(
+                "Cannot map water/ions/other/custom restraints without a "
+                "parseable topology [molecules] section."
             )
 
-            # Group 0 = System = all atoms of the mini-GRO (1..N_lip)
-            result["lipid"] = _genrestr(
-                0,
-                output_dir / "posre_lipid.itp",
-                "POSRES_FC_LIPID",
-                gro_override=mini_gro,
-                ndx_override=mini_ndx,
-            )
-
+        result["includes"] = {k: list(v) for k, v in includes.items()}
+        result["macros"] = macros_used
         return result
 
     def _add_posres_to_topology(
         self,
         topol_path: Path,
-        posres_files: Dict[str, Optional[Path]],
+        posres_files: Dict[str, Any],
         output_path: Optional[Path] = None,
     ) -> Path:
         """Insert ``#ifdef POSRES`` blocks into a GROMACS topology file.
 
-        Modifies a copy of *topol_path*, inserting position-restraint includes
-        just before the second and third ``[ moleculetype ]`` sections (protein
-        and lipid, respectively).  The result is written to *output_path*
-        (default: ``topol_posres.top`` in the same directory).
+        Inserts protein backbone/sidechain includes at the end of the protein
+        molecule type (detected by name or ParmEd ``systemN`` heuristics),
+        lipid includes into the lipid molecule type, and any MDA/custom
+        includes into the named molecule types listed in
+        ``posres_files["includes"]``.
 
         Args:
             topol_path: Source ``topol.top`` file.
@@ -5588,11 +6115,35 @@ class GROMACSEquilibrationManager:
             output_path = topol_path.parent / "topol_posres.top"
 
         content = topol_path.read_text()
-        mol_pattern = re.compile(r"^(\[ moleculetype \])", re.MULTILINE)
-        matches = list(mol_pattern.finditer(content))
 
-        if len(matches) < 2:
-            # Can't locate boundaries; just copy
+        moltype_starts = [
+            m.start()
+            for m in re.finditer(r"^\[ moleculetype \]", content, re.MULTILINE)
+        ]
+        system_match = re.search(r"^\[ system \]", content, re.MULTILINE)
+        end_cap = system_match.start() if system_match else len(content)
+
+        name_to_insert_pos: Dict[str, int] = {}
+        ordered_names: List[str] = []
+        for i, start in enumerate(moltype_starts):
+            block_end = (
+                moltype_starts[i + 1] if i + 1 < len(moltype_starts) else end_cap
+            )
+            block = content[start:block_end]
+            name = None
+            for raw in block.splitlines()[1:]:
+                line = raw.split(";")[0].strip()
+                if not line or line.startswith("["):
+                    if line.startswith("["):
+                        break
+                    continue
+                name = line.split()[0]
+                break
+            if name:
+                ordered_names.append(name)
+                name_to_insert_pos[name] = block_end
+
+        if not moltype_starts:
             shutil.copy2(topol_path, output_path)
             self.logger.warning(
                 "Could not locate molecule boundaries in topology; "
@@ -5600,37 +6151,88 @@ class GROMACSEquilibrationManager:
             )
             return output_path
 
-        # Build insertion blocks
-        bb_block = ""
+        type_defs = self._parse_moleculetype_defs(topol_path)
+        molecules_sec = self._parse_molecules_section(topol_path)
+        protein_name, lipid_name = self._pick_protein_lipid_molnames(
+            type_defs, molecules_sec
+        )
+
+        def _block_for(paths: List[Path]) -> str:
+            if not paths:
+                return ""
+            seen = set()
+            lines = ["\n#ifdef POSRES"]
+            for p in paths:
+                name = Path(p).name
+                if name in seen:
+                    continue
+                seen.add(name)
+                lines.append(f'#include "{name}"')
+            lines.append("#endif\n")
+            return "\n".join(lines) if len(lines) > 2 else ""
+
+        inserts: Dict[int, List[str]] = defaultdict(list)
+
+        prot_paths: List[Path] = []
         if posres_files.get("backbone"):
-            bb_name = Path(posres_files["backbone"]).name
-            sc_name = (
-                Path(posres_files["sidechain"]).name
-                if posres_files.get("sidechain")
-                else None
-            )
-            bb_block = "\n#ifdef POSRES\n"
-            bb_block += f'#include "{bb_name}"\n'
-            if sc_name:
-                bb_block += f'#include "{sc_name}"\n'
-            bb_block += "#endif\n"
+            prot_paths.append(Path(posres_files["backbone"]))
+        if posres_files.get("sidechain"):
+            prot_paths.append(Path(posres_files["sidechain"]))
+        if prot_paths and ordered_names:
+            prot_target = protein_name if protein_name in name_to_insert_pos else None
+            if prot_target is None:
+                prot_target = next(
+                    (
+                        n
+                        for n in ordered_names
+                        if self._classify_moltype(n) == "protein"
+                    ),
+                    ordered_names[0],
+                )
+            blk = _block_for(prot_paths)
+            if blk:
+                inserts[name_to_insert_pos[prot_target]].append(blk)
 
-        lipid_block = ""
         if posres_files.get("lipid"):
-            lip_name = Path(posres_files["lipid"]).name
-            lipid_block = "\n#ifdef POSRES\n"
-            lipid_block += f'#include "{lip_name}"\n'
-            lipid_block += "#endif\n"
+            lip_path = Path(posres_files["lipid"])
+            lipid_names: List[str] = []
+            if lipid_name and lipid_name in name_to_insert_pos:
+                lipid_names = [lipid_name]
+            else:
+                lipid_names = [
+                    n for n in ordered_names if self._classify_moltype(n) == "lipid"
+                ]
+            for n in lipid_names:
+                already = {
+                    Path(p).name
+                    for p in (posres_files.get("includes") or {}).get(n, [])
+                }
+                if lip_path.name in already:
+                    continue
+                blk = _block_for([lip_path])
+                if blk:
+                    inserts[name_to_insert_pos[n]].append(blk)
 
-        # Insert in reverse order so that earlier offsets stay valid
+        for molname, paths in (posres_files.get("includes") or {}).items():
+            if molname not in name_to_insert_pos:
+                self.logger.warning(
+                    f"Molecule type '{molname}' not found in topology; "
+                    f"cannot include {[Path(p).name for p in paths]}"
+                )
+                continue
+            skip_names = set()
+            if posres_files.get("backbone"):
+                skip_names.add(Path(posres_files["backbone"]).name)
+            if posres_files.get("sidechain"):
+                skip_names.add(Path(posres_files["sidechain"]).name)
+            filtered = [Path(p) for p in paths if Path(p).name not in skip_names]
+            blk = _block_for(filtered)
+            if blk:
+                inserts[name_to_insert_pos[molname]].append(blk)
+
         new_content = content
-        insert_positions = []
-        if len(matches) >= 3 and lipid_block:
-            insert_positions.append((matches[2].start(), lipid_block))
-        if len(matches) >= 2 and bb_block:
-            insert_positions.append((matches[1].start(), bb_block))
-
-        for pos, block in sorted(insert_positions, reverse=True):
+        for pos in sorted(inserts.keys(), reverse=True):
+            block = "".join(inserts[pos])
             new_content = new_content[:pos] + block + new_content[pos:]
 
         output_path.write_text(new_content)
@@ -5806,8 +6408,33 @@ class GROMACSEquilibrationManager:
             )
             * C
         )
+        fc_water = float(constraints.get("water", 0.0)) * C
+        fc_ion = (
+            max(
+                float(constraints.get("ions", 0.0)),
+                float(constraints.get("ion", 0.0)),
+            )
+            * C
+        )
+        fc_other = float(constraints.get("other", 0.0)) * C
+        custom_fcs: Dict[str, float] = {}
+        for key, val in constraints.items():
+            if key in self._STD_POSRES_KEYS:
+                continue
+            fv = float(val) * C
+            if fv > 0:
+                custom_fcs[self._posres_macro_name(key)] = fv
         # Dihedral restraint: ~SC*0.5 when SC>0, else BB*0.1 (matching CHARMM-GUI pattern)
         fc_dih = fc_sc * 0.5 if fc_sc > 0 else (fc_bb * 0.1 if fc_bb > 0 else 0.0)
+        any_posres = (
+            fc_bb > 0
+            or fc_sc > 0
+            or fc_lip > 0
+            or fc_water > 0
+            or fc_ion > 0
+            or fc_other > 0
+            or bool(custom_fcs)
+        )
 
         # ------ substitute nsteps / dt ------
         content = re.sub(
@@ -5864,40 +6491,71 @@ class GROMACSEquilibrationManager:
         )
 
         # ------ force constants in define line ------
-        if is_minimization:
-            content = re.sub(
-                r"POSRES_FC_BB=[\d.]+", f"POSRES_FC_BB={fc_bb:.1f}", content
+        def _sub_std_macros(text: str) -> str:
+            text = re.sub(r"POSRES_FC_BB=[\d.]+", f"POSRES_FC_BB={fc_bb:.1f}", text)
+            text = re.sub(r"POSRES_FC_SC=[\d.]+", f"POSRES_FC_SC={fc_sc:.1f}", text)
+            text = re.sub(
+                r"POSRES_FC_LIPID=[\d.]+", f"POSRES_FC_LIPID={fc_lip:.1f}", text
             )
-            content = re.sub(
-                r"POSRES_FC_SC=[\d.]+", f"POSRES_FC_SC={fc_sc:.1f}", content
+            text = re.sub(
+                r"POSRES_FC_WATER=[\d.]+", f"POSRES_FC_WATER={fc_water:.1f}", text
             )
-            content = re.sub(
-                r"POSRES_FC_LIPID=[\d.]+", f"POSRES_FC_LIPID={fc_lip:.1f}", content
+            text = re.sub(r"POSRES_FC_ION=[\d.]+", f"POSRES_FC_ION={fc_ion:.1f}", text)
+            text = re.sub(
+                r"POSRES_FC_OTHER=[\d.]+", f"POSRES_FC_OTHER={fc_other:.1f}", text
             )
-            content = re.sub(r"DDIHRES_FC=[\d.]+", f"DDIHRES_FC={fc_dih:.1f}", content)
-        else:
-            content = re.sub(
-                r"POSRES_FC_BB=[\d.]+", f"POSRES_FC_BB={fc_bb:.1f}", content
-            )
-            content = re.sub(
-                r"POSRES_FC_SC=[\d.]+", f"POSRES_FC_SC={fc_sc:.1f}", content
-            )
-            content = re.sub(
-                r"POSRES_FC_LIPID=[\d.]+", f"POSRES_FC_LIPID={fc_lip:.1f}", content
-            )
-            content = re.sub(r"DDIHRES_FC=[\d.]+", f"DDIHRES_FC={fc_dih:.1f}", content)
-            # For equilibration and production alike, keep POSRES only when
-            # at least one force constant is non-zero.
-            if fc_bb == 0 and fc_sc == 0 and fc_lip == 0:
+            text = re.sub(r"DDIHRES_FC=[\d.]+", f"DDIHRES_FC={fc_dih:.1f}", text)
+            return text
+
+        content = _sub_std_macros(content)
+
+        def _ensure_macro_on_define(text: str, macro: str, value: float) -> str:
+            """Ensure ``-DMACRO=value`` appears on the define line."""
+            token = f"-D{macro}="
+            if re.search(rf"{re.escape(token)}[\d.]+", text):
+                return re.sub(
+                    rf"{re.escape(token)}[\d.]+", f"{token}{value:.1f}", text
+                )
+            if re.search(r"(?m)^define\s*=", text):
+                return re.sub(
+                    r"(?m)^(define\s*=.*)$",
+                    rf"\1 -D{macro}={value:.1f}",
+                    text,
+                    count=1,
+                )
+            return text
+
+        # Ensure water/ion/other macros exist even on older templates
+        for macro, value in (
+            ("POSRES_FC_WATER", fc_water),
+            ("POSRES_FC_ION", fc_ion),
+            ("POSRES_FC_OTHER", fc_other),
+        ):
+            content = _ensure_macro_on_define(content, macro, value)
+
+        for macro, value in custom_fcs.items():
+            content = _ensure_macro_on_define(content, macro, value)
+
+        if not is_minimization:
+            # Keep POSRES only when at least one force constant is non-zero.
+            if not any_posres:
                 content = re.sub(r"^define\s*=.*\n", "", content, flags=re.MULTILINE)
             elif not re.search(r"(?m)^define\s*=", content):
                 # CHARMM-GUI production templates may omit the define line;
                 # inject one so user-requested production restraints are active.
+                extra = " ".join(
+                    f"-D{m}={v:.1f}" for m, v in sorted(custom_fcs.items())
+                )
+                extra = f" {extra}" if extra else ""
                 content = (
                     "define                  = -DPOSRES "
                     f"-DPOSRES_FC_BB={fc_bb:.1f} "
                     f"-DPOSRES_FC_SC={fc_sc:.1f} "
-                    f"-DPOSRES_FC_LIPID={fc_lip:.1f}\n" + content
+                    f"-DPOSRES_FC_LIPID={fc_lip:.1f} "
+                    f"-DPOSRES_FC_WATER={fc_water:.1f} "
+                    f"-DPOSRES_FC_ION={fc_ion:.1f} "
+                    f"-DPOSRES_FC_OTHER={fc_other:.1f}"
+                    f"{extra}\n" + content
                 )
 
         # GateWizard does not add dihedral restraints to the topology, so the
@@ -5909,7 +6567,9 @@ class GROMACSEquilibrationManager:
         self.logger.debug(
             f"Stage {stage_index} ({stage_name}): T={temperature:.2f}K, "
             f"nsteps={nsteps}, dt={dt_ps:.3f}ps, "
-            f"fc_bb={fc_bb:.1f} fc_sc={fc_sc:.1f} fc_lip={fc_lip:.1f} kJ/mol/nm²"
+            f"fc_bb={fc_bb:.1f} fc_sc={fc_sc:.1f} fc_lip={fc_lip:.1f} "
+            f"fc_water={fc_water:.1f} fc_ion={fc_ion:.1f} "
+            f"fc_other={fc_other:.1f} kJ/mol/nm²"
         )
         return content
 
@@ -6200,13 +6860,14 @@ class GROMACSEquilibrationManager:
                 - ``temperature`` (float, K)
                 - ``constraints`` (dict, kcal/mol/Å²):
                   ``protein_backbone``, ``protein_sidechain``,
-                  ``lipid_head``, ``lipid_tail``
+                  ``lipid_head``, ``lipid_tail``, ``water``, ``ions``,
+                  ``other``, plus any custom keys with MDAnalysis selections
 
                 Defaults to the 7-stage CHARMM-GUI protocol when *None*.
             output_name: Subdirectory name under *working_dir*.
             scheme_type: Override ensemble; auto-detected from first stage.
-            selections: MDAnalysis selection overrides (API parity; currently
-                not applied in GROMACS posres generation).
+            selections: MDAnalysis selection overrides for water/ions/other
+                and custom constraint keys (same dict used by NAMD/OpenMM).
             gmx_executable: GROMACS executable (default: ``"gmx"``).  Can
                 include full path, e.g. ``"/usr/local/gromacs/bin/gmx"``.
             add_com_restraint: When True, generate a Colvars COM restraint
@@ -6364,12 +7025,28 @@ class GROMACSEquilibrationManager:
             for s in stage_params_list
         )
         if any_constraints and gro_path.exists():
+            constraints_max: Dict[str, float] = {}
+            for s in stage_params_list:
+                for k, v in s.get("constraints", {}).items():
+                    fv = float(v)
+                    if fv > constraints_max.get(k, 0.0):
+                        constraints_max[k] = fv
+            pdb_for_posres = None
+            for cand in (
+                gromacs_dir / "system.pdb",
+                Path(system_files.get("pdb", "")) if system_files.get("pdb") else None,
+            ):
+                if cand is not None and cand.exists():
+                    pdb_for_posres = cand
+                    break
             posres_files = self.generate_posres_itp(
                 gro_path=gro_path,
                 index_path=ndx_path,
                 output_dir=gromacs_dir,
                 top_path=top_path,
+                pdb_path=pdb_for_posres,
                 selections=selections,
+                constraints_max=constraints_max,
             )
             # Modify topology to include posres
             top_path = self._add_posres_to_topology(

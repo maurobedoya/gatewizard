@@ -1,7 +1,7 @@
 ; Adapted from CHARMM-GUI
 ; NPgT SCHEME for Gromacs - template step6.2_equilibration.mdp
 
-define                  = -DPOSRES -DPOSRES_FC_BB=2000.0 -DPOSRES_FC_SC=1000.0 -DPOSRES_FC_LIPID=400.0 -DDIHRES -DDIHRES_FC=400.0
+define                  = -DPOSRES -DPOSRES_FC_BB=2000.0 -DPOSRES_FC_SC=1000.0 -DPOSRES_FC_LIPID=400.0 -DPOSRES_FC_WATER=0.0 -DPOSRES_FC_ION=0.0 -DPOSRES_FC_OTHER=0.0 -DDIHRES -DDIHRES_FC=400.0
 integrator              = md
 dt                      = 0.001
 nsteps                  = 125000

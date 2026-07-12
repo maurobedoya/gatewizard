@@ -875,3 +875,414 @@ class TestSetupGromacs:
                     }
                 ],
             )
+
+
+# ---------------------------------------------------------------------------
+# Water / ions / other / custom MDA posres
+# ---------------------------------------------------------------------------
+
+
+def _minimal_top_with_ions(tmp_path: Path) -> Path:
+    """Write a tiny topology: Protein(2) + POPC(3) + NA(1) + CL(1) + SOL(3)."""
+    top = tmp_path / "topol.top"
+    top.write_text(
+        """\
+[ defaults ]
+; nbfunc comb-rule gen-pairs fudgeLJ fudgeQQ
+1 2 yes 0.5 0.8333
+
+[ moleculetype ]
+; name  nrexcl
+Protein  3
+
+[ atoms ]
+; nr type resnr residue atom cgnr charge mass
+1  CX  1  ALA  CA  1  0.0  12.0
+2  HX  1  ALA  H   2  0.0   1.0
+
+[ moleculetype ]
+POPC  3
+
+[ atoms ]
+1  LP  1  POPC  C1  1  0.0  12.0
+2  LP  1  POPC  C2  2  0.0  12.0
+3  LP  1  POPC  C3  3  0.0  12.0
+
+[ moleculetype ]
+NA  1
+
+[ atoms ]
+1  Na  1  NA  NA  1  1.0  23.0
+
+[ moleculetype ]
+CL  1
+
+[ atoms ]
+1  Cl  1  CL  CL  1  -1.0  35.0
+
+[ moleculetype ]
+SOL  2
+
+[ atoms ]
+1  OW  1  SOL  OW  1  0.0  16.0
+2  HW  1  SOL  HW1 2  0.0   1.0
+3  HW  1  SOL  HW2 3  0.0   1.0
+
+[ system ]
+Test
+
+[ molecules ]
+Protein  1
+POPC     2
+NA       2
+CL       2
+SOL      3
+"""
+    )
+    return top
+
+
+def _minimal_structure_matching_top(tmp_path: Path) -> Path:
+    """GRO with 21 atoms matching _minimal_top_with_ions (MDA-readable)."""
+    gro = tmp_path / "system.gro"
+    n = 21
+    # residue names / atom names aligned with topology copies
+    specs = []
+    specs += [(1, "ALA", "CA"), (1, "ALA", "H")]
+    for r in (2, 3):
+        specs += [(r, "POPC", "C1"), (r, "POPC", "C2"), (r, "POPC", "C3")]
+    specs += [(4, "NA", "NA"), (5, "NA", "NA")]
+    specs += [(6, "CL", "CL"), (7, "CL", "CL")]
+    for r in (8, 9, 10):
+        specs += [(r, "SOL", "OW"), (r, "SOL", "HW1"), (r, "SOL", "HW2")]
+    assert len(specs) == n
+    lines = ["GateWizard test system", f"{n:5d}"]
+    for i, (resid, resname, atom) in enumerate(specs, start=1):
+        lines.append(
+            f"{resid:5d}{resname:<5s}{atom:>5s}{i:5d}"
+            f"{0.1 * i:8.3f}{0.200:8.3f}{0.300:8.3f}"
+        )
+    lines.append("   4.00000   4.00000   4.00000")
+    gro.write_text("\n".join(lines) + "\n")
+    return gro
+
+
+class TestGromacsPosresHelpers:
+    def test_classify_moltype(self):
+        assert GROMACSEquilibrationManager._classify_moltype("SOL") == "water"
+        assert GROMACSEquilibrationManager._classify_moltype("NA") == "ions"
+        assert GROMACSEquilibrationManager._classify_moltype("POPC") == "lipid"
+        assert GROMACSEquilibrationManager._classify_moltype("LIG") == "other"
+
+    def test_posres_macro_name(self):
+        assert GROMACSEquilibrationManager._posres_macro_name("ions") == "POSRES_FC_ION"
+        assert (
+            GROMACSEquilibrationManager._posres_macro_name("ligand_ABC")
+            == "POSRES_FC_LIGAND_ABC"
+        )
+
+    def test_parse_topology_and_copies(self, tmp_path):
+        top = _minimal_top_with_ions(tmp_path)
+        defs = GROMACSEquilibrationManager._parse_moleculetype_defs(top)
+        assert [n for n, _ in defs] == ["Protein", "POPC", "NA", "CL", "SOL"]
+        assert [c for _, c in defs] == [2, 3, 1, 1, 3]
+        _defs, copies = GROMACSEquilibrationManager._build_mol_copies(top)
+        assert len(copies) == 1 + 2 + 2 + 2 + 3
+        assert copies[0]["start"] == 1 and copies[0]["end"] == 2
+        sol0 = next(c for c in copies if c["name"] == "SOL" and c["copy_idx"] == 0)
+        assert sol0["n_atoms"] == 3
+
+    def test_write_posre_itp(self, tmp_path):
+        out = tmp_path / "posre_ions_na.itp"
+        GROMACSEquilibrationManager._write_posre_itp(out, {1}, "POSRES_FC_ION")
+        text = out.read_text()
+        assert "[ position_restraints ]" in text
+        assert "POSRES_FC_ION" in text
+
+    def test_mdp_ions_and_water_macros(self, tmp_path):
+        manager = _make_manager(tmp_path)
+        params = {
+            "name": "Equilibration 1",
+            "ensemble": "NPT",
+            "time_ns": 0.125,
+            "timestep": 1.0,
+            "temperature": 310.15,
+            "constraints": {
+                "protein_backbone": 0.0,
+                "protein_sidechain": 0.0,
+                "lipid_head": 0.0,
+                "lipid_tail": 0.0,
+                "water": 1.0,
+                "ions": 2.5,
+                "other": 0.0,
+            },
+        }
+        content = manager.generate_mdp_file(
+            stage_name="Eq1",
+            stage_params=params,
+            stage_index=1,
+            scheme_type="NPT",
+        )
+        assert f"POSRES_FC_WATER={1.0 * 418.4:.1f}" in content
+        assert f"POSRES_FC_ION={2.5 * 418.4:.1f}" in content
+        assert "define" in content
+
+    def test_mdp_custom_macro(self, tmp_path):
+        manager = _make_manager(tmp_path)
+        params = {
+            "name": "Equilibration 1",
+            "ensemble": "NPT",
+            "time_ns": 0.125,
+            "timestep": 1.0,
+            "temperature": 310.15,
+            "constraints": {
+                "protein_backbone": 1.0,
+                "protein_sidechain": 0.0,
+                "lipid_head": 0.0,
+                "lipid_tail": 0.0,
+                "water": 0.0,
+                "ions": 0.0,
+                "other": 0.0,
+                "ligand_ABC": 3.0,
+            },
+        }
+        content = manager.generate_mdp_file(
+            stage_name="Eq1",
+            stage_params=params,
+            stage_index=1,
+            scheme_type="NPT",
+        )
+        assert f"POSRES_FC_LIGAND_ABC={3.0 * 418.4:.1f}" in content
+
+    def test_add_posres_includes_ions(self, tmp_path):
+        top = _minimal_top_with_ions(tmp_path)
+        manager = _make_manager(tmp_path)
+        ion_itp = tmp_path / "posre_ions_na.itp"
+        GROMACSEquilibrationManager._write_posre_itp(ion_itp, {1}, "POSRES_FC_ION")
+        bb = tmp_path / "posre_protein_backbone.itp"
+        bb.write_text("[ position_restraints ]\n")
+        out = manager._add_posres_to_topology(
+            topol_path=top,
+            posres_files={
+                "backbone": bb,
+                "sidechain": None,
+                "lipid": None,
+                "includes": {"NA": [ion_itp], "CL": [ion_itp]},
+                "macros": ["POSRES_FC_ION"],
+            },
+            output_path=tmp_path / "topol_posres.top",
+        )
+        text = out.read_text()
+        assert "posre_ions_na.itp" in text
+        assert "posre_protein_backbone.itp" in text
+
+    @pytest.mark.skipif(not MDA_AVAILABLE, reason="MDAnalysis not installed")
+    def test_map_selection_partial_copies_warns(self, tmp_path):
+        top = _minimal_top_with_ions(tmp_path)
+        gro = _minimal_structure_matching_top(tmp_path)
+        _defs, copies = GROMACSEquilibrationManager._build_mol_copies(top)
+        manager = _make_manager(tmp_path)
+        # First NA only (0-based index 8); second NA at 9 → partial
+        local_by_mt, partial = manager._map_selection_to_local_indices(
+            gro, "index 8", copies
+        )
+        assert "NA" in local_by_mt
+        assert local_by_mt["NA"] == {1}
+        assert partial is True
+
+    @pytest.mark.skipif(not MDA_AVAILABLE, reason="MDAnalysis not installed")
+    def test_generate_posres_mda_ions_without_gmx(self, tmp_path):
+        top = _minimal_top_with_ions(tmp_path)
+        gro = _minimal_structure_matching_top(tmp_path)
+        ndx = tmp_path / "index.ndx"
+        ndx.write_text("[ System ]\n" + " ".join(str(i) for i in range(1, 22)) + "\n")
+
+        manager = GROMACSEquilibrationManager(
+            tmp_path, gmx_executable="gmx_missing_xyz"
+        )
+        result = manager.generate_posres_itp(
+            gro_path=gro,
+            index_path=ndx,
+            output_dir=tmp_path,
+            top_path=top,
+            pdb_path=None,
+            selections=None,
+            constraints_max={"ions": 5.0, "water": 1.0},
+        )
+        assert "POSRES_FC_ION" in result["macros"]
+        assert "POSRES_FC_WATER" in result["macros"]
+        assert "NA" in result["includes"]
+        assert "CL" in result["includes"]
+        assert "SOL" in result["includes"]
+        ion_files = result["includes"]["NA"]
+        assert ion_files and "POSRES_FC_ION" in ion_files[0].read_text()
+
+    def test_pick_protein_lipid_parmed_system_names(self, tmp_path):
+        """ParmEd membrane tops use system1/system2 — not Protein/POPC."""
+        top = tmp_path / "topol.top"
+        top.write_text(
+            """\
+[ moleculetype ]
+system1 3
+[ atoms ]
+1 X 1 A CA 1 0 12
+2 X 1 A CB 2 0 12
+3 X 1 A CG 3 0 12
+4 X 1 A CD 4 0 12
+5 X 1 A CE 5 0 12
+
+[ moleculetype ]
+K+ 1
+[ atoms ]
+1 K 1 K+ K 1 1 39
+
+[ moleculetype ]
+system2 3
+[ atoms ]
+1 L 1 LIP C1 1 0 12
+2 L 1 LIP C2 2 0 12
+3 L 1 LIP C3 3 0 12
+
+[ moleculetype ]
+Cl- 1
+[ atoms ]
+1 Cl 1 Cl- Cl 1 -1 35
+
+[ moleculetype ]
+WAT 2
+[ atoms ]
+1 OW 1 WAT OW 1 0 16
+2 HW 1 WAT HW1 2 0 1
+3 HW 1 WAT HW2 3 0 1
+
+[ system ]
+x
+
+[ molecules ]
+system1  1
+K+       2
+system1  3
+system2  10
+K+       1
+Cl-      2
+WAT      5
+"""
+        )
+        defs = GROMACSEquilibrationManager._parse_moleculetype_defs(top)
+        mols = GROMACSEquilibrationManager._parse_molecules_section(top)
+        protein, lipid = GROMACSEquilibrationManager._pick_protein_lipid_molnames(
+            defs, mols
+        )
+        assert protein == "system1"
+        assert lipid == "system2"
+
+        _defs, copies = GROMACSEquilibrationManager._build_mol_copies(top)
+        sys1 = [c for c in copies if c["name"] == "system1"]
+        assert len(sys1) == 4
+        assert [c["copy_idx"] for c in sys1] == [0, 1, 2, 3]
+        assert sys1[0]["end"] == 5
+        # first system1 (5) + 2 K+ (2) → second system1 starts at 8
+        assert sys1[1]["start"] == 8
+    def test_protein_posres_local_indices_multi_copy(self, tmp_path):
+        """Backbone POSRES must use local indices for multi-copy system1."""
+        top = tmp_path / "topol.top"
+        top.write_text(
+            """\
+[ moleculetype ]
+system1 3
+[ atoms ]
+1 X 1 A N  1 0 14
+2 X 1 A CA 2 0 12
+3 X 1 A C  3 0 12
+4 X 1 A O  4 0 16
+5 X 1 A CB 5 0 12
+
+[ moleculetype ]
+K+ 1
+[ atoms ]
+1 K 1 K+ K 1 1 39
+
+[ moleculetype ]
+system2 3
+[ atoms ]
+1 L 1 LIP C1 1 0 12
+2 L 1 LIP C2 2 0 12
+
+[ system ]
+x
+[ molecules ]
+system1  2
+K+       1
+system2  3
+"""
+        )
+        # Two protein copies: atoms 1-5 and 6-10. Backbone globals 2,4,7,9
+        ndx = tmp_path / "index.ndx"
+        ndx.write_text(
+            "[ System ]\n"
+            + " ".join(str(i) for i in range(1, 18))
+            + "\n"
+            + "[ Protein ]\n1 2 3 4 5 6 7 8 9 10\n"
+            + "[ Protein-H ]\n1 2 3 4 5 6 7 8 9 10\n"
+            + "[ C-alpha ]\n2 7\n"
+            + "[ Backbone ]\n2 4 7 9\n"
+            + "[ MainChain ]\n2 4 7 9\n"
+            + "[ MainChain+Cb ]\n2 4 7 9\n"
+            + "[ MainChain+H ]\n2 4 7 9\n"
+            + "[ SideChain ]\n5 10\n"
+        )
+        gro = tmp_path / "system.gro"
+        n = 2 * 5 + 1 + 3 * 2
+        lines = ["test", f"{n:5d}"]
+        for i in range(1, n + 1):
+            lines.append(
+                f"{1:5d}ALA  CA  {i:5d}   {float(i):8.3f}   {0.0:8.3f}   {0.0:8.3f}"
+            )
+        lines.append("  10.0 10.0 10.0")
+        gro.write_text("\n".join(lines) + "\n")
+
+        manager = GROMACSEquilibrationManager(
+            tmp_path, gmx_executable="gmx_missing_xyz"
+        )
+        result = manager.generate_posres_itp(
+            gro_path=gro,
+            index_path=ndx,
+            output_dir=tmp_path,
+            top_path=top,
+            constraints_max={"protein_backbone": 1.0, "protein_sidechain": 1.0},
+        )
+        assert result["backbone"] is not None
+        bb = result["backbone"].read_text()
+        assert "     2     1" in bb or re.search(r"^\s*2\s+1\s", bb, re.M)
+        assert "     4     1" in bb or re.search(r"^\s*4\s+1\s", bb, re.M)
+        # Must NOT contain globals from the second copy (7, 9)
+        assert not re.search(r"^\s*7\s+1\s", bb, re.M)
+        assert not re.search(r"^\s*9\s+1\s", bb, re.M)
+
+        sc = result["sidechain"].read_text()
+        assert re.search(r"^\s*5\s+1\s", sc, re.M)
+        assert not re.search(r"^\s*10\s+1\s", sc, re.M)
+
+        (tmp_path / "posre_lipid.itp").write_text("[ position_restraints ]\n")
+        (tmp_path / "posre_ions_k.itp").write_text("[ position_restraints ]\n")
+        out = manager._add_posres_to_topology(
+            topol_path=top,
+            posres_files={
+                "backbone": result["backbone"],
+                "sidechain": result["sidechain"],
+                "lipid": tmp_path / "posre_lipid.itp",
+                "includes": {"K+": [tmp_path / "posre_ions_k.itp"]},
+                "macros": [],
+            },
+            output_path=tmp_path / "topol_posres.top",
+        )
+        text = out.read_text()
+        # Protein includes in system1 block; lipid in system2; ions in K+
+        s1 = text.split("[ moleculetype ]")[1]
+        s_k = text.split("[ moleculetype ]")[2]
+        s2 = text.split("[ moleculetype ]")[3]
+        assert "posre_protein_backbone.itp" in s1
+        assert "posre_lipid.itp" not in s_k
+        assert "posre_ions_k.itp" in s_k
+        assert "posre_lipid.itp" in s2
+        assert "posre_protein_backbone.itp" not in s2
