@@ -29,7 +29,7 @@ from collections import defaultdict
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from gatewizard.core.preparation import PreparationManager
-from gatewizard.utils.protein_capping import ProteinCapper, cap_protein
+from gatewizard.utils.protein_capping import ProteinCapper, cap_protein, detect_terminal_caps
 
 # ============================================================================
 # SECTION 1: CORE FUNCTIONALITY TESTS (Specs and Features)
@@ -449,6 +449,78 @@ class TestPropkaWorkflowExamples:
 
         assert os.path.exists(capped_file)
         assert isinstance(mapping, dict)
+
+    def test_capping_preserves_same_chain_heteroatoms(self, temp_dir, protein_pdb):
+        """Regression: ligands/water/ions on the protein chain must survive capping.
+
+        b382c24 correctly capped protein-only termini, but dropped non-protein
+        atoms that share the protein's MDAnalysis segment (same chain ID).
+        """
+        os.chdir(temp_dir)
+        src = Path("protein.pdb")
+        text = src.read_text()
+        het = (
+            "HETATM 9991  O   HOH A 901      50.000  50.000  50.000  1.00  0.00           O  \n"
+            "HETATM 9992 NA    NA A 902      51.000  51.000  51.000  1.00  0.00          NA  \n"
+            "HETATM 9993  C1  LIG A 903      52.000  52.000  52.000  1.00  0.00           C  \n"
+            "HETATM 9994  C2  LIG A 903      53.000  52.000  52.000  1.00  0.00           C  \n"
+        )
+        body = text.rstrip()[:-3] if text.rstrip().endswith("END") else text
+        inp = Path("protein_with_hetero.pdb")
+        inp.write_text(body + het + "END\n")
+
+        capped_file, mapping = cap_protein(
+            input_file=str(inp), output_file="protein_with_hetero_capped.pdb"
+        )
+        out = Path(capped_file).read_text()
+        assert "HOH" in out
+        assert "LIG" in out
+        assert any(
+            line.startswith(("ATOM", "HETATM")) and line[17:20].strip() == "NA"
+            for line in out.splitlines()
+        )
+        assert "ACE" in out and "NME" in out
+        assert ("HOH", "A", 901) in mapping
+        assert ("LIG", "A", 903) in mapping
+
+    def test_detect_terminal_caps(self, temp_dir, protein_pdb):
+        """detect_terminal_caps finds ACE/NME and returns empty for uncapped PDBs."""
+        os.chdir(temp_dir)
+        assert detect_terminal_caps("protein.pdb") == []
+
+        capped_file, _ = cap_protein(
+            input_file="protein.pdb", output_file="protein_for_caps.pdb"
+        )
+        caps = detect_terminal_caps(capped_file)
+        assert "ACE" in caps
+        assert "NME" in caps or "NMA" in caps
+
+    def test_remove_hydrogens_without_elements_attr(self, temp_dir):
+        """Strip H when PDB topology has no elements attribute (MDA select 'element H')."""
+        os.chdir(temp_dir)
+        # Fixed-column PDB without element column (cols 77–78 empty)
+        pdb = Path("ala_no_elements.pdb")
+        pdb.write_text(
+            "ATOM      1  N   ALA A   1       0.000   0.000   0.000  1.00  0.00\n"
+            "ATOM      2  CA  ALA A   1       1.500   0.000   0.000  1.00  0.00\n"
+            "ATOM      3  C   ALA A   1       2.000   1.400   0.000  1.00  0.00\n"
+            "ATOM      4  O   ALA A   1       1.200   2.400   0.000  1.00  0.00\n"
+            "ATOM      5  CB  ALA A   1       2.000  -0.800   1.200  1.00  0.00\n"
+            "ATOM      6  H   ALA A   1      -0.500   0.800   0.000  1.00  0.00\n"
+            "ATOM      7  HA  ALA A   1       1.500   0.600  -0.900  1.00  0.00\n"
+            "END\n"
+        )
+        capper = ProteinCapper()
+        out = capper._remove_hydrogens(pdb)
+        text = Path(out).read_text()
+        names = [
+            line[12:16].strip()
+            for line in text.splitlines()
+            if line.startswith("ATOM")
+        ]
+        assert "H" not in names and "HA" not in names
+        assert "N" in names and "CA" in names
+        Path(out).unlink(missing_ok=True)
 
     def test_example_17_complete_workflow(self, temp_dir, protein_pdb):
         """Test Example 17: Complete workflow with output directory."""

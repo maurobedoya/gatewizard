@@ -114,6 +114,21 @@ class ProteinCapper:
             logger.error(f"Error during protein capping: {e}", exc_info=True)
             raise ProteinCappingError(f"Protein capping failed: {str(e)}")
 
+    def _ensure_elements(self, universe: MDAUniverse) -> None:
+        """Guess atom elements when the topology has none (common for plain PDBs)."""
+        try:
+            _ = universe.atoms.elements  # type: ignore[attr-defined]
+        except (AttributeError, Exception):
+            try:
+                from MDAnalysis.guesser.default_guesser import DefaultGuesser
+
+                els = DefaultGuesser(None).guess_types(universe.atoms.names)
+            except Exception:
+                from MDAnalysis.topology.guessers import guess_atom_element
+
+                els = [guess_atom_element(str(n)) for n in universe.atoms.names]
+            universe.add_TopologyAttr("elements", els)
+
     def _remove_hydrogens(self, input_file: Union[str, Path]) -> str:
         """
         Remove hydrogen atoms from the protein structure.
@@ -128,9 +143,16 @@ class ProteinCapper:
 
         try:
             u = mda.Universe(str(input_file))
+            self._ensure_elements(u)
 
-            # Select atoms without hydrogens
-            protein_no_h = u.select_atoms("not element H")
+            # Prefer element-based selection; fall back to atom-name patterns
+            try:
+                protein_no_h = u.select_atoms("not element H")
+            except Exception:
+                protein_no_h = u.select_atoms(
+                    "not name H* and not name HN* and not name 1H* "
+                    "and not name 2H* and not name 3H*"
+                )
 
             if len(protein_no_h) == 0:
                 raise ProteinCappingError("No heavy atoms found")
@@ -144,6 +166,8 @@ class ProteinCapper:
 
             return temp_filename
 
+        except ProteinCappingError:
+            raise
         except Exception as e:
             raise ProteinCappingError(f"Failed to remove hydrogens: {str(e)}")
 
@@ -227,13 +251,17 @@ class ProteinCapper:
 
             for seg in u.segments:  # type: ignore[union-attr]
                 # IMPORTANT: segment is not equivalent to selecting by segid, so
-                # selections must be made on the segment's atoms
-
-                chain = seg.atoms.select_atoms("protein")
-                if len(chain) == 0:
+                # selections must be made on the segment's atoms.
+                #
+                # Cap protein termini only, but keep ligands / waters / ions that
+                # share the same segment (common when they share a chain ID).
+                protein = seg.atoms.select_atoms("protein")
+                non_protein = seg.atoms.select_atoms("not protein")
+                if len(protein) == 0:
                     segment_universes.append(seg)
                     continue
 
+                chain = protein
                 original_chain_id = seg_to_chain_map.get(seg.segid, seg.segid)
 
                 # Add ACE capping group to N-terminus
@@ -272,28 +300,44 @@ class ProteinCapper:
                 else:
                     chain_atoms = chain
 
-                # Merge ACE, protein chain, and NME
-                capped_chain = mda.Merge(
-                    ace_universe.atoms, chain_atoms, nme_universe.atoms
-                )
+                # Merge ACE, protein chain, NME, then non-protein (hetero) atoms
+                merge_parts = [ace_universe.atoms, chain_atoms, nme_universe.atoms]
+                if len(non_protein) > 0:
+                    merge_parts.append(non_protein)
+                    logger.info(
+                        f"Preserving {len(non_protein)} non-protein atoms "
+                        f"({len(non_protein.residues)} residues) in chain "
+                        f"{original_chain_id} after capping"
+                    )
+                capped_chain = mda.Merge(*merge_parts)
 
                 # Renumber residues and create mapping
+                # ACE/NME universes use one residue object per atom (see
+                # _create_universe), so resid lists are sized by atom count.
                 n_ace_atoms = len(ace_positions)
                 n_chain_atoms = len(chain_atoms.residues)
                 n_nme_atoms = len(nme_positions)
+                n_hetero_res = (
+                    len(non_protein.residues) if len(non_protein) > 0 else 0
+                )
 
                 resids_ace = [res_start + 1] * n_ace_atoms
                 resids_chain = list(range(res_start + 2, res_start + 2 + n_chain_atoms))
-                resids_nme = [res_start + 2 + n_chain_atoms] * n_nme_atoms
+                nme_resid = res_start + 2 + n_chain_atoms
+                resids_nme = [nme_resid] * n_nme_atoms
+                hetero_start = nme_resid + 1
+                resids_hetero = list(
+                    range(hetero_start, hetero_start + n_hetero_res)
+                )
 
-                all_resids = resids_ace + resids_chain + resids_nme
+                all_resids = resids_ace + resids_chain + resids_nme + resids_hetero
                 capped_chain.atoms.residues.resids = np.array(all_resids)  # type: ignore[union-attr]
 
                 # Create residue mapping for this chain
                 chain_id = original_chain_id  # Use the mapped chain ID
                 original_resids = sorted(chain.residues.resids)
 
-                # Map original residues to new residues (after ACE cap)
+                # Map original protein residues to new residues (after ACE cap)
                 for i, original_resid in enumerate(original_resids):
                     new_resid = res_start + 2 + i  # +2 because ACE takes position +1
                     original_key = (chain_id, original_resid)
@@ -308,6 +352,18 @@ class ProteinCapper:
                         logger.warning(
                             f"No original mapping found for {chain_id} {original_resid}"
                         )
+
+                # Map non-protein residues that were renumbered after NME
+                if len(non_protein) > 0:
+                    for i, res in enumerate(non_protein.residues):
+                        original_resid = int(res.resid)
+                        new_resid = hetero_start + i
+                        original_key = (chain_id, original_resid)
+                        if original_key in original_residue_mapping:
+                            original_resname = original_residue_mapping[original_key]
+                            residue_mapping[
+                                (original_resname, chain_id, original_resid)
+                            ] = (original_resname, chain_id, new_resid)
 
                 res_start = max(all_resids)
                 segment_universes.append(capped_chain)
@@ -616,6 +672,29 @@ class ProteinCapper:
         d = ((pos_ini - c) * (bond_len / np.linalg.norm(pos_ini - c))) + c
 
         return d
+
+
+def detect_terminal_caps(pdb_file: Union[str, Path]) -> List[str]:
+    """Return sorted unique terminal-cap residue names found in *pdb_file*.
+
+    Looks for ACE / NME / NMA in ATOM and HETATM records.
+    """
+    found: set[str] = set()
+    path = Path(pdb_file)
+    if not path.is_file():
+        return []
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            if line.startswith(("ATOM", "HETATM")) and len(line) >= 20:
+                resname = line[17:20].strip().upper()
+                if resname in {"ACE", "NME", "NMA"}:
+                    found.add(resname)
+    return sorted(found)
+
+
+def is_already_capped(pdb_file: Union[str, Path]) -> bool:
+    """True when the PDB already contains ACE and/or NME/NMA caps."""
+    return bool(detect_terminal_caps(pdb_file))
 
 
 def cap_protein(
