@@ -666,18 +666,16 @@ class Builder:
     def _run_preparation_script(
         self, job_dir: Path, script_path: Path, config: Dict[str, Any]
     ) -> bool:
-        """Launch the preparation script."""
+        """Launch the preparation script asynchronously.
+
+        Parametrization (pdb4amber / tleap) is performed inside
+        ``run_preparation.sh`` after packmol-memgen finishes.  Do not call
+        :meth:`_post_process_files` here — the job is still running and bilayer
+        outputs do not exist yet, which produced false WARNING noise.
+        """
         try:
             self._mark_preparation_running(job_dir)
-            success = self._execute_script(script_path)
-
-            if success:
-                time.sleep(2)
-                conversion_success = self._post_process_files(job_dir, config)
-                if not conversion_success:
-                    logger.warning("File conversion failed, but preparation completed")
-
-            return success
+            return self._execute_script(script_path)
 
         except Exception as e:
             logger.error(f"Error running preparation script: {e}", exc_info=True)
@@ -1295,7 +1293,12 @@ EOF
             return False
 
     def _post_process_files(self, job_dir: Path, config: Dict[str, Any]) -> bool:
-        """Post-process generated files with new workflow."""
+        """Post-process generated files with pdb4amber / tleap (legacy helper).
+
+        The generated ``run_preparation.sh`` already runs this workflow after
+        packmol-memgen completes.  Prefer that path for async jobs; this method
+        remains for synchronous/manual use when bilayer outputs already exist.
+        """
         try:
             # Check if parametrization was requested
             if not config.get("parametrize", True):
@@ -1306,7 +1309,10 @@ EOF
             bilayer_pdb_files = list(job_dir.glob("bilayer_*.pdb"))
 
             if not bilayer_pdb_files:
-                logger.warning(f"No bilayer PDB files found in {job_dir}")
+                logger.debug(
+                    f"No bilayer PDB files found yet in {job_dir} "
+                    "(expected until packmol-memgen finishes)"
+                )
                 return False
 
             bilayer_pdb = bilayer_pdb_files[0]  # Use first found
