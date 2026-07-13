@@ -562,3 +562,213 @@ def check_and_warn_missing_dependencies():
         logger.info("Some features may be limited. Install missing packages if needed.")
     else:
         logger.info("All optional dependencies are available")
+
+
+def _probe_binary_version(executable: str, engine: str) -> Optional[str]:
+    """Run a short version probe and parse a concise version string."""
+    args_map = {
+        "namd": ["-version"],
+        "gromacs": ["--version"],
+        "openmm": ["--version"],
+    }
+    try:
+        proc = subprocess.run(
+            [executable, *args_map.get(engine, ["--version"])],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=6,
+            check=False,
+        )
+        text = (proc.stdout or "").strip()
+        if not text:
+            return None
+        parsed = parse_tool_version(text, engine)
+        if parsed:
+            return parsed
+        # NAMD often prints Charm++ noise before a version line — avoid using it
+        if engine == "namd":
+            return None
+        return text.splitlines()[0][:80]
+    except Exception:
+        return None
+
+
+def _discover_gmxrc_near(gmx_path: str) -> Optional[str]:
+    """Return GMXRC next to a GROMACS install, if present."""
+    p = Path(gmx_path)
+    candidates = [
+        p.parent / "GMXRC",
+        p.parent.parent / "bin" / "GMXRC",
+        p.parent.parent / "GMXRC",
+    ]
+    for c in candidates:
+        if c.is_file():
+            return str(c.resolve())
+    return None
+
+
+def _scan_gromacs_prefix(prefix: Path) -> List[Tuple[str, Optional[str]]]:
+    """Return ``[(gmx_path, gmxrc_path|None), ...]`` under a GROMACS prefix."""
+    found: List[Tuple[str, Optional[str]]] = []
+    gmxrc = prefix / "bin" / "GMXRC"
+    if not gmxrc.is_file():
+        gmxrc = prefix / "GMXRC"
+    gmx = prefix / "bin" / "gmx"
+    if not gmx.is_file():
+        gmx = prefix / "bin" / "gmx_mpi"
+    if gmx.is_file() and os.access(gmx, os.X_OK):
+        found.append(
+            (str(gmx.resolve()), str(gmxrc.resolve()) if gmxrc.is_file() else None)
+        )
+    return found
+
+
+def list_md_engine_candidates(engine: str) -> List[Dict[str, Any]]:
+    """Discover installed MD engine binaries / packages for a picker UI.
+
+    Engines:
+      - ``gromacs``: conda ``gmx``, PATH hits, common prefixes (+ GMXRC when found)
+      - ``namd``: ``namd3`` / ``namd2`` on PATH and common install dirs
+      - ``openmm``: current Python OpenMM import (platforms remain separate)
+
+    Returns a list of dicts with keys:
+      ``id``, ``label``, ``executable``, ``version``, ``source``, ``gmxrc`` (optional).
+    """
+    engine = (engine or "").strip().lower()
+    results: List[Dict[str, Any]] = []
+
+    if engine == "openmm":
+        version = get_package_version("openmm")
+        py = shutil.which("python3") or shutil.which("python") or "python"
+        results.append(
+            {
+                "id": "openmm-current",
+                "label": (
+                    f"OpenMM {version} (current Python)"
+                    if version
+                    else "OpenMM (not importable in current Python)"
+                ),
+                "executable": py,
+                "version": version,
+                "source": "python",
+                "available": version is not None,
+            }
+        )
+        return results
+
+    if engine == "gromacs":
+        candidates: List[Tuple[str, Optional[str], str]] = []
+        conda_prefix = os.environ.get("CONDA_PREFIX")
+        if conda_prefix:
+            conda_gmx = Path(conda_prefix) / "bin" / "gmx"
+            if conda_gmx.is_file():
+                candidates.append(
+                    (str(conda_gmx.resolve()), None, "conda")
+                )
+        for name in ("gmx", "gmx_mpi"):
+            which = shutil.which(name)
+            if which:
+                candidates.append((which, _discover_gmxrc_near(which), "path"))
+
+        search_roots = [
+            Path("/usr/local/gromacs"),
+            Path("/opt/gromacs"),
+            Path.home() / "gromacs",
+            Path.home() / "local" / "gromacs",
+        ]
+        # Versioned prefixes e.g. /usr/local/gromacs-2024.2
+        for parent in (Path("/usr/local"), Path("/opt"), Path.home()):
+            if not parent.is_dir():
+                continue
+            try:
+                for child in parent.iterdir():
+                    if child.is_dir() and "gromacs" in child.name.lower():
+                        search_roots.append(child)
+            except OSError:
+                pass
+
+        for root in search_roots:
+            if not root.is_dir():
+                continue
+            for gmx_path, gmxrc in _scan_gromacs_prefix(root):
+                candidates.append((gmx_path, gmxrc, "gmxrc" if gmxrc else "prefix"))
+
+        seen: set[str] = set()
+        for exe, gmxrc, source in candidates:
+            key = str(Path(exe).resolve()) if os.path.isfile(exe) else exe
+            if key in seen:
+                continue
+            if not os.path.isfile(exe):
+                continue
+            seen.add(key)
+            version = _probe_binary_version(exe, "gromacs")
+            label_bits = [f"GROMACS {version}" if version else "GROMACS", f"({source})"]
+            results.append(
+                {
+                    "id": f"gmx-{len(results)}",
+                    "label": " ".join(label_bits) + f" — {exe}",
+                    "executable": exe,
+                    "version": version,
+                    "source": source,
+                    "gmxrc": gmxrc,
+                    "available": True,
+                }
+            )
+        return results
+
+    if engine == "namd":
+        candidates: List[Tuple[str, str]] = []
+        for name in ("namd3", "namd2", "namd"):
+            which = shutil.which(name)
+            if which:
+                candidates.append((which, "path"))
+        search_roots = [
+            Path("/usr/local"),
+            Path("/opt"),
+            Path.home(),
+            Path.home() / "NAMD",
+            Path.home() / "namd",
+        ]
+        for root in search_roots:
+            if not root.is_dir():
+                continue
+            try:
+                for child in root.iterdir():
+                    if not child.is_dir():
+                        continue
+                    low = child.name.lower()
+                    if "namd" not in low:
+                        continue
+                    for name in ("namd3", "namd2", "namd"):
+                        for sub in (child, child / "bin"):
+                            exe = sub / name
+                            if exe.is_file() and os.access(exe, os.X_OK):
+                                candidates.append((str(exe.resolve()), "prefix"))
+            except OSError:
+                pass
+
+        seen: set[str] = set()
+        for exe, source in candidates:
+            key = str(Path(exe).resolve()) if os.path.isfile(exe) else exe
+            if key in seen or not os.path.isfile(exe):
+                continue
+            seen.add(key)
+            version = _probe_binary_version(exe, "namd")
+            results.append(
+                {
+                    "id": f"namd-{len(results)}",
+                    "label": (
+                        f"NAMD {version} ({source}) — {exe}"
+                        if version
+                        else f"NAMD ({source}) — {exe}"
+                    ),
+                    "executable": exe,
+                    "version": version,
+                    "source": source,
+                    "available": True,
+                }
+            )
+        return results
+
+    raise ValueError(f"Unsupported engine for discovery: {engine}")
