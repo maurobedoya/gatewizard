@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.47] - 2026-07-13
+
+### Added
+
+- **Conda:** recommend `gromacs` from conda-forge in `environment.yml` (GUI bootstrap installs CUDA-then-CPU on Linux)
+- **Engines:** `list_md_engine_candidates()` discovers NAMD / GROMACS (+ GMXRC) / OpenMM installs for version pickers
+- **GROMACS:** run scripts only `source` GMXRC when provided (no hardcoded `/usr/local/gromacs`); works with conda `gmx`
+
 ## [1.0.46] - 2026-07-11
 
 ### Added
