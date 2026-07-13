@@ -125,9 +125,13 @@ Must be installed via conda:
 - **Parmed 4.3.0** - Parameter/topology manipulation (must be from conda-forge)
 
 ### External Requirements
-- **NAMD 3.0.1** - Required for molecular dynamics simulations and equilibration
+- **NAMD** - Required for NAMD equilibration (separate install; not on conda-forge)
+  - Recommended: **NAMD 3.0.1 or later** (`namd3`)
   - Download from: [NAMD Official Website](https://www.ks.uiuc.edu/Research/namd/)
-  - Must be installed separately and accessible in your system PATH
+  - Must be on PATH or selectable via the GUI engine picker
+- **GROMACS** (optional) - Recommended via conda-forge; the GUI also tries to install it into the embedded runtime
+  - `conda install -c conda-forge gromacs` (Linux CUDA: `gromacs=*=nompi_cuda*`)
+  - System installs under `/usr/local/gromacs` (with `GMXRC`) are auto-detected
 
 ## Verifying Installation
 
