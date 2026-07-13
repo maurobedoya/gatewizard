@@ -359,9 +359,24 @@ class TestGenerateRunScript:
         )
         assert script.exists()
         text = script.read_text()
-        assert "source /usr/local/gromacs/bin/GMXRC" in text
         assert "step0_minimization" in text
         assert "step7_production" in text
+        assert "source /usr/local/gromacs/bin/GMXRC" not in text
+
+    def test_run_script_optional_gmxrc(self, tmp_path):
+        manager = _make_manager(tmp_path)
+        gmxrc = tmp_path / "GMXRC"
+        gmxrc.write_text("# test\n")
+        script = manager.generate_run_script(
+            gromacs_dir=tmp_path,
+            gro_name="system.gro",
+            top_name="topol_posres.top",
+            ndx_name="index.ndx",
+            n_stages=6,
+            gmxrc_path=str(gmxrc),
+        )
+        text = script.read_text()
+        assert f'source "{gmxrc}"' in text
 
     def test_run_script_executable(self, tmp_path):
         manager = _make_manager(tmp_path)
