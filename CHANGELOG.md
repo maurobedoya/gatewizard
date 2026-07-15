@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Engines:** detect NAMD version from `Info: NAMD x.y.z` banner (was skipped as noise) and fall back to version in the install path (e.g. `NAMD_3.0.2_...`)
+
 ## [1.0.47] - 2026-07-13
 
 ### Added

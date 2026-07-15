@@ -281,6 +281,9 @@ def _is_noise_line(line: str) -> bool:
     cleaned = line.strip()
     if not cleaned:
         return True
+    # NAMD puts its version banner on "Info:" lines — do not treat those as noise.
+    if re.search(r"^Info:\s*NAMD\s+[0-9]", cleaned, re.I):
+        return False
     return any(pattern.search(cleaned) for pattern in _NOISE_LINE_PATTERNS)
 
 
@@ -566,32 +569,34 @@ def check_and_warn_missing_dependencies():
 
 def _probe_binary_version(executable: str, engine: str) -> Optional[str]:
     """Run a short version probe and parse a concise version string."""
+    # NAMD 3 rejects +version as a config option but still prints the banner first.
     args_map = {
-        "namd": ["-version"],
-        "gromacs": ["--version"],
-        "openmm": ["--version"],
+        "namd": [["-version"], ["+version"], ["--version"]],
+        "gromacs": [["--version"]],
+        "openmm": [["--version"]],
     }
-    try:
-        proc = subprocess.run(
-            [executable, *args_map.get(engine, ["--version"])],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            timeout=6,
-            check=False,
-        )
-        text = (proc.stdout or "").strip()
-        if not text:
-            return None
-        parsed = parse_tool_version(text, engine)
-        if parsed:
-            return parsed
-        # NAMD often prints Charm++ noise before a version line — avoid using it
-        if engine == "namd":
-            return None
-        return text.splitlines()[0][:80]
-    except Exception:
-        return None
+    timeout = 12 if engine == "namd" else 6
+    for args in args_map.get(engine, [["--version"]]):
+        try:
+            proc = subprocess.run(
+                [executable, *args],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+            text = (proc.stdout or "").strip()
+            if not text:
+                continue
+            parsed = parse_tool_version(text, engine)
+            if parsed:
+                return parsed
+        except Exception:
+            continue
+    if engine == "namd":
+        return _version_from_install_path(executable, "namd")
+    return None
 
 
 def _discover_gmxrc_near(gmx_path: str) -> Optional[str]:
@@ -755,6 +760,8 @@ def list_md_engine_candidates(engine: str) -> List[Dict[str, Any]]:
                 continue
             seen.add(key)
             version = _probe_binary_version(exe, "namd")
+            if not _is_plausible_version(version):
+                version = _version_from_install_path(exe, "namd")
             results.append(
                 {
                     "id": f"namd-{len(results)}",
