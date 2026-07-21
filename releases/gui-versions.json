@@ -18,7 +18,7 @@
     "downloads": {
       "linux_appimage": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.11/gatewizard-gui-1.0.11-linux-x86_64.AppImage",
       "linux_deb": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.11/gatewizard-gui-1.0.11-linux-amd64.deb",
-      "linux": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.11/gatewizard-gui-1.0.11-linux-x86_64.AppImage",
+      "linux": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.11/gatewizard-gui-1.0.11-linux-amd64.deb",
       "mac": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.11/gatewizard-gui-1.0.11-mac-arm64.dmg",
       "mac_arm64": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.11/gatewizard-gui-1.0.11-mac-arm64.dmg",
       "mac_x64": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.11/gatewizard-gui-1.0.11-mac-x64.dmg"
