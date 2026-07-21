@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.49] - 2026-07-21
+
+### Added
+
+- **Engines:** `list_md_engine_candidates()` includes a `variant` field (`CPU` / `CUDA` / `OpenCL` / …) for GROMACS (`gmx --version` GPU support), NAMD (install path), and OpenMM (best available platform)
+
+### Changed
+
+- **Docs:** clarify conda GROMACS CPU vs CUDA — prefer CPU by default; CUDA matchspec is fragile next to OpenMM/`cudatoolkit` (solver hang, not an EULA prompt); document gatewizard-gui bootstrap defaults and `GATEWIZARD_CONDA_GROMACS_CUDA`
+
 ## [1.0.48] - 2026-07-15
 
 ### Fixed
