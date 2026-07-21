@@ -567,9 +567,8 @@ def check_and_warn_missing_dependencies():
         logger.info("All optional dependencies are available")
 
 
-def _probe_binary_version(executable: str, engine: str) -> Optional[str]:
-    """Run a short version probe and parse a concise version string."""
-    # NAMD 3 rejects +version as a config option but still prints the banner first.
+def _probe_binary_output(executable: str, engine: str) -> str:
+    """Return combined stdout from a short version probe (empty if all probes fail)."""
     args_map = {
         "namd": [["-version"], ["+version"], ["--version"]],
         "gromacs": [["--version"]],
@@ -587,16 +586,112 @@ def _probe_binary_version(executable: str, engine: str) -> Optional[str]:
                 check=False,
             )
             text = (proc.stdout or "").strip()
-            if not text:
-                continue
-            parsed = parse_tool_version(text, engine)
-            if parsed:
-                return parsed
+            if text:
+                return text
         except Exception:
             continue
+    return ""
+
+
+def _probe_binary_version(executable: str, engine: str) -> Optional[str]:
+    """Run a short version probe and parse a concise version string."""
+    text = _probe_binary_output(executable, engine)
+    if text:
+        parsed = parse_tool_version(text, engine)
+        if parsed:
+            return parsed
     if engine == "namd":
         return _version_from_install_path(executable, "namd")
     return None
+
+
+def parse_engine_variant(
+    text: str, engine: str, executable: str = ""
+) -> Optional[str]:
+    """Classify an MD engine install as CPU / CUDA / OpenCL / … when possible.
+
+    Returns a short label suitable for UI pickers (``CUDA``, ``CPU``, ``OpenCL``,
+    ``SYCL``, ``HIP``, ``Metal``), or ``None`` if unknown.
+    """
+    engine = (engine or "").strip().lower()
+    blob = f"{text or ''}\n{executable or ''}"
+    lower = blob.lower()
+
+    if engine == "gromacs":
+        # Official ``gmx --version`` line, e.g. "GPU support:             CUDA"
+        m = re.search(r"GPU support:\s*([^\n\r]+)", text or "", re.I)
+        if m:
+            support = m.group(1).strip().lower()
+            if not support or support in ("disabled", "no", "none", "false", "off"):
+                return "CPU"
+            if "cuda" in support:
+                return "CUDA"
+            if "opencl" in support:
+                return "OpenCL"
+            if "sycl" in support:
+                return "SYCL"
+            if "hip" in support or "rocm" in support:
+                return "HIP"
+            if "metal" in support:
+                return "Metal"
+            return support.split()[0].upper() if support else "CPU"
+        # Conda build strings / paths: nompi_cuda, cuda12, …
+        if re.search(r"nompi_cuda|cuda\d+|_cuda(?:_|\b)|/cuda", lower):
+            return "CUDA"
+        if "cuda" in lower and "disabled" not in lower:
+            return "CUDA"
+        return "CPU"
+
+    if engine == "namd":
+        # Install folder names: NAMD_3.0_Linux-x86_64-multicore-CUDA
+        if re.search(r"\bcuda\b", lower) or re.search(r"multicore-cuda", lower):
+            return "CUDA"
+        if re.search(r"\bopencl\b", lower):
+            return "OpenCL"
+        if "multicore" in lower or "mpi" in lower:
+            return "CPU"
+        # Banner rarely states CUDA; path is the reliable signal.
+        return "CPU" if executable else None
+
+    if engine == "openmm":
+        try:
+            import openmm  # type: ignore
+
+            names = [
+                openmm.Platform.getPlatform(i).getName()
+                for i in range(openmm.Platform.getNumPlatforms())
+            ]
+        except Exception:
+            return None
+        for preferred in ("CUDA", "OpenCL", "Metal", "HIP"):
+            if preferred in names:
+                return preferred
+        if "CPU" in names:
+            return "CPU"
+        return None
+
+    return None
+
+
+def _probe_engine_variant(executable: str, engine: str, version_text: str = "") -> Optional[str]:
+    text = version_text or _probe_binary_output(executable, engine)
+    return parse_engine_variant(text, engine, executable)
+
+
+def _format_engine_label(
+    name: str,
+    version: Optional[str],
+    variant: Optional[str],
+    source: str,
+    executable: str,
+) -> str:
+    bits = [name]
+    if version:
+        bits[0] = f"{name} {version}"
+    if variant:
+        bits.append(f"· {variant}")
+    bits.append(f"({source})")
+    return " ".join(bits) + f" — {executable}"
 
 
 def _discover_gmxrc_near(gmx_path: str) -> Optional[str]:
@@ -638,7 +733,8 @@ def list_md_engine_candidates(engine: str) -> List[Dict[str, Any]]:
       - ``openmm``: current Python OpenMM import (platforms remain separate)
 
     Returns a list of dicts with keys:
-      ``id``, ``label``, ``executable``, ``version``, ``source``, ``gmxrc`` (optional).
+      ``id``, ``label``, ``executable``, ``version``, ``variant`` (CPU/CUDA/…),
+      ``source``, ``gmxrc`` (optional).
     """
     engine = (engine or "").strip().lower()
     results: List[Dict[str, Any]] = []
@@ -646,16 +742,23 @@ def list_md_engine_candidates(engine: str) -> List[Dict[str, Any]]:
     if engine == "openmm":
         version = get_package_version("openmm")
         py = shutil.which("python3") or shutil.which("python") or "python"
+        variant = parse_engine_variant("", "openmm", py)
+        label = (
+            f"OpenMM {version}"
+            if version
+            else "OpenMM (not importable in current Python)"
+        )
+        if version and variant:
+            label = f"OpenMM {version} · {variant} (current Python)"
+        elif version:
+            label = f"OpenMM {version} (current Python)"
         results.append(
             {
                 "id": "openmm-current",
-                "label": (
-                    f"OpenMM {version} (current Python)"
-                    if version
-                    else "OpenMM (not importable in current Python)"
-                ),
+                "label": label,
                 "executable": py,
                 "version": version,
+                "variant": variant,
                 "source": "python",
                 "available": version is not None,
             }
@@ -707,14 +810,18 @@ def list_md_engine_candidates(engine: str) -> List[Dict[str, Any]]:
             if not os.path.isfile(exe):
                 continue
             seen.add(key)
-            version = _probe_binary_version(exe, "gromacs")
-            label_bits = [f"GROMACS {version}" if version else "GROMACS", f"({source})"]
+            raw = _probe_binary_output(exe, "gromacs")
+            version = parse_tool_version(raw, "gromacs") if raw else None
+            variant = parse_engine_variant(raw, "gromacs", exe)
             results.append(
                 {
                     "id": f"gmx-{len(results)}",
-                    "label": " ".join(label_bits) + f" — {exe}",
+                    "label": _format_engine_label(
+                        "GROMACS", version, variant, source, exe
+                    ),
                     "executable": exe,
                     "version": version,
+                    "variant": variant,
                     "source": source,
                     "gmxrc": gmxrc,
                     "available": True,
@@ -759,19 +866,20 @@ def list_md_engine_candidates(engine: str) -> List[Dict[str, Any]]:
             if key in seen or not os.path.isfile(exe):
                 continue
             seen.add(key)
-            version = _probe_binary_version(exe, "namd")
+            raw = _probe_binary_output(exe, "namd")
+            version = parse_tool_version(raw, "namd") if raw else None
             if not _is_plausible_version(version):
                 version = _version_from_install_path(exe, "namd")
+            variant = parse_engine_variant(raw, "namd", exe)
             results.append(
                 {
                     "id": f"namd-{len(results)}",
-                    "label": (
-                        f"NAMD {version} ({source}) — {exe}"
-                        if version
-                        else f"NAMD ({source}) — {exe}"
+                    "label": _format_engine_label(
+                        "NAMD", version, variant, source, exe
                     ),
                     "executable": exe,
                     "version": version,
+                    "variant": variant,
                     "source": source,
                     "available": True,
                 }

@@ -16,6 +16,7 @@ from gatewizard.utils.optional_deps import (
     get_external_tool_versions,
     get_optional_dependencies_status,
     get_package_version,
+    parse_engine_variant,
     parse_tool_version,
     resolve_executable,
 )
@@ -91,6 +92,28 @@ class TestParseToolVersion:
             "An NVIDIA GPU may be present on this machine"
         )
         assert parse_tool_version(text, "mempro") is None
+
+
+class TestParseEngineVariant:
+    def test_gromacs_cuda_from_gpu_support_line(self):
+        text = "GROMACS version:    2024.4\nGPU support:             CUDA\n"
+        assert parse_engine_variant(text, "gromacs") == "CUDA"
+
+    def test_gromacs_cpu_when_gpu_disabled(self):
+        text = "GROMACS version:    2024.4\nGPU support:             disabled\n"
+        assert parse_engine_variant(text, "gromacs") == "CPU"
+
+    def test_gromacs_cuda_from_build_string(self):
+        text = "gromacs-2024.4-nompi_cuda_h123_0"
+        assert parse_engine_variant(text, "gromacs", "/env/bin/gmx") == "CUDA"
+
+    def test_namd_cuda_from_install_path(self):
+        path = "/opt/NAMD_3.0.1_Linux-x86_64-multicore-CUDA/namd3"
+        assert parse_engine_variant("", "namd", path) == "CUDA"
+
+    def test_namd_cpu_from_multicore_path(self):
+        path = "/opt/NAMD_3.0.1_Linux-x86_64-multicore/namd3"
+        assert parse_engine_variant("", "namd", path) == "CPU"
 
     def test_parse_ambertools_from_version_file(self):
         text = "24.8"
