@@ -13,10 +13,12 @@ dependencies:
   - pillow>=9.0.0  # For image display in GUI
   - openmm>=8.0
   - cudatoolkit  # OpenMM CUDA platform (Linux/WSL); use with NVIDIA driver
-  # GROMACS (optional but recommended for equilibration). One build per env:
-  # Linux CUDA:  conda install 'gromacs=*=nompi_cuda*' -c conda-forge
-  # CPU fallback: conda install gromacs -c conda-forge
-  # The GUI micromamba bootstrap tries CUDA then CPU automatically.
+  # GROMACS (optional but recommended for equilibration). Prefer CPU in this env:
+  #   conda install -c conda-forge gromacs
+  # CUDA build (Linux, often conflicts with OpenMM/cudatoolkit — can hang in the solver):
+  #   conda install -c conda-forge 'gromacs=*=nompi_cuda*'
+  # gatewizard-gui defaults to CPU GROMACS; set GATEWIZARD_CONDA_GROMACS_CUDA=1 to opt in.
+  # See docs/installation.md - GROMACS: CPU vs CUDA.
   - gromacs
   - pip
   - pip:

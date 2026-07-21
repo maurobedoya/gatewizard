@@ -447,10 +447,13 @@ A: Minimum 4GB, 8GB+ recommended. Large trajectories may need 16GB+.
 A: For the desktop app, use X forwarding or WSLg on a remote WSL host and launch **gatewizard-gui-linux**. For scripting, use the Python API (`import gatewizard`).
 
 **Q: Does GateWizard work with GPU acceleration?**
-A: Not currently. Analysis is CPU-based.
+A: **OpenMM** can use CUDA when `openmm` + `cudatoolkit` are installed and an NVIDIA driver is present. **GROMACS** GPU builds are separate — prefer conda CPU `gromacs` (or a system CUDA `gmx`); see [Installation](installation.md#gromacs-cpu-vs-cuda-conda-forge). Trajectory analysis is CPU-based.
 
 **Q: Can I automate GateWizard?**
 A: Python API is available for scripting (see API documentation).
+
+**Q: conda/micromamba GROMACS CUDA install hangs — do I need to accept a license?**
+A: No. EULA / Terms-of-Service lines in the log are not interactive prompts (`-y` is already used). The hang is almost always the dependency solver. Cancel and install CPU `gromacs`, or for the GUI leave the default / see `GATEWIZARD_CONDA_GROMACS_CUDA` in [Installation](installation.md#desktop-gui-runtime-gromacs--cuda).
 
 **Q: What trajectory formats are supported?**
 A: DCD, XTC, TRR, NetCDF, and others via MDAnalysis.

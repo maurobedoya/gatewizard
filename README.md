@@ -122,7 +122,7 @@ Install: `pip install "gatewizard[full]"` then `pip install -r requirements-orie
 | Tool | Role |
 |------|------|
 | [NAMD](https://www.ks.uiuc.edu/Research/namd/) | Run NAMD equilibration — `namd3` / `namd2` on `PATH` |
-| [GROMACS](https://www.gromacs.org/) | Run GROMACS equilibration — `gmx` on `PATH` |
+| [GROMACS](https://www.gromacs.org/) | Run GROMACS equilibration — `gmx` on `PATH` (prefer conda-forge **CPU** `gromacs`; CUDA conda builds often hang next to OpenMM — see [Installation](docs/installation.md#gromacs-cpu-vs-cuda-conda-forge)) |
 
 OpenMM needs no separate binary — use **`openmm` + `cudatoolkit`** (conda) with `gatewizard[full]`. Auto-selects **CUDA → OpenCL → CPU**; override with `PLATFORM=CUDA bash run_equilibration.sh`.
 
@@ -142,7 +142,7 @@ python -c "import openmm; print([openmm.Platform.getPlatform(i).getName() for i 
 
 ## Desktop GUI
 
-**[gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui)** — Electron app for the same workflow with a visual interface. It manages its own Python runtime and can update the API from the app.
+**[gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui)** — Electron app for the same workflow with a visual interface. It manages its own Python runtime and can update the API from the app. First-launch bootstrap installs **CPU** GROMACS by default (CUDA GROMACS is opt-in); details in [Installation → Desktop GUI runtime](docs/installation.md#desktop-gui-runtime-gromacs--cuda).
 
 ## Community and support
 

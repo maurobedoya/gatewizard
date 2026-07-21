@@ -28,7 +28,7 @@ pip install gatewizard
 python -c "import gatewizard; print(gatewizard.__version__)"
 ```
 
-For the **desktop app**, install [gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui/releases) separately.
+For the **desktop app**, install [gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui/releases) separately. On first launch the GUI embeds its own micromamba runtime (Python, AmberTools, OpenMM, GROMACS, and `gatewizard` via pip). See [Desktop GUI runtime (GROMACS / CUDA)](#desktop-gui-runtime-gromacs--cuda) below.
 
 ## Alternative: Development Installation
 
@@ -129,10 +129,44 @@ Must be installed via conda:
   - Recommended: **NAMD 3.0.1 or later** (`namd3`)
   - Download from: [NAMD Official Website](https://www.ks.uiuc.edu/Research/namd/)
   - Must be on PATH or selectable via the GUI engine picker
-- **GROMACS** (optional) - Recommended via conda-forge; the GUI also tries to install it into the embedded runtime
-  - `conda install -c conda-forge gromacs` (Linux CUDA: `gromacs=*=nompi_cuda*`)
+- **OpenMM** (optional for API users) - Python MD engine via conda-forge
+  - `conda install -c conda-forge openmm cudatoolkit` on Linux/WSL with an NVIDIA driver for the CUDA platform
+  - macOS uses Metal/OpenCL (no `cudatoolkit`)
+  - Auto-selects **CUDA → OpenCL → CPU**; override with `PLATFORM=CUDA` when running equilibration scripts
+- **GROMACS** (optional) - Recommended via conda-forge; the GUI also installs a build into its embedded runtime
+  - **CPU (recommended default):** `conda install -c conda-forge gromacs`
+  - **CUDA (Linux only, advanced):** `conda install -c conda-forge 'gromacs=*=nompi_cuda*'`
   - System installs under `/usr/local/gromacs` (with `GMXRC`) are auto-detected
+  - See the notes below before choosing the CUDA conda build
 
+### GROMACS: CPU vs CUDA (conda-forge)
+
+GateWizard equilibration works with either a **CPU** or **CUDA** `gmx`. Prefer the CPU package unless you specifically need a conda CUDA GROMACS binary.
+
+| Goal | Command / behavior |
+|------|--------------------|
+| Reliable conda install | `conda install -c conda-forge gromacs` |
+| CUDA GROMACS (opt-in) | `conda install -c conda-forge 'gromacs=*=nompi_cuda*'` |
+| GPU OpenMM (separate) | `conda install -c conda-forge openmm cudatoolkit` |
+
+**Why CUDA GROMACS often fails or hangs**
+
+- Installing `gromacs=*=nompi_cuda*` into an environment that already has **OpenMM + `cudatoolkit`** can stall for a very long time in the dependency **solver** (little or no log output after `Pinned packages:`).
+- Log lines about the CUDA Toolkit EULA or Anaconda Terms of Service are **informational**. Non-interactive installs (`conda`/`micromamba` with `-y`) do **not** wait for you to type “yes”.
+- If the CUDA solve is cancelled or times out, installing the **CPU** `gromacs` package normally succeeds quickly.
+- For GPU MD with GateWizard, **OpenMM + `cudatoolkit`** is usually enough. Use a **system** CUDA GROMACS (or GMXRC) if you need `gmx` on the GPU, or keep conda GROMACS on CPU.
+
+### Desktop GUI runtime (GROMACS / CUDA)
+
+[gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui) bootstraps an embedded micromamba env on first launch (see that repo’s README and `runtime-install.log`).
+
+- **OpenMM:** on Linux/WSL, if `nvidia-smi` sees a GPU, the GUI installs `openmm` + `cudatoolkit` into the embedded env (unless `GATEWIZARD_SKIP_CONDA_CUDA=1`).
+- **GROMACS (default):** the GUI installs the **CPU** conda-forge build. This avoids multi-hour CUDA solver hangs next to OpenMM’s toolkit.
+- **GROMACS CUDA (opt-in):** set `GATEWIZARD_CONDA_GROMACS_CUDA=1` before launching the GUI. The bootstrap tries a frozen CUDA install with a short timeout, then falls back to CPU GROMACS if the solve stalls.
+- Quitting mid-install kills leftover `micromamba` processes for that env so a relaunch is not blocked by an orphaned solver.
+- Linux/WSL log: `~/.config/gatewizard-gui/runtime-install.log` (look for `[gromacs] starting…` / `failed` / `installed`).
+
+Manual API environments should follow the same preference: install **CPU** `gromacs` by default; only add the CUDA matchspec if you accept a long or fragile solve.
 ## Verifying Installation
 
 After installation, verify that everything works:
@@ -184,6 +218,20 @@ pip install --force-reinstall gatewizard
 ```
 
 ## Troubleshooting Installation
+
+### Issue: conda GROMACS CUDA install hangs after “Pinned packages”
+
+**Cause:** The `gromacs=*=nompi_cuda*` solve often conflicts with an environment that already has OpenMM/`cudatoolkit`. The solver can run for a very long time with almost no new log lines. EULA / Terms-of-Service messages in the log are not interactive prompts.
+
+**Solution:**
+```bash
+# Cancel the stuck install (Ctrl+C), then install CPU GROMACS:
+conda install -c conda-forge gromacs -y
+
+# Optional: use a system CUDA GROMACS / GMXRC instead of the conda CUDA build
+```
+
+For **gatewizard-gui**, leave the default (CPU GROMACS). Only set `GATEWIZARD_CONDA_GROMACS_CUDA=1` if you explicitly want the timed CUDA attempt. See [Desktop GUI runtime (GROMACS / CUDA)](installation.md#desktop-gui-runtime-gromacs--cuda).
 
 ### Issue: ImportError with numpy.compat
 
