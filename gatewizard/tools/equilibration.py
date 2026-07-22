@@ -21,6 +21,11 @@ import json
 import tempfile
 
 from gatewizard.utils.logger import get_logger
+from gatewizard.utils.equilibration_resume import (
+    GROMACS_RESUME_SHELL,
+    NAMD_RESUME_SHELL,
+    OPENMM_RESUME_SHELL,
+)
 from gatewizard.tools.namd_water import namd_water_model_config_block
 
 logger = get_logger(__name__)
@@ -2784,6 +2789,8 @@ colvarsRestartFrequency 5000
             'echo "Each stage uses individual CPU/GPU settings"',
             'echo ""',
             "",
+            NAMD_RESUME_SHELL,
+            "",
         ]
 
         # Add commands for each stage
@@ -2816,8 +2823,10 @@ colvarsRestartFrequency 5000
             config_name = self._get_config_name(stage_key, i)
             if config_name == "step7_production":
                 namd_cmd += f" step7_production.conf > step7_production.log 2>&1"
+                namd_stem = "step7_production"
             else:
                 namd_cmd += f" {config_name}_equilibration.conf > {config_name}_equilibration.log 2>&1"
+                namd_stem = f"{config_name}_equilibration"
 
             # Create detailed resource information
             gpu_info = "No"
@@ -2831,16 +2840,20 @@ colvarsRestartFrequency 5000
             script_lines.extend(
                 [
                     f"# Stage {stage_num}: {stage_name}",
-                    f'echo "Running Stage {stage_num}: {stage_name}"',
-                    f'echo "Steps: {steps}, Timestep: {timestep} ps"',
-                    f'echo "Resources: {cpu_cores} CPU cores, GPU: {gpu_info}"',
-                    namd_cmd,
+                    f'if [ "$RESUME" = "1" ] && _gw_namd_stage_done "{namd_stem}"; then',
+                    f'  echo "RESUME: skipping stage {stage_num} ({namd_stem})"',
+                    "else",
+                    f'  echo "Running Stage {stage_num}: {stage_name}"',
+                    f'  echo "Steps: {steps}, Timestep: {timestep} ps"',
+                    f'  echo "Resources: {cpu_cores} CPU cores, GPU: {gpu_info}"',
+                    f"  {namd_cmd}",
                     "",
-                    "if [ $? -ne 0 ]; then",
+                    "  if [ $? -ne 0 ]; then",
                     f'    echo "Error in Stage {stage_num}: {stage_name}"',
                     "    exit 1",
+                    "  fi",
+                    f'  echo "Stage {stage_num} completed successfully"',
                     "fi",
-                    f'echo "Stage {stage_num} completed successfully"',
                     'echo ""',
                     "",
                 ]
@@ -4381,6 +4394,8 @@ class OpenMMEquilibrationManager:
             "",
             'echo "Starting OpenMM equilibration protocol..."',
             "",
+            OPENMM_RESUME_SHELL,
+            "",
         ]
 
         for i, config_name in enumerate(stage_config_names):
@@ -4391,6 +4406,9 @@ class OpenMMEquilibrationManager:
             log_out = f"{config_name}.log"
 
             lines.append(f"# Stage {stage_num}: {config_name}")
+            lines.append(f'if [ "$RESUME" = "1" ] && _gw_openmm_stage_done "{config_name}"; then')
+            lines.append(f'  echo "RESUME: skipping stage {stage_num} ({config_name})"')
+            lines.append("else")
             cmd = f"$PYTHON openmm_run.py -i {inp_file} -ff amber -p $PRMTOP -c $INPCRD"
             if bilayer_pdb_name:
                 cmd += " -b $BILAYER_PDB"
@@ -4400,11 +4418,11 @@ class OpenMMEquilibrationManager:
             cmd += (
                 f" -orst {rst_out} -odcd {dcd_out} ${{PLATFORM:+--platform $PLATFORM}}"
             )
-            # pipe through tee so output goes to both terminal and log file
-            lines.append(f"({cmd}) 2>&1 | tee {log_out}")
+            lines.append(f"  ({cmd}) 2>&1 | tee {log_out}")
             lines.append(
-                f'if [ ${{PIPESTATUS[0]}} -ne 0 ]; then echo "Stage {stage_num} ({config_name}) failed"; exit 1; fi'
+                f'  if [ ${{PIPESTATUS[0]}} -ne 0 ]; then echo "Stage {stage_num} ({config_name}) failed"; exit 1; fi'
             )
+            lines.append("fi")
             lines.append("")
 
         lines.append('echo "Equilibration complete."')
@@ -6643,13 +6661,19 @@ class GROMACSEquilibrationManager:
             "",
             'echo "Starting GROMACS equilibration protocol…"',
             "",
+            GROMACS_RESUME_SHELL,
+            "",
             "# --- Step 0: Energy minimisation ---",
         ]
         grompp_ndx = "-n ${NDX}" if ndx_name else ""
         lines += [
-            f"${{GMX}} grompp -f step0_minimization.mdp -o step0_minimization.tpr \\",
-            f"    -c ${{GRO}} -r ${{GRO}} -p ${{TOP}} {grompp_ndx} -maxwarn 2",
-            "${GMX} mdrun -v -s step0_minimization.tpr -deffnm step0_minimization || { echo 'Minimisation failed'; exit 1; }",
+            'if [ "$RESUME" = "1" ] && _gw_gromacs_stage_done "step0_minimization"; then',
+            '  echo "RESUME: skipping step0_minimization"',
+            "else",
+            f"  ${{GMX}} grompp -f step0_minimization.mdp -o step0_minimization.tpr \\",
+            f"      -c ${{GRO}} -r ${{GRO}} -p ${{TOP}} {grompp_ndx} -maxwarn 2",
+            "  ${GMX} mdrun -v -s step0_minimization.tpr -deffnm step0_minimization || { echo 'Minimisation failed'; exit 1; }",
+            "fi",
             "",
             "# --- Steps 1–6: Equilibration ---",
         ]
@@ -6657,16 +6681,24 @@ class GROMACSEquilibrationManager:
             prev = "step0_minimization" if i == 1 else f"step{i - 1}_equilibration"
             curr = f"step{i}_equilibration"
             lines += [
-                f"${{GMX}} grompp -f {curr}.mdp -o {curr}.tpr \\",
-                f"    -c {prev}.gro -r ${{GRO}} -p ${{TOP}} {grompp_ndx} -maxwarn 2",
-                f"${{GMX}} mdrun -v -s {curr}.tpr -deffnm {curr} || {{ echo 'Stage {i} failed'; exit 1; }}",
+                f'if [ "$RESUME" = "1" ] && _gw_gromacs_stage_done "{curr}"; then',
+                f'  echo "RESUME: skipping {curr}"',
+                "else",
+                f"  ${{GMX}} grompp -f {curr}.mdp -o {curr}.tpr \\",
+                f"      -c {prev}.gro -r ${{GRO}} -p ${{TOP}} {grompp_ndx} -maxwarn 2",
+                f"  ${{GMX}} mdrun -v -s {curr}.tpr -deffnm {curr} || {{ echo 'Stage {i} failed'; exit 1; }}",
+                "fi",
                 "",
             ]
         lines += [
             "# --- Step 7: Production ---",
-            f"${{GMX}} grompp -f step7_production.mdp -o step7_production.tpr \\",
-            f"    -c step{n_stages}_equilibration.gro -p ${{TOP}} {grompp_ndx} -maxwarn 2",
-            "${GMX} mdrun -v -s step7_production.tpr -deffnm step7_production || { echo 'Production failed'; exit 1; }",
+            'if [ "$RESUME" = "1" ] && _gw_gromacs_stage_done "step7_production"; then',
+            '  echo "RESUME: skipping step7_production"',
+            "else",
+            f"  ${{GMX}} grompp -f step7_production.mdp -o step7_production.tpr \\",
+            f"      -c step{n_stages}_equilibration.gro -p ${{TOP}} {grompp_ndx} -maxwarn 2",
+            "  ${GMX} mdrun -v -s step7_production.tpr -deffnm step7_production || { echo 'Production failed'; exit 1; }",
+            "fi",
             "",
             'echo "GROMACS equilibration complete."',
         ]

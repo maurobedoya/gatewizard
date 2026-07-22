@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.50] - 2026-07-21
+
+### Added
+
+- **Equilibration:** stage-level continue — `get_equilibration_resume_point()` and `RESUME=1` support in generated `run_equilibration.sh` (NAMD, GROMACS, OpenMM); skip completed stages and restart the first incomplete stage from the beginning
+
+### Fixed
+
+- **OpenMM:** `parse_openmm_log()` uses stage-local **Progress (%)** so per-stage simulated ns is correct when stages chain via `-irst` (cumulative Step values no longer inflate ns across rows)
+
 ## [1.0.49] - 2026-07-21
 
 ### Added

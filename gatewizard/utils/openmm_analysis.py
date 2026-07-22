@@ -882,6 +882,10 @@ def parse_openmm_log(
             c.strip().strip('"') for c in header_m.group().lstrip("#").split("\t")
         ]
         try:
+            progress_idx = header_cols.index("Progress (%)")
+        except ValueError:
+            progress_idx = 0
+        try:
             step_idx = header_cols.index("Step")
         except ValueError:
             step_idx = 1  # fallback: second column
@@ -897,11 +901,28 @@ def parse_openmm_log(
             return info
 
         last_row = data_rows[-1].split("\t")
+        first_row = data_rows[0].split("\t")
 
+        # Step is cumulative when stages chain via -irst; Progress (%) is stage-local.
+        steps_from_progress: int | None = None
         try:
-            info.steps_completed = int(last_row[step_idx])
+            progress_pct = float(last_row[progress_idx].rstrip("%"))
+            if info.total_steps > 0 and progress_pct >= 0:
+                steps_from_progress = int(
+                    round(progress_pct / 100.0 * info.total_steps)
+                )
         except (IndexError, ValueError):
             pass
+
+        if steps_from_progress is not None:
+            info.steps_completed = steps_from_progress
+        else:
+            try:
+                last_step = int(last_row[step_idx])
+                first_step = int(first_row[step_idx])
+                info.steps_completed = max(0, last_step - first_step)
+            except (IndexError, ValueError):
+                pass
 
         try:
             speed_val = float(last_row[speed_idx])
