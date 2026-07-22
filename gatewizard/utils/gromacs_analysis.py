@@ -26,6 +26,9 @@ class GROMACSTimingInfo:
     total_steps: int = 0
     timestep_fs: float = 0.0  # femtoseconds per step
     ns_per_day: float = 0.0
+    is_minimization: bool = False
+    wall_elapsed_seconds: float = 0.0
+    converged_early: bool = False
     # Internal flags (not used by app.py but useful for status logic)
     completed: bool = False
     has_error: bool = False
@@ -41,7 +44,33 @@ class GROMACSStageProgress:
     log_file: Optional[Path] = None
 
 
-def parse_gromacs_log(log_file: Path) -> GROMACSTimingInfo:
+def _parse_mdrun_timestamp(content: str, marker: str) -> Optional[datetime]:
+    """Parse ``Started mdrun`` / ``Finished mdrun`` timestamps from a GROMACS log."""
+    pattern = rf"{marker} on rank \d+ \w+ (\w+ +\d+ +\d+:\d+:\d+ \d+)"
+    match = re.search(pattern, content)
+    if not match:
+        return None
+    try:
+        return datetime.strptime(match.group(1).strip(), "%b %d %H:%M:%S %Y")
+    except ValueError:
+        return None
+
+
+def _wall_elapsed_seconds(content: str, *, running: bool) -> float:
+    start_dt = _parse_mdrun_timestamp(content, "Started mdrun")
+    if not start_dt:
+        return 0.0
+    end_dt = _parse_mdrun_timestamp(content, "Finished mdrun")
+    if end_dt:
+        return max(0.0, end_dt.timestamp() - start_dt.timestamp())
+    if running:
+        return max(0.0, time.time() - start_dt.timestamp())
+    return 0.0
+
+
+def parse_gromacs_log(
+    log_file: Path, *, is_minimization: bool = False
+) -> GROMACSTimingInfo:
     """
     Parse a GROMACS .log file and return timing/progress information.
 
@@ -64,57 +93,96 @@ def parse_gromacs_log(log_file: Path) -> GROMACSTimingInfo:
         with open(log_file, "r", encoding="utf-8", errors="ignore") as fh:
             content = fh.read()
 
+        integrator_m = re.search(r"integrator\s*=\s*(\S+)", content)
+        if integrator_m:
+            integrator = integrator_m.group(1).strip().lower()
+            if integrator in {"steep", "cg"}:
+                is_minimization = True
+        info.is_minimization = is_minimization
+
         # ── MDP parameters (echoed near the top of every GROMACS log) ───────────
         nsteps_m = re.search(r"\bnsteps\s*=\s*(\d+)", content)
         if nsteps_m:
             info.total_steps = int(nsteps_m.group(1))
 
-        # Timestep dt is in ps → convert to fs
-        dt_m = re.search(r"\bdt\s*=\s*([\d.]+)", content)
-        if dt_m:
-            info.timestep_fs = float(dt_m.group(1)) * 1000.0
-
-        # ── Current step from periodic energy-output blocks ──────────────────────
-        # GROMACS writes at each nstlog interval:
-        #            Step           Time
-        #          100000      200.00000
-        step_matches = re.findall(
-            r"^\s{5,15}(\d+)\s+\d+\.\d+\s*$", content, re.MULTILINE
-        )
-        if step_matches:
-            info.steps_completed = int(step_matches[-1])
-
-        # ── Performance (only present after stage finishes) ──────────────────────
-        # "Performance:    487.654          0.049"  (ns/day  hours/ns ...)
-        perf_matches = re.findall(r"^Performance:\s+([\d.]+)", content, re.MULTILINE)
-        if perf_matches:
-            info.ns_per_day = float(perf_matches[-1])
-
-        # ── Live estimate: parse start timestamp, compare to now ─────────────────
-        # "Started mdrun on rank 0 Thu May 28 15:40:23 2026"
-        # Use this only when Performance hasn't been written yet (stage still running).
-        if info.ns_per_day == 0.0 and info.steps_completed > 0 and info.timestep_fs > 0:
-            start_m = re.search(
-                r"Started mdrun on rank \d+ \w+ (\w+ +\d+ +\d+:\d+:\d+ \d+)",
-                content,
+        if is_minimization:
+            requested_steps = info.total_steps
+            step_matches = re.findall(
+                r"^\s{5,15}(\d+)\s+\d+\.\d+\s*$", content, re.MULTILINE
             )
-            if start_m:
-                try:
-                    start_dt = datetime.strptime(
-                        start_m.group(1).strip(), "%b %d %H:%M:%S %Y"
-                    )
-                    wall_elapsed_s = time.time() - start_dt.timestamp()
+            if step_matches:
+                info.steps_completed = int(step_matches[-1])
+
+            converged_m = re.search(
+                r"converged.*?in\s+(\d+)\s+steps", content, re.IGNORECASE
+            )
+            if converged_m:
+                info.steps_completed = int(converged_m.group(1))
+
+            if "Finished mdrun" in content:
+                info.completed = True
+                if info.total_steps > 0 and info.steps_completed == 0:
+                    info.steps_completed = info.total_steps
+
+            if (
+                info.completed
+                and requested_steps > 0
+                and 0 < info.steps_completed < requested_steps
+                and converged_m
+            ):
+                info.converged_early = True
+                info.total_steps = requested_steps
+
+            info.wall_elapsed_seconds = _wall_elapsed_seconds(
+                content, running=not info.completed
+            )
+        else:
+            # Timestep dt is in ps → convert to fs
+            dt_m = re.search(r"\bdt\s*=\s*([\d.]+)", content)
+            if dt_m:
+                info.timestep_fs = float(dt_m.group(1)) * 1000.0
+
+            # ── Current step from periodic energy-output blocks ──────────────────────
+            # GROMACS writes at each nstlog interval:
+            #            Step           Time
+            #          100000      200.00000
+            step_matches = re.findall(
+                r"^\s{5,15}(\d+)\s+\d+\.\d+\s*$", content, re.MULTILINE
+            )
+            if step_matches:
+                info.steps_completed = int(step_matches[-1])
+
+            # ── Performance (only present after stage finishes) ──────────────────────
+            # "Performance:    487.654          0.049"  (ns/day  hours/ns ...)
+            perf_matches = re.findall(r"^Performance:\s+([\d.]+)", content, re.MULTILINE)
+            if perf_matches:
+                info.ns_per_day = float(perf_matches[-1])
+
+            # ── Live estimate: parse start timestamp, compare to now ─────────────────
+            # "Started mdrun on rank 0 Thu May 28 15:40:23 2026"
+            # Use this only when Performance hasn't been written yet (stage still running).
+            if (
+                info.ns_per_day == 0.0
+                and info.steps_completed > 0
+                and info.timestep_fs > 0
+            ):
+                start_dt = _parse_mdrun_timestamp(content, "Started mdrun")
+                if start_dt:
+                    wall_elapsed_s = max(0.0, time.time() - start_dt.timestamp())
                     if wall_elapsed_s > 1.0:
                         simulated_ns = info.steps_completed * info.timestep_fs * 1e-6
                         info.ns_per_day = simulated_ns / wall_elapsed_s * 86400
-                except ValueError:
-                    pass
+                        info.wall_elapsed_seconds = wall_elapsed_s
 
-        # ── Completion / error markers ───────────────────────────────────────────
-        if "Finished mdrun" in content:
-            info.completed = True
-            if info.total_steps > 0:
-                info.steps_completed = info.total_steps
+            # ── Completion / error markers ───────────────────────────────────────────
+            if "Finished mdrun" in content:
+                info.completed = True
+                if info.total_steps > 0:
+                    info.steps_completed = info.total_steps
+                if info.wall_elapsed_seconds == 0.0:
+                    info.wall_elapsed_seconds = _wall_elapsed_seconds(
+                        content, running=False
+                    )
 
         if "Fatal error:" in content or "Error in user input:" in content:
             info.has_error = True
@@ -162,7 +230,9 @@ def get_equilibration_progress(
 
         if log_file.exists():
             stage.log_file = log_file
-            timing = parse_gromacs_log(log_file)
+            timing = parse_gromacs_log(
+                log_file, is_minimization=(stage_name == "minimization")
+            )
             stage.timing = timing
 
             if timing.has_error:

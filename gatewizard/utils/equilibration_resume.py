@@ -62,10 +62,21 @@ _gw_namd_stage_done() {
 """.strip()
 
 
+OPENMM_STAGE_ORDER: List[tuple[str, str]] = [
+    ("step1_equilibration", "Equilibration 1"),
+    ("step2_equilibration", "Equilibration 2"),
+    ("step3_equilibration", "Equilibration 3"),
+    ("step4_equilibration", "Equilibration 4"),
+    ("step5_equilibration", "Equilibration 5"),
+    ("step6_equilibration", "Equilibration 6"),
+    ("step7_production", "Production"),
+]
+
+
 def _openmm_stage_complete(eq_dir: Path, stem: str) -> bool:
-    rst = eq_dir / f"{stem}.rst"
+    """Match get_equilibration_progress / GUI: completion from the stage log."""
     log = eq_dir / f"{stem}.log"
-    if not rst.is_file() or not log.is_file():
+    if not log.is_file():
         return False
     try:
         timing = openmm_analysis.parse_openmm_log(log, eq_dir / f"{stem}.inp")
@@ -107,9 +118,9 @@ def _stage_stems_on_disk(eq_dir: Path, engine: str) -> List[tuple[str, str, str]
     engine = engine.lower().strip()
     entries: List[tuple[str, str, str]] = []
     if engine == "openmm":
-        for inp in sorted(eq_dir.glob("step*.inp")):
-            stem = inp.stem
-            entries.append((stem, stem.replace("_", " ").title(), stem))
+        for stem, label in OPENMM_STAGE_ORDER:
+            if (eq_dir / f"{stem}.inp").is_file():
+                entries.append((stem, label, stem))
     elif engine == "gromacs":
         for mdp in sorted(eq_dir.glob("step*.mdp")):
             stem = mdp.stem

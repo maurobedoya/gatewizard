@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.51] - 2026-07-22
+
+### Added
+
+- **Equilibration job metadata:** `equilibration_job.json` write/infer (`equilibration_job_metadata.py`) — input directory, ensemble, and protocol for GUI job cards and **Use in form**
+- **GROMACS minimization progress:** energy-minimization logs report step count and wall time (not ns/day); `converged_early` when EM finishes before `nsteps`
+
+### Fixed
+
+- **Equilibration resume (OpenMM):** stage completion and resume point use log-based progress (aligned with GUI); canonical stage order/labels (`Equilibration 1`…`Production`); interrupted mid-stage-2 resumes **Equilibration 2** (not stage 1)
+
 ## [1.0.50] - 2026-07-21
 
 ### Added
