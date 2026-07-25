@@ -186,6 +186,19 @@ def _parse_script_var(text: str, name: str) -> Optional[str]:
     return match.group(1) if match else None
 
 
+def _parse_bash_default_var(text: str, name: str) -> Optional[str]:
+    """Parse ``NAME="${NAME:-default}"`` and return the default (may be empty)."""
+    match = re.search(
+        rf'^{re.escape(name)}="\$\{{{re.escape(name)}:-([^}}]*)\}}"',
+        text,
+        re.MULTILINE,
+    )
+    if match:
+        return match.group(1)
+    # Plain assignment fallback: NAME="value"
+    return _parse_script_var(text, name)
+
+
 def _parse_gmxrc_path(text: str) -> Optional[str]:
     match = re.search(r'^source "([^"]+)"', text, re.MULTILINE)
     return match.group(1) if match else None
@@ -235,11 +248,17 @@ def refresh_equilibration_run_script(eq_dir: Path, engine: str) -> bool:
     try:
         if engine == "openmm":
             from gatewizard.tools.equilibration import OpenMMEquilibrationManager
+            from gatewizard.utils.equilibration_resources import (
+                resolve_compute_resources_from_eq_dir,
+            )
 
             text = script.read_text(encoding="utf-8", errors="replace")
             stage_config_names = [p.stem for p in sorted(eq_dir.glob("step*.inp"))]
             if not stage_config_names:
                 return False
+            compute = resolve_compute_resources_from_eq_dir(eq_dir)
+            # Prefer PLATFORM default already written into the script (backend may patch it).
+            script_platform = _parse_bash_default_var(text, "PLATFORM")
             manager = OpenMMEquilibrationManager(eq_dir)
             manager.generate_run_script(
                 stage_config_names=stage_config_names,
@@ -247,16 +266,25 @@ def refresh_equilibration_run_script(eq_dir: Path, engine: str) -> bool:
                 prmtop_name=_parse_script_var(text, "PRMTOP") or "system.prmtop",
                 inpcrd_name=_parse_script_var(text, "INPCRD") or "system.inpcrd",
                 bilayer_pdb_name=_parse_script_var(text, "BILAYER_PDB"),
+                cpu_cores=compute["cpu_cores"],
+                use_gpu=compute["use_gpu"],
+                gpu_id=compute["gpu_id"],
+                num_gpus=compute["num_gpus"] or 1,
+                platform=script_platform or compute.get("platform"),
             )
             return True
 
         if engine == "gromacs":
             from gatewizard.tools.equilibration import GROMACSEquilibrationManager
+            from gatewizard.utils.equilibration_resources import (
+                resolve_compute_resources_from_eq_dir,
+            )
 
             text = script.read_text(encoding="utf-8", errors="replace")
             n_stages = len(list(eq_dir.glob("step[1-9]_equilibration.mdp")))
             if n_stages == 0:
                 return False
+            compute = resolve_compute_resources_from_eq_dir(eq_dir)
             manager = GROMACSEquilibrationManager(eq_dir)
             ndx_name = _parse_script_var(text, "NDX")
             manager.generate_run_script(
@@ -267,6 +295,10 @@ def refresh_equilibration_run_script(eq_dir: Path, engine: str) -> bool:
                 n_stages=n_stages,
                 gmx_executable=_parse_script_var(text, "GMX") or "gmx",
                 gmxrc_path=_parse_gmxrc_path(text),
+                cpu_cores=compute["cpu_cores"],
+                use_gpu=compute["use_gpu"],
+                gpu_id=compute["gpu_id"],
+                num_gpus=compute["num_gpus"] or 1,
             )
             return True
 

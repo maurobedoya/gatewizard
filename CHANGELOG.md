@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.52] - 2026-07-25
+
+### Fixed
+
+- **Equilibration (GROMACS):** `run_equilibration.sh` now applies UI CPU/GPU settings on every `mdrun` (`-ntomp`, `-nb gpu`, `-pme gpu`, `-gpu_id`)
+- **Equilibration (OpenMM):** run scripts pass `--device` / `--threads`; CPU compute target sets `PLATFORM=CPU`; `openmm_run.py` honors those flags via platform properties
+- **Equilibration resume:** refreshing `run_equilibration.sh` preserves CPU/GPU settings from `equilibration_resources.json`
+
+### Notes
+
+- **NAMD** already emitted `+p` / `+devices`; unchanged. Amber equilibration remains unimplemented.
+
 ## [1.0.51] - 2026-07-22
 
 ### Added

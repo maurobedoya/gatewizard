@@ -402,6 +402,60 @@ class TestGenerateRunScript:
             text = script.read_text()
             assert f"step{n}_equilibration" in text
 
+    def test_run_script_includes_cpu_gpu_resources(self, tmp_path):
+        manager = _make_manager(tmp_path)
+        script = manager.generate_run_script(
+            gromacs_dir=tmp_path,
+            gro_name="system.gro",
+            top_name="topol.top",
+            ndx_name=None,
+            n_stages=2,
+            cpu_cores=4,
+            use_gpu=True,
+            gpu_id=0,
+            num_gpus=1,
+        )
+        text = script.read_text()
+        assert "-ntomp 4" in text
+        assert "-nb gpu" in text
+        assert "-pme gpu" in text
+        assert "-gpu_id 0" in text
+        # All mdrun stages should carry the same resource flags.
+        assert text.count("-ntomp 4") >= 3  # min + 2 eq (+ production)
+
+    def test_run_script_multi_gpu_id_string(self, tmp_path):
+        manager = _make_manager(tmp_path)
+        script = manager.generate_run_script(
+            gromacs_dir=tmp_path,
+            gro_name="system.gro",
+            top_name="topol.top",
+            ndx_name=None,
+            n_stages=1,
+            cpu_cores=8,
+            use_gpu=True,
+            gpu_id=1,
+            num_gpus=2,
+        )
+        text = script.read_text()
+        assert "-gpu_id 12" in text
+        assert "-ntomp 8" in text
+
+    def test_run_script_cpu_only_omits_gpu_flags(self, tmp_path):
+        manager = _make_manager(tmp_path)
+        script = manager.generate_run_script(
+            gromacs_dir=tmp_path,
+            gro_name="system.gro",
+            top_name="topol.top",
+            ndx_name=None,
+            n_stages=1,
+            cpu_cores=4,
+            use_gpu=False,
+        )
+        text = script.read_text()
+        assert "-ntomp 4" in text
+        assert "-nb gpu" not in text
+        assert "-gpu_id" not in text
+
 
 # ---------------------------------------------------------------------------
 # File discovery

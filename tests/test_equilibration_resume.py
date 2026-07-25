@@ -122,3 +122,40 @@ def test_refresh_equilibration_run_script_openmm(tmp_path: Path) -> None:
     text = (eq / "run_equilibration.sh").read_text(encoding="utf-8")
     assert equilibration_script_supports_resume(eq / "run_equilibration.sh")
     assert "_gw_openmm_stage_done" in text
+
+
+def test_refresh_equilibration_run_script_gromacs_keeps_resources(tmp_path: Path) -> None:
+    import json
+
+    eq = tmp_path / "job"
+    eq.mkdir()
+    (eq / "step1_equilibration.mdp").write_text("integrator = md\n")
+    (eq / "equilibration_resources.json").write_text(
+        json.dumps(
+            {
+                "engine": "gromacs",
+                "use_gpu": True,
+                "cpu_cores_min": 4,
+                "cpu_cores_max": 4,
+                "gpu_id_min": 0,
+                "gpu_id_max": 0,
+                "num_gpus": 1,
+            }
+        )
+    )
+    (eq / "run_equilibration.sh").write_text(
+        "#!/bin/bash\n"
+        'GMX="gmx"\n'
+        'GRO="system.gro"\n'
+        'TOP="topol.top"\n'
+        "echo legacy\n"
+    )
+
+    ok = refresh_equilibration_run_script(eq, "gromacs")
+
+    assert ok is True
+    text = (eq / "run_equilibration.sh").read_text(encoding="utf-8")
+    assert "_gw_gromacs_stage_done" in text
+    assert "-ntomp 4" in text
+    assert "-nb gpu" in text
+    assert "-gpu_id 0" in text

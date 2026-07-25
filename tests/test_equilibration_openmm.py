@@ -418,6 +418,38 @@ class TestOpenMMRunScript:
         content = script.read_text()
         assert "exit 1" in content
 
+    def test_run_script_includes_device_and_threads(self, manager, tmp_path):
+        names = ["step1_equilibration"]
+        script = manager.generate_run_script(
+            names,
+            tmp_path,
+            "system.prmtop",
+            "system.inpcrd",
+            cpu_cores=4,
+            use_gpu=True,
+            gpu_id=0,
+            num_gpus=1,
+        )
+        content = script.read_text()
+        assert 'DEVICE_INDEX="${DEVICE_INDEX:-0}"' in content
+        assert 'THREADS="${THREADS:-4}"' in content
+        assert "--device $DEVICE_INDEX" in content
+        assert "--threads $THREADS" in content
+
+    def test_run_script_cpu_sets_platform(self, manager, tmp_path):
+        names = ["step1_equilibration"]
+        script = manager.generate_run_script(
+            names,
+            tmp_path,
+            "system.prmtop",
+            "system.inpcrd",
+            cpu_cores=2,
+            use_gpu=False,
+        )
+        content = script.read_text()
+        assert 'PLATFORM="${PLATFORM:-CPU}"' in content
+        assert "DEVICE_INDEX=" not in content
+
 
 # ============================================================================
 # SECTION 5: FULL WORKFLOW

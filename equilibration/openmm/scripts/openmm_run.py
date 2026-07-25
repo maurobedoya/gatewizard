@@ -198,6 +198,19 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--platform", nargs=1, help="OpenMM platform (default: CUDA or OpenCL)"
 )
+parser.add_argument(
+    "--device",
+    dest="device",
+    help="GPU device index (or comma-separated list) for CUDA/OpenCL",
+    default=None,
+)
+parser.add_argument(
+    "--threads",
+    dest="threads",
+    type=int,
+    help="CPU thread count when using the CPU platform",
+    default=None,
+)
 parser.add_argument("-i", dest="inpfile", help="Input parameter file", required=True)
 parser.add_argument("-p", dest="topfile", help="Input topology file", required=True)
 parser.add_argument("-c", dest="crdfile", help="Input coordinate file", required=True)
@@ -364,7 +377,17 @@ else:
         sys.exit(1)
 
 print("Using platform:", platform.getName())
-prop = dict(CudaPrecision="single") if platform.getName() == "CUDA" else dict()
+prop = {}
+pname = platform.getName()
+if pname == "CUDA":
+    prop["CudaPrecision"] = "single"
+    if args.device is not None:
+        prop["DeviceIndex"] = str(args.device)
+elif pname == "OpenCL":
+    if args.device is not None:
+        prop["OpenCLDeviceIndex"] = str(args.device)
+elif pname == "CPU" and args.threads is not None:
+    prop["Threads"] = str(int(args.threads))
 
 # Build simulation context
 simulation = Simulation(top.topology, system, integrator, platform, prop)
