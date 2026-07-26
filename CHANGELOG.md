@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Equilibration (GROMACS):** GPU `mdrun` lines now include `-ntmpi` (one rank per GPU) with `-ntomp`, required by GROMACS 2026 when OpenMP threads and GPUs are combined
+- **Equilibration (GROMACS):** step0 energy minimisation runs on CPU only (`-ntmpi 1 -ntomp … -nb cpu -pme cpu`) — PME GPU does not support `steep`/`cg`, and GPU-capable `gmx` still requires `-ntmpi` with `-ntomp` even without GPU offload flags; MD stages still use GPU flags when requested
+- **Equilibration (GROMACS):** omit unused `POSRES_FC_*` macros from MDP `define` lines (fixes grompp warnings for WATER/OTHER when those restraints are not in the topology)
+- **Equilibration (GROMACS):** parse GROMACS 2026 energy-minimisation start banner (`Started Steepest Descents` / `Conjugate Gradients`) so job cards show elapsed wall time for minimization
+- **Equilibration (GROMACS):** Kill MD / SIGTERM often still writes `Performance` + `Finished mdrun` before `nsteps` is reached — no longer treat that as stage completion or force progress to 100%; keep actual steps/ns and mark the stage interrupted
+
 ## [1.0.52] - 2026-07-25
 
 ### Fixed
