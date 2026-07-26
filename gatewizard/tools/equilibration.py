@@ -38,18 +38,35 @@ def _gromacs_mdrun_resource_flags(
     gpu_id: int = 0,
     num_gpus: int = 1,
 ) -> str:
-    """Build ``mdrun`` CPU/GPU flags from equilibration resource settings."""
+    """Build ``mdrun`` CPU/GPU flags from equilibration resource settings.
+
+    GROMACS 2026 requires ``-ntmpi`` whenever ``-ntomp`` is set on a
+    GPU-capable build, even if GPU offload flags are omitted, because GPUs
+    may still be auto-detected. Mapping for GPU runs: one thread-MPI rank per
+    GPU; OpenMP threads are UI processors divided across those ranks.
+
+    CPU-only runs (including energy minimisation) force ``-nb cpu -pme cpu``
+    so a CUDA ``gmx`` does not attempt PME-on-GPU.
+    """
     parts: List[str] = []
     cores = int(cpu_cores or 0)
-    if cores > 0:
-        # Thread-MPI builds: -ntomp sets OpenMP threads (matches UI "processors").
-        parts.append(f"-ntomp {cores}")
     if use_gpu:
+        ngpu = max(1, int(num_gpus or 1))
+        ntmpi = ngpu
+        parts.append(f"-ntmpi {ntmpi}")
+        if cores > 0:
+            ntomp = max(1, cores // ntmpi)
+            parts.append(f"-ntomp {ntomp}")
         parts.extend(["-nb gpu", "-pme gpu"])
         gid = int(gpu_id or 0)
-        ngpu = max(1, int(num_gpus or 1))
         # GROMACS -gpu_id is a compact digit string, e.g. "0" or "01".
         parts.append(f"-gpu_id {''.join(str(gid + i) for i in range(ngpu))}")
+    else:
+        # Always pair -ntomp with -ntmpi on GPU-capable builds (EM / CPU target).
+        parts.append("-ntmpi 1")
+        if cores > 0:
+            parts.append(f"-ntomp {cores}")
+        parts.extend(["-nb cpu", "-pme cpu"])
     return " ".join(parts)
 
 
@@ -6461,12 +6478,27 @@ class GROMACSEquilibrationManager:
     # MDP file generation
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _topology_posres_macros(posres_files: Optional[Dict[str, Any]]) -> Set[str]:
+        """Return POSRES_FC_* macros actually referenced by generated ``.itp`` files."""
+        if not posres_files:
+            return set()
+        macros: Set[str] = set(posres_files.get("macros") or [])
+        if posres_files.get("backbone"):
+            macros.add("POSRES_FC_BB")
+        if posres_files.get("sidechain"):
+            macros.add("POSRES_FC_SC")
+        if posres_files.get("lipid"):
+            macros.add("POSRES_FC_LIPID")
+        return macros
+
     def generate_mdp_file(
         self,
         stage_name: str,
         stage_params: Dict[str, Any],
         stage_index: int,
         scheme_type: str,
+        used_posres_macros: Optional[Set[str]] = None,
     ) -> str:
         """Generate GROMACS MDP file content for a single equilibration stage.
 
@@ -6480,6 +6512,8 @@ class GROMACSEquilibrationManager:
             stage_index: 0-based for minimization, 1-based for equilibration steps,
                 7 for production.
             scheme_type: Ensemble type (NVT, NPT, NPAT, or NPgT).
+            used_posres_macros: POSRES_FC_* macros present in the topology. Unused
+                ``-D`` defines are stripped to avoid grompp warnings.
 
         Returns:
             String content of the generated ``.mdp`` file.
@@ -6635,16 +6669,20 @@ class GROMACSEquilibrationManager:
                 )
             return text
 
-        # Ensure water/ion/other macros exist even on older templates
-        for macro, value in (
+        # Only ensure macros that the topology actually references (avoids
+        # grompp "defined but were not used" warnings for WATER/OTHER/etc.).
+        std_extra_macros = (
             ("POSRES_FC_WATER", fc_water),
             ("POSRES_FC_ION", fc_ion),
             ("POSRES_FC_OTHER", fc_other),
-        ):
-            content = _ensure_macro_on_define(content, macro, value)
+        )
+        for macro, value in std_extra_macros:
+            if used_posres_macros is None or macro in used_posres_macros:
+                content = _ensure_macro_on_define(content, macro, value)
 
         for macro, value in custom_fcs.items():
-            content = _ensure_macro_on_define(content, macro, value)
+            if used_posres_macros is None or macro in used_posres_macros:
+                content = _ensure_macro_on_define(content, macro, value)
 
         if not is_minimization:
             # Keep POSRES only when at least one force constant is non-zero.
@@ -6653,26 +6691,34 @@ class GROMACSEquilibrationManager:
             elif not re.search(r"(?m)^define\s*=", content):
                 # CHARMM-GUI production templates may omit the define line;
                 # inject one so user-requested production restraints are active.
-                extra = " ".join(
-                    f"-D{m}={v:.1f}" for m, v in sorted(custom_fcs.items())
-                )
-                extra = f" {extra}" if extra else ""
-                content = (
-                    "define                  = -DPOSRES "
-                    f"-DPOSRES_FC_BB={fc_bb:.1f} "
-                    f"-DPOSRES_FC_SC={fc_sc:.1f} "
-                    f"-DPOSRES_FC_LIPID={fc_lip:.1f} "
-                    f"-DPOSRES_FC_WATER={fc_water:.1f} "
-                    f"-DPOSRES_FC_ION={fc_ion:.1f} "
-                    f"-DPOSRES_FC_OTHER={fc_other:.1f}"
-                    f"{extra}\n" + content
-                )
+                std_tokens = []
+                for macro, value in (
+                    ("POSRES_FC_BB", fc_bb),
+                    ("POSRES_FC_SC", fc_sc),
+                    ("POSRES_FC_LIPID", fc_lip),
+                    ("POSRES_FC_WATER", fc_water),
+                    ("POSRES_FC_ION", fc_ion),
+                    ("POSRES_FC_OTHER", fc_other),
+                ):
+                    if used_posres_macros is None or macro in used_posres_macros:
+                        std_tokens.append(f"-D{macro}={value:.1f}")
+                for macro, value in sorted(custom_fcs.items()):
+                    if used_posres_macros is None or macro in used_posres_macros:
+                        std_tokens.append(f"-D{macro}={value:.1f}")
+                extra = (" " + " ".join(std_tokens)) if std_tokens else ""
+                content = f"define                  = -DPOSRES{extra}\n" + content
 
         # GateWizard does not add dihedral restraints to the topology, so the
         # DIHRES / DIHRES_FC macros would always be unused and cause a warning.
         # Strip them from the define line unconditionally.
         content = re.sub(r"\s*-DDIHRES\b", "", content)
         content = re.sub(r"\s*-DDIHRES_FC=[\d.]+", "", content)
+
+        # Drop POSRES_FC_* defines that are not referenced by any generated ITP.
+        if used_posres_macros is not None:
+            for match in re.findall(r"-D(POSRES_FC_[A-Za-z0-9_]+)=[\d.]+", content):
+                if match not in used_posres_macros:
+                    content = re.sub(rf"\s*-D{re.escape(match)}=[\d.]+", "", content)
 
         self.logger.debug(
             f"Stage {stage_index} ({stage_name}): T={temperature:.2f}K, "
@@ -6737,13 +6783,22 @@ class GROMACSEquilibrationManager:
         Returns:
             Path to the written ``run_equilibration.sh``.
         """
-        resource_flags = _gromacs_mdrun_resource_flags(
+        # Dynamics stages may use GPU offload; energy minimisation cannot
+        # (PME GPU rejects non-dynamical integrators such as steep/cg).
+        md_flags = _gromacs_mdrun_resource_flags(
             cpu_cores=cpu_cores,
             use_gpu=use_gpu,
             gpu_id=gpu_id,
             num_gpus=num_gpus,
         )
-        mdrun_extra = f" {resource_flags}" if resource_flags else ""
+        em_flags = _gromacs_mdrun_resource_flags(
+            cpu_cores=cpu_cores,
+            use_gpu=False,
+            gpu_id=gpu_id,
+            num_gpus=num_gpus,
+        )
+        mdrun_md = f" {md_flags}" if md_flags else ""
+        mdrun_em = f" {em_flags}" if em_flags else ""
         gpu_info = _gromacs_gpu_info(use_gpu, gpu_id, num_gpus)
         cores_label = int(cpu_cores or 0) if cpu_cores else "auto"
         lines = [
@@ -6769,10 +6824,11 @@ class GROMACSEquilibrationManager:
             "",
             'echo "Starting GROMACS equilibration protocol…"',
             f'echo "Resources: {cores_label} CPU threads (OpenMP), GPU: {gpu_info}"',
+            'echo "Note: step0 energy minimisation runs on CPU (GROMACS PME GPU does not support steep/cg)."',
             "",
             GROMACS_RESUME_SHELL,
             "",
-            "# --- Step 0: Energy minimisation ---",
+            "# --- Step 0: Energy minimisation (CPU only) ---",
         ]
         grompp_ndx = "-n ${NDX}" if ndx_name else ""
         lines += [
@@ -6781,7 +6837,7 @@ class GROMACSEquilibrationManager:
             "else",
             f"  ${{GMX}} grompp -f step0_minimization.mdp -o step0_minimization.tpr \\",
             f"      -c ${{GRO}} -r ${{GRO}} -p ${{TOP}} {grompp_ndx} -maxwarn 2",
-            f"  ${{GMX}} mdrun -v{mdrun_extra} -s step0_minimization.tpr -deffnm step0_minimization || {{ echo 'Minimisation failed'; exit 1; }}",
+            f"  ${{GMX}} mdrun -v{mdrun_em} -s step0_minimization.tpr -deffnm step0_minimization || {{ echo 'Minimisation failed'; exit 1; }}",
             "fi",
             "",
             "# --- Steps 1–6: Equilibration ---",
@@ -6795,7 +6851,7 @@ class GROMACSEquilibrationManager:
                 "else",
                 f"  ${{GMX}} grompp -f {curr}.mdp -o {curr}.tpr \\",
                 f"      -c {prev}.gro -r ${{GRO}} -p ${{TOP}} {grompp_ndx} -maxwarn 2",
-                f"  ${{GMX}} mdrun -v{mdrun_extra} -s {curr}.tpr -deffnm {curr} || {{ echo 'Stage {i} failed'; exit 1; }}",
+                f"  ${{GMX}} mdrun -v{mdrun_md} -s {curr}.tpr -deffnm {curr} || {{ echo 'Stage {i} failed'; exit 1; }}",
                 "fi",
                 "",
             ]
@@ -6806,7 +6862,7 @@ class GROMACSEquilibrationManager:
             "else",
             f"  ${{GMX}} grompp -f step7_production.mdp -o step7_production.tpr \\",
             f"      -c step{n_stages}_equilibration.gro -p ${{TOP}} {grompp_ndx} -maxwarn 2",
-            f"  ${{GMX}} mdrun -v{mdrun_extra} -s step7_production.tpr -deffnm step7_production || {{ echo 'Production failed'; exit 1; }}",
+            f"  ${{GMX}} mdrun -v{mdrun_md} -s step7_production.tpr -deffnm step7_production || {{ echo 'Production failed'; exit 1; }}",
             "fi",
             "",
             'echo "GROMACS equilibration complete."',
@@ -7208,6 +7264,7 @@ class GROMACSEquilibrationManager:
         # --- Generate MDP files ---
         mdp_files: List[Path] = []
         n_eq_stages = 0
+        used_posres_macros = self._topology_posres_macros(posres_files)
 
         for stage_index, stage_params in enumerate(stage_params_list):
             stage_name = stage_params.get("name", f"Stage {stage_index}")
@@ -7232,6 +7289,7 @@ class GROMACSEquilibrationManager:
                 stage_params=stage_params,
                 stage_index=key_idx,
                 scheme_type=scheme_type,
+                used_posres_macros=used_posres_macros if posres_files else None,
             )
             mdp_filename = self._get_mdp_filename(key_idx)
             mdp_path = gromacs_dir / mdp_filename

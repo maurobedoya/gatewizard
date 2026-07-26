@@ -32,6 +32,9 @@ class GROMACSTimingInfo:
     # Internal flags (not used by app.py but useful for status logic)
     completed: bool = False
     has_error: bool = False
+    # True when the log ends with ``Finished mdrun`` but MD did not reach nsteps
+    # (typical after Kill MD / SIGTERM — GROMACS still prints Performance/Finished).
+    interrupted: bool = False
 
 
 @dataclass
@@ -45,7 +48,7 @@ class GROMACSStageProgress:
 
 
 def _parse_mdrun_timestamp(content: str, marker: str) -> Optional[datetime]:
-    """Parse ``Started mdrun`` / ``Finished mdrun`` timestamps from a GROMACS log."""
+    """Parse ``Started …`` / ``Finished mdrun`` timestamps from a GROMACS log."""
     pattern = rf"{marker} on rank \d+ \w+ (\w+ +\d+ +\d+:\d+:\d+ \d+)"
     match = re.search(pattern, content)
     if not match:
@@ -56,8 +59,35 @@ def _parse_mdrun_timestamp(content: str, marker: str) -> Optional[datetime]:
         return None
 
 
+def _parse_started_timestamp(content: str) -> Optional[datetime]:
+    """Parse the wall-clock start time from a GROMACS mdrun log.
+
+    Dynamics logs use ``Started mdrun …``. Energy minimisation in GROMACS
+    2026+ uses ``Started Steepest Descents …`` / ``Started Conjugate Gradients …``.
+    """
+    for marker in (
+        "Started mdrun",
+        "Started Steepest Descents",
+        "Started Conjugate Gradients",
+    ):
+        dt = _parse_mdrun_timestamp(content, marker)
+        if dt is not None:
+            return dt
+    # Fallback for future integrator-specific banners.
+    match = re.search(
+        r"Started .+ on rank \d+ \w+ (\w+ +\d+ +\d+:\d+:\d+ \d+)",
+        content,
+    )
+    if not match:
+        return None
+    try:
+        return datetime.strptime(match.group(1).strip(), "%b %d %H:%M:%S %Y")
+    except ValueError:
+        return None
+
+
 def _wall_elapsed_seconds(content: str, *, running: bool) -> float:
-    start_dt = _parse_mdrun_timestamp(content, "Started mdrun")
+    start_dt = _parse_started_timestamp(content)
     if not start_dt:
         return 0.0
     end_dt = _parse_mdrun_timestamp(content, "Finished mdrun")
@@ -166,7 +196,7 @@ def parse_gromacs_log(
                 and info.steps_completed > 0
                 and info.timestep_fs > 0
             ):
-                start_dt = _parse_mdrun_timestamp(content, "Started mdrun")
+                start_dt = _parse_started_timestamp(content)
                 if start_dt:
                     wall_elapsed_s = max(0.0, time.time() - start_dt.timestamp())
                     if wall_elapsed_s > 1.0:
@@ -175,10 +205,21 @@ def parse_gromacs_log(
                         info.wall_elapsed_seconds = wall_elapsed_s
 
             # ── Completion / error markers ───────────────────────────────────────────
+            # GROMACS often still writes Performance + "Finished mdrun" after Kill MD.
+            # Only treat the stage as complete when the last logged step reached nsteps.
             if "Finished mdrun" in content:
-                info.completed = True
-                if info.total_steps > 0:
+                if info.total_steps > 0 and info.steps_completed >= info.total_steps:
+                    info.completed = True
                     info.steps_completed = info.total_steps
+                elif info.total_steps > 0 and info.steps_completed > 0:
+                    info.completed = False
+                    info.interrupted = True
+                elif info.total_steps > 0:
+                    # Finished banner with no step rows — treat as incomplete.
+                    info.completed = False
+                    info.interrupted = True
+                else:
+                    info.completed = True
                 if info.wall_elapsed_seconds == 0.0:
                     info.wall_elapsed_seconds = _wall_elapsed_seconds(
                         content, running=False
@@ -235,7 +276,7 @@ def get_equilibration_progress(
             )
             stage.timing = timing
 
-            if timing.has_error:
+            if timing.has_error or timing.interrupted:
                 stage.status = "error"
             elif timing.completed:
                 stage.status = "completed"

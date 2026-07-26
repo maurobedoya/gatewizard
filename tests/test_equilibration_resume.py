@@ -156,6 +156,7 @@ def test_refresh_equilibration_run_script_gromacs_keeps_resources(tmp_path: Path
     assert ok is True
     text = (eq / "run_equilibration.sh").read_text(encoding="utf-8")
     assert "_gw_gromacs_stage_done" in text
+    assert "-ntmpi 1" in text
     assert "-ntomp 4" in text
     assert "-nb gpu" in text
     assert "-gpu_id 0" in text

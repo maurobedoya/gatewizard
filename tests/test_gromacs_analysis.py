@@ -29,9 +29,24 @@ Started mdrun on rank 0 Wed Jul 22 12:01:00 2026
            Step           Time
               0      0.00000
            62500      62.50000
+          125000     125.00000
 
 Performance:            6.100
 Finished mdrun on rank 0 Wed Jul 22 12:01:30 2026
+"""
+
+_MD_KILLED_LOG = """\
+integrator              = md
+nsteps                  = 50000000
+dt                      = 0.002
+Started mdrun on rank 0 Sat Jul 25 16:17:24 2026
+
+           Step           Time
+              0        0.00000
+        5671650    11343.30000
+
+Performance:       64.001        0.375        2.700           34.133
+Finished mdrun on rank 0 Sat Jul 25 20:32:38 2026
 """
 
 
@@ -71,6 +86,28 @@ Finished mdrun on rank 0 Wed Jul 22 12:00:42 2026
     assert info.converged_early is False
 
 
+def test_parse_gromacs_2026_steepest_descents_start_banner(tmp_path: Path) -> None:
+    """GROMACS 2026 EM logs use 'Started Steepest Descents', not 'Started mdrun'."""
+    log = tmp_path / "step0_minimization.log"
+    log.write_text(
+        """\
+integrator              = steep
+nsteps                  = 10000
+Started Steepest Descents on rank 0 Sat Jul 25 14:51:01 2026
+           Step           Time
+           109      109.00000
+Finished mdrun on rank 0 Sat Jul 25 14:53:43 2026
+""",
+        encoding="utf-8",
+    )
+
+    info = parse_gromacs_log(log, is_minimization=True)
+
+    assert info.is_minimization is True
+    assert info.wall_elapsed_seconds == 162.0  # 14:53:43 - 14:51:01
+    assert info.completed is True
+
+
 def test_parse_gromacs_md_log(tmp_path: Path) -> None:
     log = tmp_path / "step1_equilibration.log"
     log.write_text(_MD_LOG, encoding="utf-8")
@@ -83,4 +120,19 @@ def test_parse_gromacs_md_log(tmp_path: Path) -> None:
     assert info.timestep_fs == 1.0
     assert info.ns_per_day == 6.1
     assert info.completed is True
+    assert info.interrupted is False
     assert abs(info.wall_elapsed_seconds - 30.0) < 0.01
+
+
+def test_parse_gromacs_md_killed_before_nsteps(tmp_path: Path) -> None:
+    """Kill MD still prints Performance/Finished — must not report 100% complete."""
+    log = tmp_path / "step7_production.log"
+    log.write_text(_MD_KILLED_LOG, encoding="utf-8")
+
+    info = parse_gromacs_log(log)
+
+    assert info.completed is False
+    assert info.interrupted is True
+    assert info.steps_completed == 5671650
+    assert info.total_steps == 50000000
+    assert info.ns_per_day == 64.001

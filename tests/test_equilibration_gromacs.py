@@ -416,12 +416,27 @@ class TestGenerateRunScript:
             num_gpus=1,
         )
         text = script.read_text()
+        # Dynamics: GROMACS requires -ntmpi when combining GPUs with -ntomp.
+        assert "-ntmpi 1" in text
         assert "-ntomp 4" in text
         assert "-nb gpu" in text
         assert "-pme gpu" in text
         assert "-gpu_id 0" in text
-        # All mdrun stages should carry the same resource flags.
-        assert text.count("-ntomp 4") >= 3  # min + 2 eq (+ production)
+        # Energy minimisation must stay on CPU (PME GPU rejects steep/cg).
+        em_lines = [
+            line
+            for line in text.splitlines()
+            if "mdrun" in line and "step0_minimization" in line
+        ]
+        assert em_lines
+        assert "-nb cpu" in em_lines[0]
+        assert "-pme cpu" in em_lines[0]
+        assert "-nb gpu" not in em_lines[0]
+        assert "-pme gpu" not in em_lines[0]
+        assert "-ntmpi 1" in em_lines[0]
+        assert "-ntomp 4" in em_lines[0]
+        # GPU flags only on dynamics stages (2 eq + production).
+        assert text.count("-nb gpu") >= 3
 
     def test_run_script_multi_gpu_id_string(self, tmp_path):
         manager = _make_manager(tmp_path)
@@ -438,7 +453,8 @@ class TestGenerateRunScript:
         )
         text = script.read_text()
         assert "-gpu_id 12" in text
-        assert "-ntomp 8" in text
+        assert "-ntmpi 2" in text
+        assert "-ntomp 4" in text  # 8 processors / 2 ranks
 
     def test_run_script_cpu_only_omits_gpu_flags(self, tmp_path):
         manager = _make_manager(tmp_path)
@@ -452,7 +468,10 @@ class TestGenerateRunScript:
             use_gpu=False,
         )
         text = script.read_text()
+        assert "-ntmpi 1" in text
         assert "-ntomp 4" in text
+        assert "-nb cpu" in text
+        assert "-pme cpu" in text
         assert "-nb gpu" not in text
         assert "-gpu_id" not in text
 
@@ -1095,6 +1114,42 @@ class TestGromacsPosresHelpers:
         assert f"POSRES_FC_WATER={1.0 * 418.4:.1f}" in content
         assert f"POSRES_FC_ION={2.5 * 418.4:.1f}" in content
         assert "define" in content
+
+    def test_mdp_strips_unused_posres_macros(self, tmp_path):
+        """Macros not referenced by topology ITPs must not appear in define=."""
+        manager = _make_manager(tmp_path)
+        params = {
+            "name": "Equilibration 1",
+            "ensemble": "NPT",
+            "time_ns": 0.125,
+            "timestep": 1.0,
+            "temperature": 310.15,
+            "constraints": {
+                "protein_backbone": 10.0,
+                "protein_sidechain": 5.0,
+                "lipid_head": 2.5,
+                "lipid_tail": 2.5,
+                "water": 0.0,
+                "ions": 10.0,
+                "other": 0.0,
+            },
+        }
+        content = manager.generate_mdp_file(
+            stage_name="Eq1",
+            stage_params=params,
+            stage_index=1,
+            scheme_type="NPT",
+            used_posres_macros={
+                "POSRES_FC_BB",
+                "POSRES_FC_SC",
+                "POSRES_FC_LIPID",
+                "POSRES_FC_ION",
+            },
+        )
+        assert "POSRES_FC_BB=" in content
+        assert "POSRES_FC_ION=" in content
+        assert "POSRES_FC_WATER" not in content
+        assert "POSRES_FC_OTHER" not in content
 
     def test_mdp_custom_macro(self, tmp_path):
         manager = _make_manager(tmp_path)

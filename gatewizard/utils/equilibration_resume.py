@@ -86,12 +86,17 @@ def _openmm_stage_complete(eq_dir: Path, stem: str) -> bool:
 
 
 def _gromacs_stage_complete(eq_dir: Path, prefix: str) -> bool:
+    """True only when ``.gro`` exists and the log shows a full (not killed) finish."""
     gro = eq_dir / f"{prefix}.gro"
     log = eq_dir / f"{prefix}.log"
     if not gro.is_file() or not log.is_file():
         return False
     try:
-        return "Finished mdrun" in log.read_text(encoding="utf-8", errors="replace")
+        # Kill MD still writes "Finished mdrun"; require reaching nsteps via parser.
+        timing = gromacs_analysis.parse_gromacs_log(
+            log, is_minimization=prefix.endswith("minimization")
+        )
+        return bool(timing.completed)
     except Exception:
         return False
 
