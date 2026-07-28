@@ -21,7 +21,9 @@ import json
 import tempfile
 
 from gatewizard.utils.logger import get_logger
+from gatewizard.utils.equilibration_templates import stamp_equilibration_header
 from gatewizard.utils.equilibration_resume import (
+    AMBER_RESUME_SHELL,
     GROMACS_RESUME_SHELL,
     NAMD_RESUME_SHELL,
     OPENMM_RESUME_SHELL,
@@ -3401,7 +3403,7 @@ colvarsRestartFrequency 5000
             template_content = f.read()
 
         # Customize template with GateWizard parameters
-        return self._customize_charmm_gui_template(
+        customized_content = self._customize_charmm_gui_template(
             template_content,
             stage_name,
             stage_params,
@@ -3409,6 +3411,12 @@ colvarsRestartFrequency 5000
             system_files,
             previous_stage_name,
             all_stage_settings,
+        )
+        return stamp_equilibration_header(
+            customized_content,
+            engine="namd",
+            scheme=scheme_type,
+            template_filename=template_filename,
         )
 
     def _customize_charmm_gui_template(
@@ -4285,7 +4293,12 @@ class OpenMMEquilibrationManager:
             f"T={temperature:.2f}K, nstep={nstep}, dt={dt_ps:.3f}ps, rest={rest}, "
             f"fc_bb={fc_bb_kj:.1f}, fc_sc={fc_sc_kj:.1f}, fc_lpos={fc_lpos_kj:.1f} kJ/mol/nm²"
         )
-        return content
+        return stamp_equilibration_header(
+            content,
+            engine="openmm",
+            scheme=scheme_type,
+            template_filename=template_filename,
+        )
 
     def _write_openmm_com_params(
         self,
@@ -6727,7 +6740,12 @@ class GROMACSEquilibrationManager:
             f"fc_water={fc_water:.1f} fc_ion={fc_ion:.1f} "
             f"fc_other={fc_other:.1f} kJ/mol/nm²"
         )
-        return content
+        return stamp_equilibration_header(
+            content,
+            engine="gromacs",
+            scheme=scheme_type,
+            template_filename=template_filename,
+        )
 
     def _get_mdp_filename(self, stage_index: int) -> str:
         """Return the output ``.mdp`` filename for a given stage index.
@@ -7377,17 +7395,808 @@ class GROMACSEquilibrationManager:
 
 
 class AmberEquilibrationManager:
-    """Manager for AMBER equilibration simulations (placeholder)."""
+    """Manager for Amber equilibration using GateWizard mdin templates.
 
-    def __init__(self, working_dir: Path):
+    Mirrors :class:`GROMACSEquilibrationManager` / :class:`OpenMMEquilibrationManager`.
+    Positional restraints use Amber ``ntr=1`` with a GROUP block (no dihedral /
+    ``nmropt`` / ``DISANG``). Reference coordinates are passed via ``-ref`` in
+    ``run_equilibration.sh``.
+    """
+
+    SCHEME_MAPPING: Dict[str, str] = {
+        "NVT": "01_NVT",
+        "NPT": "02_NPT",
+        "NPAT": "03_NPAT",
+        "NPgT": "04_NPgT",
+    }
+
+    TEMPLATE_MAPPING: Dict[str, str] = {
+        "step0_minimization": "step0_minimization.mdin",
+        "step1": "step1_equilibration.mdin",
+        "step2": "step2_equilibration.mdin",
+        "step3": "step3_equilibration.mdin",
+        "step4": "step4_equilibration.mdin",
+        "step5": "step5_equilibration.mdin",
+        "step6": "step6_equilibration.mdin",
+        "step7_production": "step7_production.mdin",
+    }
+
+    STAGE_INDEX_TO_KEY: Dict[int, str] = {
+        0: "step0_minimization",
+        1: "step1",
+        2: "step2",
+        3: "step3",
+        4: "step4",
+        5: "step5",
+        6: "step6",
+        7: "step7_production",
+    }
+
+    _STD_KEYS: frozenset = frozenset(
+        {
+            "protein_backbone",
+            "protein_sidechain",
+            "lipid_head",
+            "lipid_tail",
+            "water",
+            "ions",
+            "other",
+        }
+    )
+
+    def __init__(self, working_dir: Path, amber_executable: str = "pmemd"):
         self.working_dir = Path(working_dir)
+        self.amber_executable = amber_executable
+        self.templates_dir = (
+            Path(__file__).parent.parent.parent / "equilibration" / "amber"
+        )
         self.logger = get_logger(self.__class__.__name__)
 
-    def generate_input_file(self, stage_name: str, stage_params: Dict[str, Any]) -> str:
-        """Generate AMBER input file (placeholder)."""
-        self.logger.info("AMBER equilibration not yet implemented")
-        return ""
+    def find_system_files(self) -> Optional[Dict[str, str]]:
+        """Detect Amber ``prmtop``/``inpcrd`` (and optional PDB) in *working_dir*."""
+        system_files: Dict[str, Any] = {}
 
+        prmtop_files = list(self.working_dir.glob("*.prmtop"))
+        if not prmtop_files:
+            prmtop_files = list(self.working_dir.glob("*.parm7"))
+        if not prmtop_files:
+            self.logger.error("No .prmtop/.parm7 file found in working directory")
+            return None
+        system_files["prmtop"] = str(prmtop_files[0])
+        self.logger.info(f"Found topology: {prmtop_files[0].name}")
+
+        inpcrd_files = list(self.working_dir.glob("*.inpcrd"))
+        if not inpcrd_files:
+            inpcrd_files = list(self.working_dir.glob("*.rst7"))
+        if not inpcrd_files:
+            inpcrd_files = list(self.working_dir.glob("*.crd"))
+        if not inpcrd_files:
+            inpcrd_files = list(self.working_dir.glob("*.rst"))
+        if not inpcrd_files:
+            self.logger.error(
+                "No .inpcrd/.rst7/.crd/.rst file found in working directory"
+            )
+            return None
+        system_files["inpcrd"] = str(inpcrd_files[0])
+        self.logger.info(f"Found coordinates: {inpcrd_files[0].name}")
+
+        system_pdb = self.working_dir / "system.pdb"
+        if system_pdb.exists():
+            system_files["pdb"] = str(system_pdb)
+        else:
+            pdb_files = [
+                p
+                for p in self.working_dir.glob("*.pdb")
+                if "bilayer" not in p.name.lower()
+            ]
+            if pdb_files:
+                system_files["pdb"] = str(pdb_files[0])
+            else:
+                self.logger.warning(
+                    "No .pdb file found; restraint GROUP generation will be skipped"
+                )
+                system_files["pdb"] = None
+
+        if system_files.get("pdb"):
+            self.logger.info(f"Found PDB: {Path(system_files['pdb']).name}")
+
+        bilayer_pdb: Optional[Path] = None
+        for pattern in ("bilayer*_lipid.pdb", "bilayer_*.pdb", "*_bilayer.pdb"):
+            candidates = list(self.working_dir.glob(pattern))
+            if candidates:
+                bilayer_pdb = candidates[0]
+                break
+        system_files["bilayer_pdb"] = str(bilayer_pdb) if bilayer_pdb else None
+        return system_files
+
+    @staticmethod
+    def get_default_selections(pdb_path: str) -> Dict[str, str]:
+        """Delegate to :meth:`NAMDEquilibrationManager.get_default_selections`."""
+        return NAMDEquilibrationManager.get_default_selections(pdb_path)
+
+    @staticmethod
+    def _read_cryst1_cell(
+        pdb_path: Path,
+    ) -> Optional[Tuple[float, float, float, float, float, float]]:
+        """Return ``(a, b, c, alpha, beta, gamma)`` from a PDB ``CRYST1`` record."""
+        try:
+            with open(pdb_path, "r", encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    if not line.startswith("CRYST1"):
+                        continue
+                    a = float(line[6:15].strip())
+                    b = float(line[15:24].strip())
+                    c = float(line[24:33].strip())
+                    alpha = float(line[33:40].strip() or 90.0)
+                    beta = float(line[40:47].strip() or 90.0)
+                    gamma = float(line[47:54].strip() or 90.0)
+                    return a, b, c, alpha, beta, gamma
+        except (OSError, ValueError, IndexError):
+            return None
+        return None
+
+    @staticmethod
+    def _inpcrd_has_box(inpcrd_path: Path) -> bool:
+        """True when an ASCII Amber inpcrd/rst7 already carries box lengths."""
+        try:
+            lines = inpcrd_path.read_text(encoding="utf-8", errors="replace").splitlines()
+            if len(lines) < 3:
+                return False
+            natom = int(lines[1].split()[0])
+            floats: List[float] = []
+            for line in lines[2:]:
+                for tok in line.split():
+                    try:
+                        floats.append(float(tok))
+                    except ValueError:
+                        continue
+            n = len(floats)
+            # coords only; coords+box(3/6); coords+vel; coords+vel+box(3/6)
+            if n in (natom * 3 + 3, natom * 3 + 6, natom * 6 + 3, natom * 6 + 6):
+                return True
+            return False
+        except (OSError, ValueError, IndexError):
+            return False
+
+    def ensure_inpcrd_box(
+        self,
+        inpcrd_path: Path,
+        bilayer_pdb: Optional[Path] = None,
+        system_pdb: Optional[Path] = None,
+    ) -> bool:
+        """Ensure *inpcrd_path* has periodic box parameters for ``pmemd``/``sander``.
+
+        Packmol-memgen / GateWizard systems often write ``system.inpcrd`` without
+        a box line (prmtop ``IFBOX=0``). NAMD/OpenMM recover the cell from the
+        bilayer ``CRYST1`` record; Amber requires the box in the coordinate file
+        itself. When missing, append ``a b c alpha beta gamma`` from:
+
+        1. ``bilayer*_lipid.pdb`` CRYST1 (preferred, same as NAMD)
+        2. ``system.pdb`` CRYST1
+        3. NAMD helper estimate from coordinates (last resort)
+
+        Returns:
+            True if the inpcrd has a box after this call (already present or written).
+        """
+        inpcrd_path = Path(inpcrd_path)
+        if not inpcrd_path.is_file():
+            self.logger.error(f"inpcrd not found: {inpcrd_path}")
+            return False
+        if self._inpcrd_has_box(inpcrd_path):
+            self.logger.info(f"  inpcrd already has box parameters: {inpcrd_path.name}")
+            return True
+
+        cell: Optional[Tuple[float, float, float, float, float, float]] = None
+        source = ""
+        for cand, label in (
+            (bilayer_pdb, "bilayer PDB CRYST1"),
+            (system_pdb, "system PDB CRYST1"),
+        ):
+            if cand is None:
+                continue
+            cand = Path(cand)
+            if not cand.is_file():
+                continue
+            cell = self._read_cryst1_cell(cand)
+            if cell is not None:
+                source = f"{label} ({cand.name})"
+                break
+
+        if cell is None:
+            # Fall back to NAMD helper (CRYST1 or coordinate estimate → a,b,c only)
+            pdb_for_est = None
+            for cand in (bilayer_pdb, system_pdb):
+                if cand is not None and Path(cand).is_file():
+                    pdb_for_est = Path(cand)
+                    break
+            if pdb_for_est is not None:
+                try:
+                    a, b, c = NAMDEquilibrationManager(self.working_dir)._read_box_dimensions(
+                        pdb_for_est
+                    )
+                    cell = (a, b, c, 90.0, 90.0, 90.0)
+                    source = f"estimated/CRYST1 via {pdb_for_est.name}"
+                except Exception as exc:
+                    self.logger.warning(f"Box estimate from {pdb_for_est.name} failed: {exc}")
+
+        if cell is None:
+            self.logger.error(
+                "No box parameters in inpcrd and no CRYST1 found in bilayer/system PDB. "
+                "pmemd/sander will fail with 'Box parameters not found in inpcrd file!'."
+            )
+            return False
+
+        a, b, c, alpha, beta, gamma = cell
+        box_line = (
+            f"{a:12.7f}{b:12.7f}{c:12.7f}"
+            f"{alpha:12.7f}{beta:12.7f}{gamma:12.7f}\n"
+        )
+        text = inpcrd_path.read_text(encoding="utf-8", errors="replace")
+        if text and not text.endswith("\n"):
+            text += "\n"
+        inpcrd_path.write_text(text + box_line, encoding="utf-8")
+
+        self.logger.info(
+            f"  Appended box to {inpcrd_path.name} from {source}: "
+            f"{a:.3f} x {b:.3f} x {c:.3f} Å "
+            f"(α={alpha:.1f} β={beta:.1f} γ={gamma:.1f})"
+        )
+        return True
+
+    @staticmethod
+    def get_default_stage_params(
+        scheme_type: str = "NPT",
+        temperature: float = 310.15,
+        include_production: bool = False,
+    ) -> List["EquilibrationStage"]:
+        """Return default Amber stages (separate minimization + 6 eq [+ production])."""
+        valid = {"NVT", "NPT", "NPAT", "NPgT"}
+        if scheme_type not in valid:
+            raise ValueError(
+                f"scheme_type must be one of {sorted(valid)}, got '{scheme_type}'"
+            )
+
+        def _stage(name, time_ns, timestep, minimize_steps=0, **constraints_overrides):
+            base = {
+                "protein_backbone": 0.0,
+                "protein_sidechain": 0.0,
+                "lipid_head": 0.0,
+                "lipid_tail": 0.0,
+                "water": 0.0,
+                "ions": 0.0,
+                "other": 0.0,
+            }
+            base.update(constraints_overrides)
+            return EquilibrationStage(
+                name=name,
+                ensemble=scheme_type,
+                time_ns=time_ns,
+                timestep=timestep,
+                temperature=temperature,
+                minimize_steps=minimize_steps,
+                constraints=base,
+            )
+
+        stages: List[EquilibrationStage] = [
+            _stage(
+                "Minimization",
+                0.0,
+                1.0,
+                minimize_steps=5000,
+                protein_backbone=10.0,
+                protein_sidechain=5.0,
+                lipid_head=2.5,
+            ),
+            _stage(
+                "Equilibration 1",
+                0.125,
+                1.0,
+                protein_backbone=10.0,
+                protein_sidechain=5.0,
+                lipid_head=2.5,
+            ),
+            _stage(
+                "Equilibration 2",
+                0.125,
+                1.0,
+                protein_backbone=5.0,
+                protein_sidechain=2.5,
+                lipid_head=1.0,
+            ),
+            _stage(
+                "Equilibration 3",
+                0.125,
+                1.0,
+                protein_backbone=2.5,
+                protein_sidechain=1.0,
+                lipid_head=1.0,
+            ),
+            _stage(
+                "Equilibration 4",
+                0.25,
+                1.0,
+                protein_backbone=1.0,
+                protein_sidechain=0.5,
+            ),
+            _stage("Equilibration 5", 0.25, 2.0, protein_backbone=0.5),
+            _stage("Equilibration 6", 0.5, 2.0, protein_backbone=0.1),
+        ]
+        if include_production:
+            stages.append(_stage("Production", 50.0, 2.0))
+        return stages
+
+    def _get_mdin_filename(self, stage_index: int) -> str:
+        key = self.STAGE_INDEX_TO_KEY.get(stage_index, "step7_production")
+        return self.TEMPLATE_MAPPING[key]
+
+    @staticmethod
+    def _consolidate_ranges(numbers: List[int]) -> List[Tuple[int, int]]:
+        if not numbers:
+            return []
+        nums = sorted(set(int(n) for n in numbers))
+        ranges: List[Tuple[int, int]] = []
+        start = prev = nums[0]
+        for n in nums[1:]:
+            if n == prev + 1:
+                prev = n
+                continue
+            ranges.append((start, prev))
+            start = prev = n
+        ranges.append((start, prev))
+        return ranges
+
+    @staticmethod
+    def _format_atom_card(ranges: List[Tuple[int, int]], per_line: int = 10) -> List[str]:
+        tokens: List[str] = []
+        for a, b in ranges:
+            tokens.append(f"{a}" if a == b else f"{a}-{b}")
+        lines: List[str] = []
+        for i in range(0, len(tokens), per_line):
+            chunk = " ".join(tokens[i : i + per_line])
+            lines.append(f"ATOM {chunk}")
+        return lines
+
+    def build_group_restraint_block(
+        self,
+        system_pdb: Path,
+        constraints: Dict[str, Any],
+        selections: Optional[Dict[str, str]] = None,
+    ) -> str:
+        """Build an Amber GROUP positional-restraint block for *constraints*.
+
+        Force constants are kcal/mol/Å² (Amber ``ntr`` units). Returns an empty
+        string when every force constant is zero or MDAnalysis is unavailable.
+        """
+        active = {
+            k: float(v) for k, v in (constraints or {}).items() if float(v) > 0.0
+        }
+        if not active:
+            return ""
+
+        try:
+            import MDAnalysis as mda  # type: ignore
+            import warnings
+        except ImportError:
+            self.logger.warning(
+                "MDAnalysis not available; Amber GROUP restraints not generated."
+            )
+            return ""
+
+        if selections is None:
+            selections = self.get_default_selections(str(system_pdb))
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            u = mda.Universe(str(system_pdb))
+
+        groups: List[str] = []
+        for key, fc in active.items():
+            if key in selections:
+                sel_str = selections[key]
+            elif key in NAMDEquilibrationManager.DEFAULT_SELECTIONS:
+                sel_str = NAMDEquilibrationManager.DEFAULT_SELECTIONS[key]
+            else:
+                # Custom GUI keys often look like ligand_ABC; try resname fallback
+                if key.startswith("ligand_"):
+                    sel_str = f"resname {key[len('ligand_'):]}"
+                else:
+                    self.logger.warning(
+                        f"No MDAnalysis selection for restraint key '{key}'; skipped"
+                    )
+                    continue
+            try:
+                ag = u.select_atoms(sel_str)
+            except Exception as exc:
+                self.logger.warning(
+                    f"Selection failed for '{key}' ({sel_str}): {exc}"
+                )
+                continue
+            if len(ag) == 0:
+                self.logger.warning(
+                    f"Selection '{key}' matched 0 atoms; restraint omitted"
+                )
+                continue
+            # Amber GROUP atom numbers are 1-based.
+            atom_nums = [int(a.index) + 1 for a in ag]
+            ranges = self._consolidate_ranges(atom_nums)
+            title = key.replace("_", " ")[:80]
+            lines = [title, f"{fc:.4f}"]
+            lines.extend(self._format_atom_card(ranges))
+            lines.append("END")
+            groups.append("\n".join(lines))
+            self.logger.info(
+                f"  Amber GROUP '{key}': {len(ag)} atoms, fc={fc:.4f} kcal/mol/Å²"
+            )
+
+        if not groups:
+            return ""
+        return "\n".join(groups) + "\nEND\n"
+
+    def generate_mdin_file(
+        self,
+        stage_name: str,
+        stage_params: Dict[str, Any],
+        stage_index: int,
+        scheme_type: str,
+        restraint_block: str = "",
+    ) -> str:
+        """Load an Amber mdin template and substitute GateWizard placeholders."""
+        template_key = self.STAGE_INDEX_TO_KEY.get(stage_index, "step7_production")
+        scheme_folder = self.SCHEME_MAPPING[scheme_type]
+        template_filename = self.TEMPLATE_MAPPING[template_key]
+        template_path = self.templates_dir / scheme_folder / template_filename
+        if not template_path.exists():
+            raise FileNotFoundError(
+                f"Amber template not found: {template_path}. "
+                f"Expected in equilibration/amber/{scheme_folder}/"
+            )
+
+        content = template_path.read_text()
+
+        def _float_param(*keys: str, default: float) -> float:
+            """Return the first non-None stage param among *keys*, else *default*."""
+            for key in keys:
+                if key not in stage_params:
+                    continue
+                value = stage_params.get(key)
+                if value is not None and value != "":
+                    return float(value)
+            return float(default)
+
+        temperature = _float_param("temperature", default=310.15)
+        timestep_fs = _float_param("timestep", default=2.0)
+        dt_ps = timestep_fs / 1000.0
+        time_ns = _float_param("time_ns", default=0.5)
+        pressure = _float_param("pressure", default=1.0)
+        # GUI may send surface_tension: null; .get(key, default) does not fall back then.
+        gamma_ten = _float_param("surface_tension", "gamma_ten", default=0.0)
+
+        is_min = stage_index == 0 or template_key == "step0_minimization"
+        constraints = stage_params.get("constraints", {}) or {}
+        any_fc = any(float(v) > 0 for v in constraints.values())
+        ntr = 1 if (any_fc and restraint_block.strip()) else 0
+        block = restraint_block if ntr == 1 else ""
+
+        if is_min:
+            maxcyc = int(stage_params.get("minimize_steps", 5000) or 5000)
+            ncyc = max(1, maxcyc // 2)
+            content = content.replace("{MAXCYC}", str(maxcyc))
+            content = content.replace("{NCYC}", str(ncyc))
+        else:
+            nstlim = max(1, int(round(time_ns * 1000.0 / dt_ps)))
+            content = content.replace("{NSTLIM}", str(nstlim))
+            content = content.replace("{DT}", f"{dt_ps:.6g}")
+
+        content = content.replace("{TEMPERATURE}", f"{temperature:.4f}")
+        content = content.replace("{PRES0}", f"{pressure:.4f}")
+        content = content.replace("{GAMMA_TEN}", f"{gamma_ten:.4f}")
+        content = content.replace("{NTR}", str(ntr))
+        content = content.replace("{RESTRAINT_BLOCK}", block)
+        # Drop leftover blank placeholder lines when restraints omitted
+        if not block:
+            content = content.replace("\n\n\n", "\n\n")
+        return stamp_equilibration_header(
+            content,
+            engine="amber",
+            scheme=scheme_type,
+            template_filename=template_filename,
+        )
+
+    def generate_run_script(
+        self,
+        amber_dir: Path,
+        prmtop_name: str,
+        inpcrd_name: str,
+        stage_stems: List[str],
+        amber_executable: Optional[str] = None,
+        cpu_cores: Optional[int] = None,
+        use_gpu: Optional[bool] = None,
+        gpu_id: int = 0,
+        num_gpus: int = 1,
+    ) -> Path:
+        """Generate ``run_equilibration.sh`` for Amber ``pmemd`` / ``sander``.
+
+        Energy minimization prefers a CPU binary when the selected executable is
+        ``pmemd.cuda`` (CHARMM-GUI caution). Dynamics use the selected executable;
+        CUDA device selection uses ``CUDA_VISIBLE_DEVICES`` when GPU is requested.
+        """
+        exe = (amber_executable or self.amber_executable or "pmemd").strip()
+        exe_name = Path(exe).name
+        is_cuda = "cuda" in exe_name.lower()
+        # Prefer CPU binary for minimization when CUDA was selected
+        mini_exe = exe
+        if is_cuda:
+            # pmemd.cuda -> pmemd; pmemd.cuda.MPI -> pmemd.MPI
+            mini_name = exe_name.replace(".cuda", "").replace("cuda.", "")
+            if mini_name == exe_name:
+                mini_name = "pmemd"
+            mini_candidate = Path(exe).with_name(mini_name)
+            mini_exe = str(mini_candidate) if mini_candidate.name else mini_name
+
+        wants_gpu = use_gpu is True or (use_gpu is None and is_cuda)
+        ngpu = max(1, int(num_gpus or 1))
+        gid = int(gpu_id or 0)
+        device_list = ",".join(str(gid + i) for i in range(ngpu))
+
+        lines = [
+            "#!/bin/bash",
+            "## Amber Equilibration Run Script",
+            "## Generated by GateWizard — run from the directory containing this file",
+            "",
+            f'AMBER="{exe}"',
+            f'MINI_AMBER="{mini_exe}"',
+            f'PRMTOP="{prmtop_name}"',
+            f'INPCRD="{inpcrd_name}"',
+            f'REF="$INPCRD"',
+            "",
+        ]
+        if wants_gpu and is_cuda:
+            lines += [
+                "# GPU device selection for pmemd.cuda",
+                f'export CUDA_VISIBLE_DEVICES="${{CUDA_VISIBLE_DEVICES:-{device_list}}}"',
+                "",
+            ]
+        cores_label = int(cpu_cores) if cpu_cores and int(cpu_cores) > 0 else "auto"
+        gpu_info = f"Yes (CUDA_VISIBLE_DEVICES={device_list})" if wants_gpu and is_cuda else "No"
+        lines += [
+            'echo "Starting Amber equilibration protocol…"',
+            f'echo "Resources: {cores_label} CPU threads (host), GPU: {gpu_info}"',
+            f'echo "Executable: $AMBER (minimization: $MINI_AMBER)"',
+            'echo "Note: minimization prefers CPU pmemd/sander when CUDA was selected."',
+            "",
+            AMBER_RESUME_SHELL,
+            "",
+        ]
+
+        for i, stem in enumerate(stage_stems):
+            prev = None if i == 0 else stage_stems[i - 1]
+            is_min = "minimization" in stem
+            amber_var = "$MINI_AMBER" if is_min else "$AMBER"
+            coord = "$INPCRD" if prev is None else f"{prev}.rst7"
+            ref_flag = ""
+            # Use -ref whenever this stage mdin may have ntr=1; always pass REF
+            # for restrained stages — Amber ignores -ref when ntr=0.
+            ref_flag = " -ref $REF"
+            traj = "" if is_min else f" -x {stem}.nc"
+            lines += [
+                f"# --- {stem} ---",
+                f'if [ "$RESUME" = "1" ] && _gw_amber_stage_done "{stem}"; then',
+                f'  echo "RESUME: skipping {stem}"',
+                "else",
+                f"  {amber_var} -O -i {stem}.mdin -o {stem}.mdout -p $PRMTOP \\",
+                f"      -c {coord} -r {stem}.rst7 -inf {stem}.mdinfo{ref_flag}{traj} \\",
+                f"      || {{ echo '{stem} failed'; exit 1; }}",
+                "fi",
+                "",
+            ]
+
+        lines += ['echo "Amber equilibration complete."', ""]
+        script_path = amber_dir / "run_equilibration.sh"
+        script_path.write_text("\n".join(lines))
+        script_path.chmod(0o755)
+        self.logger.info(f"Run script: {script_path.name}")
+        return script_path
+
+    def setup_amber_equilibration(
+        self,
+        system_files: Optional[Dict[str, str]] = None,
+        stage_params_list: Optional[List[Dict[str, Any]]] = None,
+        output_name: str = "equilibration",
+        scheme_type: Optional[str] = None,
+        selections: Optional[Dict[str, str]] = None,
+        amber_executable: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Complete Amber equilibration setup (mdins, GROUP restraints, run script)."""
+        self.logger.info("=== Setting up Amber equilibration ===")
+
+        if system_files is None:
+            system_files = self.find_system_files()
+            if system_files is None:
+                raise ValueError(
+                    "Could not auto-detect system files in working directory"
+                )
+
+        if not stage_params_list:
+            _scheme = scheme_type or "NPT"
+            stage_params_list = self.get_default_stage_params(_scheme)
+            self.logger.info(
+                f"No stages provided — using default {_scheme} protocol "
+                f"({len(stage_params_list)} stages)"
+            )
+
+        stage_params_list = [
+            s.to_dict() if isinstance(s, EquilibrationStage) else s
+            for s in stage_params_list
+        ]
+
+        if scheme_type is None:
+            scheme_type = stage_params_list[0].get("ensemble", "NPT")
+            self.logger.info(f"Auto-detected scheme_type: {scheme_type}")
+        if isinstance(scheme_type, str):
+            scheme_type = scheme_type.upper()
+        if scheme_type not in self.SCHEME_MAPPING:
+            raise ValueError(
+                f"Unknown scheme_type '{scheme_type}'. "
+                f"Must be one of {list(self.SCHEME_MAPPING.keys())}"
+            )
+
+        # Separate minimization like GROMACS / CHARMM-GUI Amber
+        first_stage = stage_params_list[0]
+        if (
+            first_stage.get("name", "").lower()
+            not in ("minimization", "energy minimization", "energy_minimization")
+            and int(first_stage.get("minimize_steps", 0)) > 0
+        ):
+            mini_stage = dict(first_stage)
+            mini_stage["name"] = "Minimization"
+            mini_stage["time_ns"] = 0.0
+            eq1_stage = dict(first_stage)
+            eq1_stage["minimize_steps"] = 0
+            stage_params_list = [mini_stage, eq1_stage] + stage_params_list[1:]
+            self.logger.info(
+                "  Auto-inserted Amber Minimization stage (split from "
+                f"'{first_stage.get('name', 'first stage')}')"
+            )
+
+        amber_dir = (
+            Path(output_name)
+            if Path(str(output_name)).is_absolute()
+            else self.working_dir / output_name
+        )
+        amber_dir.mkdir(parents=True, exist_ok=True)
+        self.logger.info(f"Output directory: {amber_dir}")
+
+        for key in ("prmtop", "inpcrd", "pdb", "bilayer_pdb"):
+            src = system_files.get(key)
+            if src and Path(src).exists():
+                dest = amber_dir / Path(src).name
+                shutil.copy2(src, dest)
+                self.logger.info(f"  Copied {Path(src).name}")
+
+        pdb_path: Optional[Path] = None
+        for cand in (
+            amber_dir / Path(system_files["pdb"]).name
+            if system_files.get("pdb")
+            else None,
+            amber_dir / "system.pdb",
+        ):
+            if cand is not None and cand.exists():
+                pdb_path = cand
+                break
+
+        # Amber needs box lengths in the inpcrd (unlike NAMD cellBasisVector /
+        # OpenMM -b CRYST1 recovery). Prefer bilayer*_lipid.pdb CRYST1.
+        inpcrd_dest = amber_dir / Path(
+            system_files.get("inpcrd", "system.inpcrd")
+        ).name
+        bilayer_dest: Optional[Path] = None
+        if system_files.get("bilayer_pdb"):
+            bilayer_dest = amber_dir / Path(system_files["bilayer_pdb"]).name
+            if not bilayer_dest.is_file():
+                bilayer_dest = Path(system_files["bilayer_pdb"])
+        if bilayer_dest is None or not bilayer_dest.is_file():
+            for pattern in ("bilayer*_lipid.pdb", "bilayer_*.pdb"):
+                hits = list(amber_dir.glob(pattern)) or list(
+                    self.working_dir.glob(pattern)
+                )
+                if hits:
+                    bilayer_dest = hits[0]
+                    if bilayer_dest.parent != amber_dir:
+                        shutil.copy2(bilayer_dest, amber_dir / bilayer_dest.name)
+                        bilayer_dest = amber_dir / bilayer_dest.name
+                        self.logger.info(f"  Copied {bilayer_dest.name} (CRYST1 box source)")
+                    break
+        self.ensure_inpcrd_box(
+            inpcrd_path=inpcrd_dest,
+            bilayer_pdb=bilayer_dest,
+            system_pdb=pdb_path,
+        )
+
+        resolved_sels = selections
+        if resolved_sels is None and pdb_path is not None:
+            resolved_sels = self.get_default_selections(str(pdb_path))
+
+        mdin_files: List[Path] = []
+        stage_stems: List[str] = []
+
+        for stage_index, stage_params in enumerate(stage_params_list):
+            stage_name = stage_params.get("name", f"Stage {stage_index}")
+            if stage_index == 0 and int(stage_params.get("minimize_steps", 0)) > 0:
+                key_idx = 0
+            elif stage_params.get("name", "").lower() == "production":
+                key_idx = 7
+            else:
+                key_idx = min(stage_index, 6) if stage_index > 0 else 1
+                if key_idx == 0:
+                    key_idx = 1
+
+            restraint_block = ""
+            if pdb_path is not None:
+                restraint_block = self.build_group_restraint_block(
+                    system_pdb=pdb_path,
+                    constraints=stage_params.get("constraints", {}) or {},
+                    selections=resolved_sels,
+                )
+
+            content = self.generate_mdin_file(
+                stage_name=stage_name,
+                stage_params=stage_params,
+                stage_index=key_idx,
+                scheme_type=scheme_type,
+                restraint_block=restraint_block,
+            )
+            mdin_filename = self._get_mdin_filename(key_idx)
+            mdin_path = amber_dir / mdin_filename
+            mdin_path.write_text(content)
+            mdin_files.append(mdin_path)
+            stage_stems.append(mdin_path.stem)
+            self.logger.info(f"  Written: {mdin_filename}")
+
+        prmtop_name = Path(system_files.get("prmtop", "system.prmtop")).name
+        inpcrd_name = Path(system_files.get("inpcrd", "system.inpcrd")).name
+        compute = resolve_compute_resources_from_stages(stage_params_list)
+        exe = amber_executable or self.amber_executable
+        run_script = self.generate_run_script(
+            amber_dir=amber_dir,
+            prmtop_name=prmtop_name,
+            inpcrd_name=inpcrd_name,
+            stage_stems=stage_stems,
+            amber_executable=exe,
+            cpu_cores=compute["cpu_cores"],
+            use_gpu=compute["use_gpu"],
+            gpu_id=compute["gpu_id"],
+            num_gpus=compute["num_gpus"] or 1,
+        )
+
+        try:
+            from gatewizard.utils.equilibration_resources import (
+                write_equilibration_resources,
+            )
+
+            write_equilibration_resources(
+                amber_dir, "amber", stage_params_list
+            )
+        except Exception:
+            pass
+
+        self.logger.info("=== Amber equilibration setup complete ===")
+        return {
+            "amber_dir": amber_dir,
+            "mdin_files": mdin_files,
+            "run_script": run_script,
+            "system_files": system_files,
+            "stage_stems": stage_stems,
+        }
+
+    def generate_input_file(self, stage_name: str, stage_params: Dict[str, Any]) -> str:
+        """Backward-compatible helper: generate a single NPT equilibration mdin."""
+        return self.generate_mdin_file(
+            stage_name=stage_name,
+            stage_params=stage_params,
+            stage_index=1,
+            scheme_type=str(stage_params.get("ensemble", "NPT")).upper(),
+            restraint_block="",
+        )
 
 class EquilibrationAnalyzer:
     """Analyzer for equilibration simulation results."""

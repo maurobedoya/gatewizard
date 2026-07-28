@@ -58,7 +58,7 @@ packages = {find = {}}
 
 [tool.setuptools.package-data]
 gatewizard = ["**/*.yml", "**/*.yaml", "**/*.json", "**/*.txt", "**/*.pdb", "tools/psique"]
-equilibration = ["**/*.inp", "**/*.mdp", "**/*.py"]
+equilibration = ["**/*.inp", "**/*.mdp", "**/*.mdin", "**/*.py"]
 
 [tool.pytest.ini_options]
 # Filter out expected warnings from dependencies

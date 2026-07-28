@@ -115,6 +115,12 @@ class TestParseEngineVariant:
         path = "/opt/NAMD_3.0.1_Linux-x86_64-multicore/namd3"
         assert parse_engine_variant("", "namd", path) == "CPU"
 
+    def test_amber_variant_from_binary_name(self):
+        assert parse_engine_variant("", "amber", "/opt/amber/bin/pmemd.cuda") == "CUDA"
+        assert parse_engine_variant("", "amber", "pmemd") == "CPU"
+        assert parse_engine_variant("", "amber", "pmemd.cuda.MPI") == "CUDA+MPI"
+        assert parse_engine_variant("", "amber", "sander") == "CPU"
+
     def test_parse_ambertools_from_version_file(self):
         text = "24.8"
         assert parse_tool_version(text, "ambertools") == "24.8"

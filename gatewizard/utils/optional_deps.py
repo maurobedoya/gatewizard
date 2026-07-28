@@ -573,6 +573,7 @@ def _probe_binary_output(executable: str, engine: str) -> str:
         "namd": [["-version"], ["+version"], ["--version"]],
         "gromacs": [["--version"]],
         "openmm": [["--version"]],
+        "amber": [["-O", "-h"], ["-h"], ["--help"]],
     }
     timeout = 12 if engine == "namd" else 6
     for args in args_map.get(engine, [["--version"]]):
@@ -669,6 +670,20 @@ def parse_engine_variant(
         if "CPU" in names:
             return "CPU"
         return None
+
+    if engine == "amber":
+        name = Path(executable or "").name.lower()
+        has_cuda = "cuda" in name or "cuda" in lower
+        has_mpi = ".mpi" in name or name.endswith("mpi") or "mpi" in name
+        if has_cuda and has_mpi:
+            return "CUDA+MPI"
+        if has_cuda:
+            return "CUDA"
+        if has_mpi:
+            return "MPI"
+        if name in {"pmemd", "sander"} or "pmemd" in name or "sander" in name:
+            return "CPU"
+        return "CPU" if executable else None
 
     return None
 
@@ -876,6 +891,122 @@ def list_md_engine_candidates(engine: str) -> List[Dict[str, Any]]:
                     "id": f"namd-{len(results)}",
                     "label": _format_engine_label(
                         "NAMD", version, variant, source, exe
+                    ),
+                    "executable": exe,
+                    "version": version,
+                    "variant": variant,
+                    "source": source,
+                    "available": True,
+                }
+            )
+        return results
+
+    if engine == "amber":
+        amber_names = (
+            "pmemd.cuda",
+            "pmemd",
+            "pmemd.cuda.MPI",
+            "pmemd.MPI",
+            "sander",
+        )
+        candidates: List[Tuple[str, str]] = []
+
+        def _add_amber_bin_dir(bin_dir: Path, source: str) -> None:
+            if not bin_dir.is_dir():
+                return
+            for name in amber_names:
+                exe = bin_dir / name
+                if exe.is_file() and os.access(exe, os.X_OK):
+                    candidates.append((str(exe.resolve()), source))
+
+        for name in amber_names:
+            which = shutil.which(name)
+            if which:
+                candidates.append((which, "path"))
+
+        conda_prefix = os.environ.get("CONDA_PREFIX")
+        if conda_prefix:
+            _add_amber_bin_dir(Path(conda_prefix) / "bin", "conda")
+
+        amberhome = os.environ.get("AMBERHOME")
+        if amberhome:
+            _add_amber_bin_dir(Path(amberhome) / "bin", "AMBERHOME")
+
+        # Common conda / micromamba env roots
+        env_roots: List[Path] = []
+        for key in ("MAMBA_ROOT_PREFIX", "CONDA_ROOT", "CONDA_PREFIX"):
+            val = os.environ.get(key)
+            if val:
+                env_roots.append(Path(val))
+                env_roots.append(Path(val) / "envs")
+        for base in (
+            Path.home() / "micromamba",
+            Path.home() / "miniconda3",
+            Path.home() / "anaconda3",
+            Path.home() / "miniforge3",
+            Path("/opt/conda"),
+        ):
+            env_roots.append(base)
+            env_roots.append(base / "envs")
+
+        seen_env_bins: set[str] = set()
+        for root in env_roots:
+            if not root.is_dir():
+                continue
+            try:
+                # Direct bin/ under prefix
+                _add_amber_bin_dir(root / "bin", "conda-env")
+                # envs/*/bin
+                if root.name == "envs" or (root / "envs").is_dir():
+                    envs_dir = root if root.name == "envs" else root / "envs"
+                    if envs_dir.is_dir():
+                        for child in envs_dir.iterdir():
+                            bin_dir = child / "bin"
+                            key = str(bin_dir)
+                            if key in seen_env_bins:
+                                continue
+                            seen_env_bins.add(key)
+                            _add_amber_bin_dir(bin_dir, "conda-env")
+            except OSError:
+                pass
+
+        for prefix in (Path("/usr/local"), Path("/opt"), Path.home()):
+            if not prefix.is_dir():
+                continue
+            try:
+                for child in prefix.iterdir():
+                    if not child.is_dir():
+                        continue
+                    low = child.name.lower()
+                    if "amber" not in low:
+                        continue
+                    _add_amber_bin_dir(child / "bin", "prefix")
+            except OSError:
+                pass
+
+        # Preference order for UI: CUDA → CPU pmemd → MPI → sander
+        pref = {n: i for i, n in enumerate(amber_names)}
+        seen: set[str] = set()
+        ordered: List[Tuple[str, str]] = []
+        for exe, source in candidates:
+            key = str(Path(exe).resolve()) if os.path.isfile(exe) else exe
+            if key in seen or not os.path.isfile(exe):
+                continue
+            seen.add(key)
+            ordered.append((exe, source))
+        ordered.sort(key=lambda t: pref.get(Path(t[0]).name, 99))
+
+        for exe, source in ordered:
+            raw = _probe_binary_output(exe, "amber")
+            version = parse_tool_version(raw, "amber") if raw else None
+            if not version:
+                version = _resolve_ambertools_version()
+            variant = parse_engine_variant(raw, "amber", exe)
+            results.append(
+                {
+                    "id": f"amber-{len(results)}",
+                    "label": _format_engine_label(
+                        "Amber", version, variant, source, exe
                     ),
                     "executable": exe,
                     "version": version,

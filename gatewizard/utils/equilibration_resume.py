@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from gatewizard.utils import gromacs_analysis, namd_analysis, openmm_analysis
+from gatewizard.utils import amber_analysis, gromacs_analysis, namd_analysis, openmm_analysis
 from gatewizard.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -58,6 +58,17 @@ RESUME="${RESUME:-0}"
 _gw_namd_stage_done() {
   local stem="$1"
   [ -f "${stem}.coor" ] && [ -f "${stem}.log" ] && ! grep -qi "Error in Stage" "${stem}.log" 2>/dev/null
+}
+""".strip()
+
+AMBER_RESUME_SHELL = """
+# Stage-level resume: skip stages that already finished (not mid-stage checkpoints).
+# RESUME=1 bash run_equilibration.sh
+RESUME="${RESUME:-0}"
+
+_gw_amber_stage_done() {
+  local stem="$1"
+  [ -f "${stem}.rst7" ] && grep -qE "Final Results|TIMINGS" "${stem}.mdout" 2>/dev/null
 }
 """.strip()
 
@@ -118,6 +129,21 @@ def _namd_stage_complete(eq_dir: Path, stem: str) -> bool:
         return False
 
 
+def _amber_stage_complete(eq_dir: Path, stem: str) -> bool:
+    """True when rst7 exists and mdout shows a full (not killed) finish."""
+    rst = eq_dir / f"{stem}.rst7"
+    mdout = eq_dir / f"{stem}.mdout"
+    if not rst.is_file() or not mdout.is_file():
+        return False
+    try:
+        timing = amber_analysis.parse_amber_mdout(
+            mdout, is_minimization="minimization" in stem
+        )
+        return bool(timing.completed)
+    except Exception:
+        return False
+
+
 def _stage_stems_on_disk(eq_dir: Path, engine: str) -> List[tuple[str, str, str]]:
     """Return (key, display_name, filesystem_stem) in protocol order."""
     engine = engine.lower().strip()
@@ -129,6 +155,10 @@ def _stage_stems_on_disk(eq_dir: Path, engine: str) -> List[tuple[str, str, str]
     elif engine == "gromacs":
         for mdp in sorted(eq_dir.glob("step*.mdp")):
             stem = mdp.stem
+            entries.append((stem, stem.replace("_", " ").title(), stem))
+    elif engine == "amber":
+        for mdin in sorted(eq_dir.glob("step*.mdin")):
+            stem = mdin.stem
             entries.append((stem, stem.replace("_", " ").title(), stem))
     else:
         for conf in sorted(eq_dir.glob("step*.conf")):
@@ -146,6 +176,8 @@ def _is_stage_complete(eq_dir: Path, engine: str, stem: str) -> bool:
         return _openmm_stage_complete(eq_dir, stem)
     if engine == "gromacs":
         return _gromacs_stage_complete(eq_dir, stem)
+    if engine == "amber":
+        return _amber_stage_complete(eq_dir, stem)
     return _namd_stage_complete(eq_dir, stem)
 
 
@@ -159,6 +191,9 @@ def _stage_has_partial_output(eq_dir: Path, engine: str, stem: str) -> bool:
     if engine == "gromacs":
         log = eq_dir / f"{stem}.log"
         return log.is_file() and log.stat().st_size > 0
+    if engine == "amber":
+        mdout = eq_dir / f"{stem}.mdout"
+        return mdout.is_file() and mdout.stat().st_size > 0
     log = eq_dir / f"{stem}.log"
     return log.is_file() and log.stat().st_size > 0
 
@@ -330,6 +365,31 @@ def refresh_equilibration_run_script(eq_dir: Path, engine: str) -> bool:
             manager = NAMDEquilibrationManager(eq_dir, namd_executable=namd_exe or "namd3")
             script.write_text(manager.generate_run_script(protocols, namd_exe))
             script.chmod(0o755)
+            return True
+
+        if engine == "amber":
+            from gatewizard.tools.equilibration import AmberEquilibrationManager
+            from gatewizard.utils.equilibration_resources import (
+                resolve_compute_resources_from_eq_dir,
+            )
+
+            text = script.read_text(encoding="utf-8", errors="replace")
+            stage_stems = [p.stem for p in sorted(eq_dir.glob("step*.mdin"))]
+            if not stage_stems:
+                return False
+            compute = resolve_compute_resources_from_eq_dir(eq_dir)
+            manager = AmberEquilibrationManager(eq_dir)
+            manager.generate_run_script(
+                amber_dir=eq_dir,
+                prmtop_name=_parse_script_var(text, "PRMTOP") or "system.prmtop",
+                inpcrd_name=_parse_script_var(text, "INPCRD") or "system.inpcrd",
+                stage_stems=stage_stems,
+                amber_executable=_parse_script_var(text, "AMBER") or "pmemd",
+                cpu_cores=compute["cpu_cores"],
+                use_gpu=compute["use_gpu"],
+                gpu_id=compute["gpu_id"],
+                num_gpus=compute["num_gpus"] or 1,
+            )
             return True
     except Exception as exc:
         logger.warning("Failed to refresh equilibration run script in %s: %s", eq_dir, exc)

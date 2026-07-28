@@ -23,6 +23,7 @@ from gatewizard.core.job_monitor import JobMonitor
 from gatewizard.core.structure_manager import StructureManager
 from gatewizard.core.mempro import MemPrO
 from gatewizard.tools.equilibration import (
+    AmberEquilibrationManager,
     NAMDEquilibrationManager,
     OpenMMEquilibrationManager,
 )
@@ -41,6 +42,7 @@ __all__ = [
     "JobMonitor",
     "StructureManager",
     "MemPrO",
+    "AmberEquilibrationManager",
     "NAMDEquilibrationManager",
     "OpenMMEquilibrationManager",
     "OpenMMLogAnalyzer",
