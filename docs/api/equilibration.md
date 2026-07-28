@@ -1,6 +1,6 @@
 # Equilibration Module
 
-Module for setting up NAMD, OpenMM, and GROMACS equilibration protocols for membrane protein systems. Generates configuration files, restraint files, and run scripts for multi-stage equilibration simulations using AMBER force fields.
+Module for setting up NAMD, OpenMM, GROMACS, and Amber equilibration protocols for membrane protein systems. Generates configuration files, restraint files, and run scripts for multi-stage equilibration simulations using AMBER force fields.
 
 The three engine managers share a similar user-facing API, with engine-specific file formats and run scripts.
 
@@ -11,6 +11,7 @@ from gatewizard.tools.equilibration import (
     NAMDEquilibrationManager,
     OpenMMEquilibrationManager,
     GROMACSEquilibrationManager,
+    AmberEquilibrationManager,
 )
 ```
 
@@ -2607,12 +2608,66 @@ activation block directly into the generated input files:
 
 ---
 
+## Class: AmberEquilibrationManager
+
+Manager for Amber (`pmemd` / `sander`) equilibration using GateWizard mdin
+templates under `equilibration/amber/{01_NVT,02_NPT,03_NPAT,04_NPgT}/`.
+
+Amber `01_NVT` is **true NVT** (constant volume) for all stages through
+production: no `barostat` / `ntp` / surface-tension controls. Early heating in
+the other ensembles remains NVT-like; from `step3` onward those packs enable
+their ensemble-specific pressure settings (`02_NPT` semi-isotropic, `03_NPAT`
+anisotropic Z-scaling, `04_NPgT` surface tension). Positional restraints use Amber
+`ntr=1` with a GROUP block generated from MDAnalysis selections (no dihedral /
+`nmropt` / `DISANG`). Stages include a separate minimization
+(`step0_minimization.mdin`) plus six equilibration stages and optional production,
+matching the GROMACS stage layout. Timestep ladder: **1.0 fs through equilibration 4**,
+then **2.0 fs**.
+
+Generated inputs are stamped with the GateWizard API version, local generation
+time (with timezone), and the shared equilibration **templates version** so runs
+remain traceable across releases.
+
+```python
+from pathlib import Path
+from gatewizard.tools.equilibration import AmberEquilibrationManager
+
+manager = AmberEquilibrationManager(Path("popc_membrane"), amber_executable="pmemd.cuda")
+stages = AmberEquilibrationManager.get_default_stage_params("NPT", include_production=True)
+result = manager.setup_amber_equilibration(
+    stage_params_list=stages,
+    amber_executable="pmemd.cuda",
+)
+# cd result["amber_dir"] && bash run_equilibration.sh
+# Resume unfinished stages: RESUME=1 bash run_equilibration.sh
+```
+
+Executable preference when several are found: `pmemd.cuda` → `pmemd` →
+`pmemd.MPI` / `pmemd.cuda.MPI` → `sander`. Minimization prefers a CPU binary when
+CUDA was selected (CHARMM-GUI caution). GPU device selection uses
+`CUDA_VISIBLE_DEVICES`.
+
+### Output Structure (Amber)
+
+```
+equilibration/
+├── system.prmtop / system.inpcrd / system.pdb
+├── step0_minimization.mdin … step6_equilibration.mdin
+├── step7_production.mdin
+└── run_equilibration.sh
+```
+
+Stage outputs: `*.mdout`, `*.rst7`, `*.nc` (dynamics), `*.mdinfo`.
+
+---
+
 ## COM Restraints (all engines)
 
-GateWizard supports **centre-of-mass / centre-of-geometry restraints** for all
-three MD engines.  Unlike per-atom positional restraints, COM restraints act on
+GateWizard supports **centre-of-mass / centre-of-geometry restraints** for
+NAMD, OpenMM, and GROMACS.  Unlike per-atom positional restraints, COM restraints act on
 the *centroid* of the selected group — they prevent rigid-body translation (and
 optionally rotation) of the protein without introducing bias on individual atoms.
+Amber equilibration currently uses GROUP positional restraints only (no COM colvars).
 
 ### Motivation
 

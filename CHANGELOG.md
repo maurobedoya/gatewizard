@@ -7,8 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Equilibration (Amber):** full `AmberEquilibrationManager` — mdin templates for NVT/NPT/NPAT/NPgT, MDA GROUP positional restraints (no dihedrals), `run_equilibration.sh` with resume/resources, executable discovery (`pmemd.cuda` → `pmemd` → MPI → `sander`), and `amber_analysis` progress/energetic parsing
+- **Equilibration templates:** generated inputs stamp GateWizard API version, local generation time (with timezone), and shared templates version (`v1`) for traceability
+
 ### Fixed
 
+- **Equilibration (NVT):** Amber, NAMD, and GROMACS `01_NVT` templates are true constant-volume NVT through production (aligned with OpenMM); CHARMM-GUI’s NVT packs incorrectly matched NPT after early heating
+- **Equilibration (NAMD NPAT):** steps 6.3–6.6 now use `useConstantArea` like CHARMM-GUI (they incorrectly had NPgT `useConstantRatio` / `SurfaceTensionTarget`)
 - **Equilibration (GROMACS):** GPU `mdrun` lines now include `-ntmpi` (one rank per GPU) with `-ntomp`, required by GROMACS 2026 when OpenMP threads and GPUs are combined
 - **Equilibration (GROMACS):** step0 energy minimisation runs on CPU only (`-ntmpi 1 -ntomp … -nb cpu -pme cpu`) — PME GPU does not support `steep`/`cg`, and GPU-capable `gmx` still requires `-ntmpi` with `-ntomp` even without GPU offload flags; MD stages still use GPU flags when requested
 - **Equilibration (GROMACS):** omit unused `POSRES_FC_*` macros from MDP `define` lines (fixes grompp warnings for WATER/OTHER when those restraints are not in the topology)

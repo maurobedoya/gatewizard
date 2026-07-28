@@ -58,18 +58,19 @@ Module for cavity hydration with standalone PACKMOL (AmberTools TIP3P waters).
 ---
 
 ### [Equilibration Module](equilibration.md)
-Module for managing equilibration protocols and workflows for NAMD, GROMACS, and OpenMM.
+Module for managing equilibration protocols and workflows for NAMD, GROMACS, OpenMM, and Amber.
 
 **Key Features:**
 - NAMD equilibration protocol generation (CHARMM-GUI template integration)
 - GROMACS equilibration protocol generation
 - OpenMM equilibration protocol generation
+- Amber equilibration protocol generation (`pmemd` / `sander` mdin + GROUP restraints)
 - Flexible restraint system (protein backbone/sidechain, lipid head/tail, ligand, ions)
 - MDAnalysis-based atom selection for restraint files
 - Progressive force-constant schedule across stages
 - Custom stage parameters via `EquilibrationStage` dataclass
 
-**Main Classes:** `NAMDEquilibrationManager`, `GROMACSEquilibrationManager`, `OpenMMEquilibrationManager`, `EquilibrationStage`
+**Main Classes:** `NAMDEquilibrationManager`, `GROMACSEquilibrationManager`, `OpenMMEquilibrationManager`, `AmberEquilibrationManager`, `EquilibrationStage`
 
 ---
 

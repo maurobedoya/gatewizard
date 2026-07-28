@@ -185,6 +185,21 @@ result = manager.setup_openmm_equilibration(
 print(result["openmm_dir"])
 ```
 
+### Amber Equilibration Example
+```python
+from gatewizard.tools.equilibration import AmberEquilibrationManager
+from pathlib import Path
+
+manager = AmberEquilibrationManager(Path("equilibration"), amber_executable="pmemd.cuda")
+stages = AmberEquilibrationManager.get_default_stage_params("NPT", include_production=True)
+result = manager.setup_amber_equilibration(
+    stage_params_list=stages,
+    amber_executable="pmemd.cuda",
+)
+print(result["amber_dir"])
+# bash run_equilibration.sh   # RESUME=1 to skip finished stages
+```
+
 ---
 
 ## Analysis

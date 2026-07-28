@@ -76,7 +76,7 @@ class Builder:
             "nloop": 20,  # GENCAN loops for PACKMOL (packmol-memgen default)
             "nloop_all": 100,  # GENCAN loops for all-together packing
             "tolerance": 2.0,  # PACKMOL clash tolerance (radius1+radius2)
-            "md_engine": None,  # Target MD engine: namd, gromacs, openmm, or None
+            "md_engine": None,  # Target MD engine: namd, gromacs, openmm, amber, or None
         }
 
     def set_configuration(self, **kwargs):
