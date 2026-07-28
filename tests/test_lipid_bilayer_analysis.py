@@ -109,6 +109,23 @@ class TestMembraneThickness:
         assert result["n_bins"] == 1
         assert "std" in result["stats"]
 
+    def test_pbc_straddling_thickness_is_folded_to_bilayer_gap(self):
+        """Water-gap path Lz−d must not be reported as thickness."""
+        import numpy as np
+
+        from gatewizard.utils.lipid_bilayer_analysis import (
+            _correct_pbc_straddling_thickness,
+        )
+
+        box_z = 135.0
+        water_gap = np.array([100.0, 100.3, 99.8])
+        fixed = _correct_pbc_straddling_thickness(water_gap, box_z)
+        np.testing.assert_allclose(fixed, box_z - water_gap)
+        true_d = np.array([35.0, 34.7, 35.2])
+        np.testing.assert_allclose(
+            _correct_pbc_straddling_thickness(true_d, box_z), true_d
+        )
+
 
 class TestBilayerAnalysisValidation:
     def test_unsupported_analysis_type(self, equilibration_bilayer_data):

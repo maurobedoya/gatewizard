@@ -83,6 +83,27 @@ def _stats_from_series(values: "np.ndarray") -> Dict[str, float]:
     }
 
 
+def _correct_pbc_straddling_thickness(
+    thickness: "np.ndarray", box_z: float
+) -> "np.ndarray":
+    """If thickness is the long periodic path through water, fold to the bilayer gap.
+
+    ``lipyphilic.MembThickness`` wraps coordinates then does
+    ``z_upper - z_lower``. When the bilayer straddles the periodic z boundary,
+    that difference becomes ``L_z - d`` (water thickness) instead of ``d``.
+    """
+    import numpy as np
+
+    values = np.abs(np.asarray(thickness, dtype=float))
+    if not np.isfinite(box_z) or box_z <= 0:
+        return values
+    straddling = values > (0.5 * box_z)
+    if np.any(straddling):
+        values = values.copy()
+        values[straddling] = box_z - values[straddling]
+    return values
+
+
 class BilayerTrajectoryAnalyzer:
     """
     Lipid bilayer analysis wrapper built on lipyphilic and MDAnalysis.
@@ -106,6 +127,7 @@ class BilayerTrajectoryAnalyzer:
         from gatewizard.utils.namd_analysis import TrajectoryAnalyzer
 
         self._trajectory = TrajectoryAnalyzer(topology, trajectory, file_times=file_times)
+        self._z_centered_for: Optional[str] = None
 
     @property
     def universe(self):
@@ -113,6 +135,50 @@ class BilayerTrajectoryAnalyzer:
 
     def _calculate_time_array(self):
         return self._trajectory._calculate_time_array()
+
+    def _ensure_membrane_centered_in_z(self, lipid_sel: str) -> None:
+        """Shift the bilayer so it does not straddle the periodic z boundary.
+
+        ``lipyphilic.MembThickness`` wraps atoms into the primary cell before
+        subtracting leaflet heights. If the membrane sits across z=0, wrapping
+        moves one leaflet to the top of the box and the reported "thickness"
+        becomes the water gap (``L_z - d``). Centering the lipid COM at the box
+        midplane without wrapping keeps both leaflets contiguous.
+        """
+        if self._z_centered_for == lipid_sel:
+            return
+        if self._z_centered_for is not None and self._z_centered_for != lipid_sel:
+            logger.debug(
+                "Membrane already z-centered for %r; skipping re-center for %r",
+                self._z_centered_for,
+                lipid_sel,
+            )
+            return
+
+        try:
+            from MDAnalysis.transformations import center_in_box
+        except ImportError:
+            return
+
+        ag = self.universe.select_atoms(lipid_sel)
+        if len(ag) == 0:
+            return
+
+        try:
+            self.universe.trajectory.add_transformations(
+                center_in_box(ag, center="mass", wrap=False)
+            )
+            self._z_centered_for = lipid_sel
+            logger.debug(
+                "Centered bilayer in z using %d atoms from %r", len(ag), lipid_sel
+            )
+        except ValueError as exc:
+            # Transformations already locked (trajectory previously iterated).
+            logger.warning(
+                "Could not add membrane z-centering transformation (%s). "
+                "Thickness may be wrong if the bilayer straddles the periodic boundary.",
+                exc,
+            )
 
     def _assign_leaflets(
         self,
@@ -160,6 +226,11 @@ class BilayerTrajectoryAnalyzer:
 
         Returns:
             Dict with time (ns), per-lipid areas, leaflet means, and statistics.
+
+        Note:
+            Only lipid sites enter the Voronoi tessellation. In protein–membrane
+            systems the protein footprint is not excluded, so mean APL can be
+            close to ``L_x * L_y / (n_lipids / 2)`` (upper bound).
         """
         import numpy as np
 
@@ -167,6 +238,7 @@ class BilayerTrajectoryAnalyzer:
         from lipyphilic.analysis.area_per_lipid import AreaPerLipid
 
         leaflet_sel = leaflet_lipid_sel or lipid_sel
+        self._ensure_membrane_centered_in_z(leaflet_sel)
         leaflets = self._assign_leaflets(
             leaflet_sel, start=start, stop=stop, step=step, verbose=verbose
         )
@@ -238,6 +310,7 @@ class BilayerTrajectoryAnalyzer:
         from lipyphilic.analysis.memb_thickness import MembThickness
 
         leaflet_sel = leaflet_lipid_sel or lipid_sel
+        self._ensure_membrane_centered_in_z(leaflet_sel)
         leaflets = self._assign_leaflets(
             leaflet_sel, start=start, stop=stop, step=step, verbose=verbose
         )
@@ -259,6 +332,9 @@ class BilayerTrajectoryAnalyzer:
         thickness = np.asarray(
             _analysis_result(memb_thickness, "memb_thickness"), dtype=float
         ).ravel()
+        box_z = float(self.universe.dimensions[2]) if self.universe.dimensions is not None else 0.0
+        thickness = _correct_pbc_straddling_thickness(thickness, box_z)
+
         n_frames = thickness.size
         time_ns = self._calculate_time_array()
         if len(time_ns) != n_frames:
