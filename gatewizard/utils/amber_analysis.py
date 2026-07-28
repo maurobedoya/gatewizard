@@ -231,10 +231,9 @@ def parse_amber_mdout(
     elif has_final and info.total_steps > 0 and info.steps_completed < info.total_steps:
         info.interrupted = True
 
-    # Live ns/day estimate
+    # ns/day from wall when TIMINGS block omitted it (running or completed)
     if (
-        not info.completed
-        and info.ns_per_day == 0.0
+        info.ns_per_day == 0.0
         and info.steps_completed > 0
         and info.timestep_fs > 0
         and info.wall_elapsed_seconds > 1.0

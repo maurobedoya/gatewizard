@@ -188,21 +188,27 @@ def parse_gromacs_log(
             if perf_matches:
                 info.ns_per_day = float(perf_matches[-1])
 
-            # ── Live estimate: parse start timestamp, compare to now ─────────────────
+            # ── Live / fallback estimate from wall clock when Performance missing ─
             # "Started mdrun on rank 0 Thu May 28 15:40:23 2026"
-            # Use this only when Performance hasn't been written yet (stage still running).
             if (
                 info.ns_per_day == 0.0
                 and info.steps_completed > 0
                 and info.timestep_fs > 0
             ):
-                start_dt = _parse_started_timestamp(content)
-                if start_dt:
-                    wall_elapsed_s = max(0.0, time.time() - start_dt.timestamp())
-                    if wall_elapsed_s > 1.0:
-                        simulated_ns = info.steps_completed * info.timestep_fs * 1e-6
-                        info.ns_per_day = simulated_ns / wall_elapsed_s * 86400
-                        info.wall_elapsed_seconds = wall_elapsed_s
+                if info.wall_elapsed_seconds <= 0:
+                    start_dt = _parse_started_timestamp(content)
+                    if start_dt:
+                        # Prefer Finished-mdrun delta; else live clock while running
+                        wall_elapsed_s = _wall_elapsed_seconds(
+                            content, running=True
+                        )
+                        if wall_elapsed_s > 1.0:
+                            info.wall_elapsed_seconds = wall_elapsed_s
+                if info.wall_elapsed_seconds > 1.0:
+                    simulated_ns = info.steps_completed * info.timestep_fs * 1e-6
+                    info.ns_per_day = (
+                        simulated_ns / info.wall_elapsed_seconds * 86400
+                    )
 
             # ── Completion / error markers ───────────────────────────────────────────
             # GROMACS often still writes Performance + "Finished mdrun" after Kill MD.
