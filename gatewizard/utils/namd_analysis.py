@@ -37,6 +37,7 @@ class NAMDTiming:
     timestep_fs: float = 0.0
     first_timestep: int = 0
     hostname: str = ""
+    wall_elapsed_seconds: float = 0.0
 
 
 @dataclass
@@ -49,6 +50,74 @@ class NAMDProgress:
     timing: Optional[NAMDTiming] = None
     log_file: Optional[Path] = None
     last_updated: float = 0.0
+
+
+def _parse_namd_timing_wall_samples(content: str) -> list[tuple[int, float]]:
+    """Return ``(step, wall_seconds)`` samples from NAMD TIMING lines.
+
+    Modern NAMD 3 logs look like::
+
+        TIMING: 360000  CPU: 169.927, 0.00336/step  Wall: 170.557, 0.00332/step, ...
+
+    Older column-style TIMING lines are also accepted.
+    """
+    samples: list[tuple[int, float]] = []
+
+    # Preferred: explicit Wall: field (NAMD 2.12+ / 3.x)
+    for step_s, wall_s in re.findall(
+        r"^TIMING:\s+(\d+)\s+.*?Wall:\s*([\d.eE+-]+)",
+        content,
+        re.MULTILINE,
+    ):
+        try:
+            samples.append((int(step_s), float(wall_s)))
+        except ValueError:
+            continue
+    if samples:
+        return samples
+
+    # Legacy whitespace columns: TIMING: step ... wall_time
+    for step_s, wall_s in re.findall(
+        r"^TIMING:\s+(\d+)\s+[\d.\-+eE]+\s+[\d.\-+eE]+\s+[\d.\-+eE]+\s+"
+        r"[\d.\-+eE]+\s+[\d.\-+eE]+\s+[\d.\-+eE]+\s+([\d.\-+eE]+)",
+        content,
+        re.MULTILINE,
+    ):
+        try:
+            samples.append((int(step_s), float(wall_s)))
+        except ValueError:
+            continue
+    return samples
+
+
+def _namd_wallclock_seconds(content: str) -> float:
+    """Final ``WallClock:`` summary line, if present."""
+    matches = re.findall(r"^WallClock:\s*([\d.eE+-]+)", content, re.MULTILINE)
+    if not matches:
+        return 0.0
+    try:
+        return float(matches[-1])
+    except ValueError:
+        return 0.0
+
+
+def _namd_benchmark_ns_per_day(content: str) -> float:
+    """Invert Benchmark ``days/ns`` to ns/day (average of samples)."""
+    days_per_ns = re.findall(
+        r"Benchmark time:.*?([\d.eE+-]+)\s+days/ns",
+        content,
+    )
+    vals = []
+    for d in days_per_ns:
+        try:
+            days = float(d)
+        except ValueError:
+            continue
+        if days > 0:
+            vals.append(1.0 / days)
+    if not vals:
+        return 0.0
+    return sum(vals) / len(vals)
 
 
 def parse_namd_log(log_file_path: Path) -> NAMDTiming:
@@ -97,82 +166,73 @@ def parse_namd_log(log_file_path: Path) -> NAMDTiming:
         cuda_matches = re.findall(r"CUDA device \d+", content)
         timing.gpus = len(cuda_matches)
 
-        # Extract TIMING lines for performance analysis
-        timing_lines = re.findall(
-            r"^TIMING:\s+(\d+)\s+[\d\.\-\+e]+\s+[\d\.\-\+e]+\s+[\d\.\-\+e]+\s+[\d\.\-\+e]+\s+[\d\.\-\+e]+\s+[\d\.\-\+e]+\s+([\d\.\-\+e]+)",
-            content,
-            re.MULTILINE,
-        )
+        timing_samples = _parse_namd_timing_wall_samples(content)
+        wall_clock_s = _namd_wallclock_seconds(content)
 
-        # Try alternative TIMING patterns if the first doesn't work
-        if not timing_lines:
-            # Try simpler TIMING pattern
-            timing_lines = re.findall(
-                r"^TIMING:\s+(\d+)\s+.*?(\d+\.\d+)", content, re.MULTILINE
-            )
-            logger.debug(f" Using alternative TIMING pattern")
+        # ENERGY lines give step progress when TIMING is sparse
+        energy_steps = [
+            int(s) for s in re.findall(r"^ENERGY:\s+(\d+)", content, re.MULTILINE)
+        ]
 
-        # Also try ENERGY lines as an alternative
-        if not timing_lines:
-            energy_lines = re.findall(r"^ENERGY:\s+(\d+)", content, re.MULTILINE)
-            if energy_lines:
-                logger.debug(f" Found {len(energy_lines)} ENERGY lines, using last one")
-                last_step = energy_lines[-1]
-                timing_lines = [
-                    (last_step, "0.0")
-                ]  # Fake time since we don't have it from ENERGY
+        # Final coordinate write marks the true last step (may be after last TIMING)
+        final_step_matches = [
+            int(s)
+            for s in re.findall(r"WRITING.*?TO OUTPUT FILE AT STEP (\d+)", content)
+        ]
 
-        # Check for final completion step patterns when simulation finishes
-        # Look for patterns like "WRITING ... TO OUTPUT FILE AT STEP <number>"
-        final_step_matches = re.findall(
-            r"WRITING.*?TO OUTPUT FILE AT STEP (\d+)", content
-        )
-        if final_step_matches:
-            final_step = int(final_step_matches[-1])
-            logger.debug(f" Found final output step: {final_step}")
-            # If this final step is higher than our last timing step, use it
-            if timing_lines:
-                last_timing_step = int(timing_lines[-1][0])
-                if final_step > last_timing_step:
-                    logger.debug(
-                        f" Using final step {final_step} instead of last timing step {last_timing_step}"
-                    )
-                    timing_lines.append((str(final_step), "0.0"))
-            else:
-                timing_lines = [(str(final_step), "0.0")]
-
-        logger.debug(f" Found {len(timing_lines)} TIMING/ENERGY lines")
-
-        if timing_lines:
-            # Get the last timing line for current progress
-            last_step, last_time = timing_lines[-1]
-            timing.steps_completed = int(last_step) - timing.first_timestep
+        last_step = 0
+        last_wall_s = 0.0
+        if timing_samples:
+            last_step, last_wall_s = timing_samples[-1]
             logger.debug(
-                f" Last step: {last_step}, first: {timing.first_timestep}, completed: {timing.steps_completed}"
+                f" Found {len(timing_samples)} TIMING lines; last step={last_step} wall={last_wall_s}"
+            )
+        elif energy_steps:
+            last_step = energy_steps[-1]
+            logger.debug(f" Found {len(energy_steps)} ENERGY lines (no TIMING wall)")
+
+        if final_step_matches:
+            final_step = final_step_matches[-1]
+            if final_step > last_step:
+                logger.debug(
+                    f" Using final output step {final_step} (last TIMING/ENERGY was {last_step})"
+                )
+                last_step = final_step
+            # Prefer WallClock for completed runs; else keep last TIMING wall
+            if wall_clock_s > 0:
+                last_wall_s = wall_clock_s
+            elif last_wall_s <= 0 and timing_samples:
+                last_wall_s = timing_samples[-1][1]
+        elif wall_clock_s > last_wall_s:
+            last_wall_s = wall_clock_s
+
+        if last_step > 0:
+            timing.steps_completed = max(0, last_step - timing.first_timestep)
+            logger.debug(
+                f" Last step: {last_step}, first: {timing.first_timestep}, "
+                f"completed: {timing.steps_completed}"
             )
 
-            # Calculate average time per step
-            total_time = 0.0
-            step_count = 0
-            for step_str, time_str in timing_lines:
-                total_time += float(time_str)
-                step_count += 1
+        if last_wall_s > 0:
+            timing.wall_elapsed_seconds = last_wall_s
+            timing.real_time_hours = last_wall_s / 3600.0
+            if timing.steps_completed > 0:
+                timing.sec_per_step = last_wall_s / timing.steps_completed
 
-            if step_count > 0:
-                timing.sec_per_step = total_time / step_count
-                timing.real_time_hours = float(last_time) / 3600.0
+        if timing.timestep_fs > 0 and timing.steps_completed > 0:
+            timing.simulated_time_ns = (
+                timing.steps_completed * timing.timestep_fs
+            ) / 1_000_000.0
 
-                # Calculate simulated time in nanoseconds
-                if timing.timestep_fs > 0:
-                    timing.simulated_time_ns = (
-                        timing.steps_completed * timing.timestep_fs
-                    ) / 1000000.0
-
-                    # Calculate ns/day performance
-                    if timing.real_time_hours > 0:
-                        timing.ns_per_day = timing.simulated_time_ns / (
-                            timing.real_time_hours / 24.0
-                        )
+            if timing.wall_elapsed_seconds > 0:
+                timing.ns_per_day = timing.simulated_time_ns / (
+                    timing.wall_elapsed_seconds / 86400.0
+                )
+            else:
+                # Early in a run before any TIMING/WallClock: Benchmark estimate
+                bench = _namd_benchmark_ns_per_day(content)
+                if bench > 0:
+                    timing.ns_per_day = bench
 
         # Try to get total steps from the configuration
         # Primary pattern: TCL commands (NAMD 3.0 format)
