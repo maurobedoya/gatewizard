@@ -92,3 +92,4 @@ def test_infer_protocol_from_namd_summary(tmp_path: Path) -> None:
     assert stage["name"] == "Equilibration 1"
     assert len(stage["constraints"]) == 2
     assert stage["constraints"][0]["selection"] == "protein_backbone"
+    assert "protein_backbone" in meta["protocol"]["selections"]

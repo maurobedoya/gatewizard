@@ -80,6 +80,40 @@ def _stage_dict_to_gui_stage(stage: Dict[str, Any]) -> Dict[str, Any]:
     return gui_stage
 
 
+def _standard_gui_selections() -> Dict[str, str]:
+    """Default MDAnalysis aliases used by the GUI protocol editor."""
+    return {
+        "protein_backbone": "protein and backbone",
+        "protein_sidechain": "protein and not backbone",
+        "lipid_head": (
+            "(resname POPC POPE POPS DPPC DMPC DOPC DSPC PC PE PS PA PG PI SM "
+            "OL LA MY ST AR OLE PAL STE LIN CHOL CHL CHOLEST PALM OLEO STEROL) "
+            "and (name P O11 O12 O13 O14 O21 O22 O31 O32 O33 O34 O1P O2P O3P O4P "
+            "OP1 OP2 OP3 OP4 N C11 C12 C13 C14 N31 C32 C33 C34 C35 C1 C2 C3 "
+            "HN1 HN2 HN3 HO2 HO3 HS)"
+        ),
+        "lipid_tail": (
+            "(resname POPC POPE POPS DPPC DMPC DOPC DSPC PC PE PS PA PG PI SM "
+            "OL LA MY ST AR OLE PAL STE LIN CHOL CHL CHOLEST PALM OLEO STEROL) "
+            "and not (name P O11 O12 O13 O14 O21 O22 O31 O32 O33 O34 O1P O2P O3P "
+            "O4P OP1 OP2 OP3 OP4 N C11 C12 C13 C14 N31 C32 C33 C34 C35 C1 C2 C3 "
+            "HN1 HN2 HN3 HO2 HO3 HS)"
+        ),
+        "water": "resname TIP3 HOH WAT SOL TIP4 SPC T3P T4P",
+        "ions": (
+            "resname NA CL K CA MG ZN FE CU SOD CLA POT CAL MAG ZIN IRN COP "
+            "Na+ Cl- K+ Ca2+ Mg2+ Zn2+ Fe2+ Fe3+ Cu2+ NA+ CL- LIT RUB CES BAR"
+        ),
+        "other": (
+            "not (protein or (resname POPC POPE POPS DPPC DMPC DOPC DSPC PC PE "
+            "PS PA PG PI SM OL LA MY ST AR OLE PAL STE LIN CHOL CHL CHOLEST "
+            "PALM OLEO STEROL) or (resname TIP3 HOH WAT SOL TIP4 SPC T3P T4P) "
+            "or (resname NA CL K CA MG ZN FE CU SOD CLA POT CAL MAG ZIN IRN "
+            "COP Na+ Cl- K+ Ca2+ Mg2+ Zn2+ Fe2+ Fe3+ Cu2+ NA+ CL- LIT RUB CES BAR))"
+        ),
+    }
+
+
 def _protocol_from_namd_summary(summary: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     stages_raw = summary.get("stages")
     if not stages_raw:
@@ -104,6 +138,32 @@ def _protocol_from_namd_summary(summary: Dict[str, Any]) -> Optional[Dict[str, A
         "name": summary.get("protocol_name") or "Equilibration Protocol",
         "description": summary.get("description")
         or f"{summary.get('scheme_type', 'Equilibration')} protocol recovered from job folder",
+        "selections": _standard_gui_selections(),
+        "stages": stages,
+    }
+
+
+def _normalize_gui_protocol(protocol: Any) -> Optional[Dict[str, Any]]:
+    """Ensure protocol is GUI-shaped (list constraints + selections map)."""
+    if not isinstance(protocol, dict):
+        return None
+    stages_raw = protocol.get("stages")
+    if not isinstance(stages_raw, list) or not stages_raw:
+        return None
+    stages = [
+        _stage_dict_to_gui_stage(stage) if isinstance(stage, dict) else stage
+        for stage in stages_raw
+        if isinstance(stage, dict)
+    ]
+    if not stages:
+        return None
+    selections = protocol.get("selections")
+    if not isinstance(selections, dict) or not selections:
+        selections = _standard_gui_selections()
+    return {
+        "name": protocol.get("name") or "Equilibration Protocol",
+        "description": protocol.get("description") or "",
+        "selections": selections,
         "stages": stages,
     }
 
@@ -227,7 +287,7 @@ def infer_equilibration_job_metadata(
                     "ensemble": ensemble.strip().upper()
                     if isinstance(ensemble, str) and ensemble.strip()
                     else None,
-                    "protocol": protocol if isinstance(protocol, dict) else None,
+                    "protocol": _normalize_gui_protocol(protocol),
                 }
         except (json.JSONDecodeError, OSError, TypeError, ValueError):
             pass
