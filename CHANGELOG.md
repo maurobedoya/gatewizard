@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Equilibration (NAMD):** production (and any stage that finishes after the last `TIMING` print) no longer shows `0.0 ns/day` — use `Wall:` / final `WallClock:` for performance and elapsed time instead of overwriting wall time with `0.0` when promoting the final output step
+- **Analysis (bilayer thickness):** when the membrane straddles the periodic z boundary, thickness no longer reports the water gap (`L_z − d` ≈ 100 Å); center the bilayer in z before lipyphilic and fold long PBC paths back to the headgroup–headgroup distance (~35 Å for POPC)
+- **Equilibration (Amber/GROMACS):** if official ns/day is missing from the log, estimate it from wall elapsed × simulated time (completed stages included)
 - **Equilibration (NVT):** Amber, NAMD, and GROMACS `01_NVT` templates are true constant-volume NVT through production (aligned with OpenMM); CHARMM-GUI’s NVT packs incorrectly matched NPT after early heating
 - **Equilibration (NAMD NPAT):** steps 6.3–6.6 now use `useConstantArea` like CHARMM-GUI (they incorrectly had NPgT `useConstantRatio` / `SurfaceTensionTarget`)
 - **Equilibration (GROMACS):** GPU `mdrun` lines now include `-ntmpi` (one rank per GPU) with `-ntomp`, required by GROMACS 2026 when OpenMP threads and GPUs are combined
