@@ -196,3 +196,43 @@ def test_refresh_equilibration_run_script_gromacs_keeps_resources(tmp_path: Path
     assert "-ntomp 4" in text
     assert "-nb gpu" in text
     assert "-gpu_id 0" in text
+
+
+def test_prepare_cluster_resubmit_namd(tmp_path: Path) -> None:
+    from gatewizard.utils.equilibration_resume import prepare_cluster_resubmit
+
+    eq = tmp_path / "job"
+    eq.mkdir()
+    (eq / "run_equilibration.sh").write_text(
+        'RESUME="${RESUME:-0}"\n_gw_namd_stage_done() { true; }\n'
+    )
+    (eq / "step1_equilibration.conf").write_text("steps 100")
+    (eq / "step2_equilibration.conf").write_text("steps 100")
+    stem = "step1_equilibration"
+    (eq / f"{stem}.coor").write_text("coor")
+    (eq / f"{stem}.log").write_text("End of program\n")
+
+    cmd, point = prepare_cluster_resubmit(eq, "namd", "bash run_equilibration_cluster.sh")
+
+    assert cmd.startswith("RESUME=1 ")
+    assert point.can_resume is True
+    assert point.completed_stages == 1
+    assert point.stage_stem == "step2_equilibration"
+
+
+def test_resume_checkpoint_paths_namd(tmp_path: Path) -> None:
+    from gatewizard.utils.equilibration_resume import resume_checkpoint_paths
+
+    eq = tmp_path / "job"
+    eq.mkdir()
+    (eq / "step1_equilibration.conf").write_text("steps 100")
+    (eq / "step2_equilibration.conf").write_text("steps 100")
+    stem = "step1_equilibration"
+    (eq / f"{stem}.coor").write_text("coor")
+    (eq / f"{stem}.log").write_text("End of program\n")
+    (eq / "step2_equilibration.log").write_text("FATAL ERROR: CUDA\n")
+
+    kept = resume_checkpoint_paths(eq, "namd")
+    assert (eq / f"{stem}.coor").resolve() in kept
+    assert (eq / f"{stem}.log").resolve() in kept
+    assert (eq / "step2_equilibration.log").resolve() not in kept

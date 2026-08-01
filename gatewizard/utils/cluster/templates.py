@@ -29,7 +29,8 @@ cd "$workdir" || exit 1
   while true; do
     sleep 60
     rsync -a --include='step*.log' --include='step*.xst' --include='step*.mdinfo' \
-      --include='step*.mdout' --include='step*.rst7' --include='step*.rst' --exclude='*' \
+      --include='step*.mdout' --include='step*.rst7' --include='step*.rst' \
+      --include='step*.coor' --include='step*.gro' --exclude='*' \
       "$workdir"/ "$SUBMIT_DIR"/ 2>/dev/null || true
   done
 ) &
@@ -82,7 +83,8 @@ cd "$workdir" || exit 1
   while true; do
     sleep 60
     rsync -a --include='step*.log' --include='step*.xst' --include='step*.mdinfo' \
-      --include='step*.mdout' --include='step*.rst7' --include='step*.rst' --exclude='*' \
+      --include='step*.mdout' --include='step*.rst7' --include='step*.rst' \
+      --include='step*.coor' --include='step*.gro' --exclude='*' \
       "$workdir"/ "$SUBMIT_DIR"/ 2>/dev/null || true
   done
 ) &
@@ -120,7 +122,8 @@ cd "$workdir" || exit 1
   while true; do
     sleep 60
     rsync -a --include='step*.log' --include='step*.xst' --include='step*.mdinfo' \
-      --include='step*.mdout' --include='step*.rst7' --include='step*.rst' --exclude='*' \
+      --include='step*.mdout' --include='step*.rst7' --include='step*.rst' \
+      --include='step*.coor' --include='step*.gro' --exclude='*' \
       "$workdir"/ "$SUBMIT_DIR"/ 2>/dev/null || true
   done
 ) &

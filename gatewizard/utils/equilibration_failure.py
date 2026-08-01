@@ -160,23 +160,31 @@ _ARCHIVE_GLOBS = (
 )
 
 
-def archive_previous_run_outputs(eq_dir: Path) -> int:
+def archive_previous_run_outputs(eq_dir: Path, *, engine: Optional[str] = None) -> int:
     """Move prior MD outputs into ``_previous_cluster_run/<stamp>/``.
 
     Keeps inputs (``.conf`` / ``.mdp`` / ``.tpr`` / scripts) so a resubmit
     starts clean for status UI and remote upload.
 
-    Amber restart continuity: when ``step*.rst7`` exist, keep matching
-    ``.mdout`` / ``.mdinfo`` so ``RESUME=1`` can skip finished stages.
+    When ``engine`` is set (or inferred), checkpoint files for completed
+    stages are kept so ``RESUME=1`` can skip finished stages on resubmit.
     """
     from datetime import datetime
 
+    from gatewizard.utils.equilibration_resume import resume_checkpoint_paths
+
     eq_dir = Path(eq_dir)
-    amber_resume_stems = {
-        p.stem
-        for p in eq_dir.glob("step*.rst7")
-        if p.is_file() and "_previous_cluster_run" not in p.parts
-    }
+    if engine is None:
+        try:
+            from gatewizard.utils.equilibration_job_metadata import (
+                infer_equilibration_job_metadata,
+            )
+
+            meta = infer_equilibration_job_metadata(eq_dir, heal=False)
+            engine = meta.get("engine") if isinstance(meta, dict) else None
+        except Exception:
+            engine = None
+    preserve = resume_checkpoint_paths(eq_dir, engine or "")
     moved = 0
     to_move: List[Path] = []
     for pattern in _ARCHIVE_GLOBS:
@@ -186,12 +194,13 @@ def archive_previous_run_outputs(eq_dir: Path) -> int:
             # Never archive the archive tree itself
             if "_previous_cluster_run" in path.parts:
                 continue
-            if (
-                amber_resume_stems
-                and path.suffix.lower() in {".mdout", ".mdinfo"}
-                and path.stem in amber_resume_stems
-            ):
-                continue
+            if preserve:
+                try:
+                    if path.resolve() in preserve:
+                        continue
+                except OSError:
+                    if path in preserve:
+                        continue
             to_move.append(path)
     if not to_move:
         return 0

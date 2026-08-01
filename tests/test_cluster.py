@@ -390,6 +390,23 @@ def test_archive_previous_run_outputs_and_newer_than(tmp_path: Path):
     assert not remote_job_is_active({"mode": "remote", "last_remote_state": "FAILED"})
 
 
+def test_archive_preserves_namd_resume_checkpoints(tmp_path: Path) -> None:
+    from gatewizard.utils.equilibration_failure import archive_previous_run_outputs
+
+    stem = "step1_equilibration"
+    (tmp_path / f"{stem}.conf").write_text("steps 100")
+    (tmp_path / f"{stem}.coor").write_text("coor")
+    (tmp_path / f"{stem}.log").write_text("End of program\n")
+    failed = tmp_path / "step2_equilibration.log"
+    failed.write_text("FATAL ERROR: CUDA\n", encoding="utf-8")
+
+    n = archive_previous_run_outputs(tmp_path, engine="namd")
+    assert n >= 1
+    assert (tmp_path / f"{stem}.coor").is_file()
+    assert (tmp_path / f"{stem}.log").is_file()
+    assert not failed.exists()
+
+
 def test_resolve_compute_node_and_midrun_sync(monkeypatch):
     from gatewizard.utils.cluster import midrun as midrun_mod
 

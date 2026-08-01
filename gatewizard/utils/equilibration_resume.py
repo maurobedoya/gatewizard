@@ -556,3 +556,59 @@ def get_equilibration_resume_point(workdir: Path, engine: str) -> EquilibrationR
         completed_stages=completed,
         total_stages=total,
     )
+
+
+# Checkpoint suffixes required by ``_gw_*_stage_done`` in generated run scripts.
+_RESUME_CHECKPOINT_SUFFIXES: dict[str, tuple[str, ...]] = {
+    "namd": (".coor", ".log"),
+    "gromacs": (".gro", ".log"),
+    "openmm": (".rst", ".log"),
+    "amber": (".rst7", ".mdout", ".mdinfo"),
+}
+
+
+def resume_checkpoint_paths(eq_dir: Path, engine: str) -> frozenset[Path]:
+    """Paths to keep when archiving prior cluster outputs for a RESUME resubmit."""
+    eq_dir = Path(eq_dir)
+    engine = (engine or "").strip().lower()
+    suffixes = _RESUME_CHECKPOINT_SUFFIXES.get(engine)
+    if not suffixes:
+        return frozenset()
+
+    paths: set[Path] = set()
+    for _key, _name, stem in _stage_stems_on_disk(eq_dir, engine):
+        keep = _is_stage_complete(eq_dir, engine, stem)
+        if engine == "amber" and (eq_dir / f"{stem}.rst7").is_file():
+            keep = True
+        if not keep:
+            continue
+        for suffix in suffixes:
+            candidate = eq_dir / f"{stem}{suffix}"
+            if candidate.is_file():
+                try:
+                    paths.add(candidate.resolve())
+                except OSError:
+                    paths.add(candidate)
+    return frozenset(paths)
+
+
+def prepare_cluster_resubmit(
+    eq_dir: Path,
+    engine: str,
+    run_command: str,
+) -> tuple[str, EquilibrationResumePoint]:
+    """Prefix ``run_command`` with ``RESUME=1`` when stage-level continue is possible."""
+    eq_dir = Path(eq_dir)
+    engine = (engine or "").strip().lower()
+    point = get_equilibration_resume_point(eq_dir, engine)
+    if "RESUME=" in run_command:
+        return run_command, point
+    if not point.can_resume:
+        return run_command, point
+
+    script = eq_dir / "run_equilibration.sh"
+    if not equilibration_script_supports_resume(script):
+        refresh_equilibration_run_script(eq_dir, engine)
+    if equilibration_script_supports_resume(script):
+        return f"RESUME=1 {run_command}", point
+    return run_command, point
