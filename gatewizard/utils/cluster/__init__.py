@@ -1,0 +1,116 @@
+"""Remote HPC cluster utilities (Slurm for now, but we will add more soon...)."""
+
+from gatewizard.utils.cluster.modules import (
+    group_engine_modules,
+    parse_module_avail,
+    prefer_gpu_modules,
+)
+from gatewizard.utils.cluster.paths import (
+    expand_remote_path,
+    join_remote,
+    suggest_submit_root,
+)
+from gatewizard.utils.cluster.probe import (
+    apply_probe_defaults,
+    enrich_execution_resources,
+    probe_cluster,
+    read_batch_script_resources,
+    read_job_metadata,
+    update_execution_fields,
+    write_execution_metadata,
+)
+from gatewizard.utils.cluster.midrun import (
+    expand_scratch_job_dir,
+    resolve_compute_node,
+    sync_scratch_progress_to_submit,
+    PROGRESS_RSYNC_FILTERS,
+)
+from gatewizard.utils.cluster.resources import (
+    canonicalize_slurm_state,
+    parse_sbatch_output,
+    parse_sinfo,
+    parse_sinfo_nodes,
+    parse_squeue_me,
+    prefer_partitions,
+    query_node_gres,
+    summarize_node_gpu_label,
+)
+from gatewizard.utils.cluster.scheduler import SlurmAdapter, get_scheduler
+from gatewizard.utils.cluster.ssh import (
+    ClusterSSHError,
+    close_session,
+    connect_ssh,
+    format_byte_size,
+    local_dir_byte_size,
+    remote_dir_byte_size,
+    remote_file_count,
+    rsync_from_remote,
+    rsync_to_remote,
+    run_remote,
+    verify_remote_files,
+    parse_rsync_progress_line,
+)
+from gatewizard.utils.cluster.templates import (
+    default_template_for_strategy,
+    render_batch_script,
+)
+from gatewizard.utils.cluster.types import (
+    WORKDIR_STRATEGIES,
+    BatchScriptRequest,
+    ClusterProfile,
+    ModulePackage,
+    NodeInfo,
+    ProbeResult,
+    RemoteJobHandle,
+)
+
+__all__ = [
+    "WORKDIR_STRATEGIES",
+    "BatchScriptRequest",
+    "ClusterProfile",
+    "ClusterSSHError",
+    "ModulePackage",
+    "ProbeResult",
+    "RemoteJobHandle",
+    "SlurmAdapter",
+    "apply_probe_defaults",
+    "canonicalize_slurm_state",
+    "close_session",
+    "connect_ssh",
+    "default_template_for_strategy",
+    "enrich_execution_resources",
+    "expand_remote_path",
+    "expand_scratch_job_dir",
+    "format_byte_size",
+    "local_dir_byte_size",
+    "get_scheduler",
+    "group_engine_modules",
+    "join_remote",
+    "parse_module_avail",
+    "parse_rsync_progress_line",
+    "parse_sbatch_output",
+    "parse_sinfo",
+    "parse_sinfo_nodes",
+    "parse_squeue_me",
+    "prefer_gpu_modules",
+    "prefer_partitions",
+    "PROGRESS_RSYNC_FILTERS",
+    "probe_cluster",
+    "NodeInfo",
+    "query_node_gres",
+    "read_batch_script_resources",
+    "read_job_metadata",
+    "remote_dir_byte_size",
+    "remote_file_count",
+    "render_batch_script",
+    "resolve_compute_node",
+    "rsync_from_remote",
+    "rsync_to_remote",
+    "run_remote",
+    "suggest_submit_root",
+    "summarize_node_gpu_label",
+    "sync_scratch_progress_to_submit",
+    "update_execution_fields",
+    "verify_remote_files",
+    "write_execution_metadata",
+]
