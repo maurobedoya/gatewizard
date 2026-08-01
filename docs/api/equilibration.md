@@ -15,6 +15,27 @@ from gatewizard.tools.equilibration import (
 )
 ```
 
+## Remote cluster helpers (Slurm-first)
+
+Programmatic helpers for probing modules, rendering batch scripts, and recording remote `execution` metadata live in `gatewizard.utils.cluster` (used by the GUI). Typical flow: generate inputs locally (produces `run_equilibration.sh` for local runs and `run_equilibration_cluster.sh` for Slurm), then wrap the cluster runner with `render_batch_script(...)` (`run_command` defaults to `bash run_equilibration_cluster.sh`; workdir strategy e.g. `scratch_job_id`).
+
+```python
+from gatewizard.utils.cluster import BatchScriptRequest, render_batch_script
+
+script = render_batch_script(
+    BatchScriptRequest(
+        job_name="eq_popc",
+        cpus=8,
+        gpus=1,
+        modules=["md/namd/3.0b6+cuda"],
+        workdir_strategy="scratch_job_id",
+        scratch_root="$SCRATCH_DIR",
+    )
+)
+```
+
+See the user guide section **Running on HPC Clusters** for the GUI workflow (Settings → Clusters, Equilibration Run target).
+
 ## Class: NAMDEquilibrationManager
 
 Manager for NAMD equilibration simulations with support for multi-stage protocols, flexible restraints, and ensemble control.

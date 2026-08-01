@@ -9,13 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Cluster mid-run progress:** sync `step*.log` (and related progress files) from node-local scratch → submit directory — batch scripts rsync every 60s; API helper SSHs to the allocated node for Watching/Pull on jobs already running
+- **Cluster status:** job-status records allocated CPUs, node name, and node GPU type (from `sinfo` GRES) on `execution` for Watching cards
+- **Equilibration job metadata:** if `equilibration_job.json` has only an `execution` block, infer protocol/ensemble/input_dir from `protocol_summary.json` and heal the job JSON (fixes **Use in form** after cluster Watching)
+- **Equilibration (remote / Slurm):** `gatewizard.utils.cluster` — module/`sinfo` parsers, workdir strategies (scratch stage-in/out), editable batch templates, Slurm adapter (+ PBS stub), SSH/rsync helpers, and `execution` metadata on `equilibration_job.json`
+- **Equilibration dual run scripts:** generate/refresh write `run_equilibration.sh` (local Executable) and `run_equilibration_cluster.sh` (module-friendly `namd3`/`gmx`/`python3`/`pmemd[.cuda]`); Slurm defaults to `bash run_equilibration_cluster.sh`
+- **Equilibration failure detection:** scan stage logs / Slurm outs for FATAL / CUDA stub / Error in Stage (empty `.out` no longer hides NAMD failures)
+- **Cluster probe:** list compute nodes via `sinfo -N`; batch templates support `#SBATCH --nodelist=` / `--constraint`
 - **Equilibration (Amber):** full `AmberEquilibrationManager` — mdin templates for NVT/NPT/NPAT/NPgT, MDA GROUP positional restraints (no dihedrals), `run_equilibration.sh` with resume/resources, executable discovery (`pmemd.cuda` → `pmemd` → MPI → `sander`), and `amber_analysis` progress/energetic parsing
 - **Equilibration templates:** generated inputs stamp GateWizard API version, local generation time (with timezone), and shared templates version (`v1`) for traceability
 
 ### Fixed
 
+- **Cluster upload:** Paramiko SFTP recursive put fails clearly on zero/partial uploads; `verify_remote_files` ensures the launched run script / `.slurm` exist before `sbatch`
+- **Cluster probe:** reject help-text tokens from broken `module avail` output; surface probe errors; prefer GPU partitions via `prefer_partitions`
 - **Equilibration (NAMD):** production (and any stage that finishes after the last `TIMING` print) no longer shows `0.0 ns/day` — use `Wall:` / final `WallClock:` for performance and elapsed time instead of overwriting wall time with `0.0` when promoting the final output step
-- **Analysis (bilayer thickness):** when the membrane straddles the periodic z boundary, thickness no longer reports the water gap (`L_z − d` ≈ 100 Å); center the bilayer in z before lipyphilic and fold long PBC paths back to the headgroup–headgroup distance (~35 Å for POPC)
+- **Analysis (bilayer thickness):** when the membrane straddles the periodic z boundary, thickness no longer reports the water gap (`L_z − d` ≈ 100 Å); center the bilayer in z before lipyphilic and fold long PBC paths back to the headgroup–headgroup distance (~35-40 Å for POPC)
 - **Equilibration (Amber/GROMACS):** if official ns/day is missing from the log, estimate it from wall elapsed × simulated time (completed stages included)
 - **Equilibration (NVT):** Amber, NAMD, and GROMACS `01_NVT` templates are true constant-volume NVT through production (aligned with OpenMM); CHARMM-GUI’s NVT packs incorrectly matched NPT after early heating
 - **Equilibration (NAMD NPAT):** steps 6.3–6.6 now use `useConstantArea` like CHARMM-GUI (they incorrectly had NPgT `useConstantRatio` / `SurfaceTensionTarget`)

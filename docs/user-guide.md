@@ -281,7 +281,7 @@ After successful preparation, you'll find:
 
 *GUI: Equilibration tab.*
 
-The **Equilibration** tab automates the generation and execution of multi-stage equilibration protocols for molecular dynamics simulations using **NAMD**, **OpenMM**, and **GROMACS**.
+The **Equilibration** tab automates the generation and execution of multi-stage equilibration protocols for molecular dynamics simulations using **NAMD**, **GROMACS**, **OpenMM**, and **Amber**.
 
 ### Overview
 
@@ -307,11 +307,12 @@ Equilibration is critical before production MD simulations. This tab:
 
 #### 3. Select MD Engine
 
-Currently supported: **NAMD**, **OpenMM**, and **GROMACS**
+Currently supported: **NAMD**, **GROMACS**, **OpenMM**, and **Amber**
 
 - NAMD 2.x and NAMD 3 compatible
-- OpenMM uses engine-specific Python runner scripts and DCD output
 - GROMACS equilibration uses CHARMM-GUI templates under the hood
+- OpenMM uses engine-specific Python runner scripts and DCD output
+- Amber uses `pmemd` / `pmemd.cuda` (GPU) with generated MDIN stages
 - GPU acceleration supported where the engine allows it
 
 #### 4. Configure Engine Settings
@@ -330,6 +331,11 @@ Currently supported: **NAMD**, **OpenMM**, and **GROMACS**
 
 - Uses `gmx` for `grompp` / `mdrun`
 - Colvars activation lines are injected automatically when COM restraints are enabled
+
+**Amber**:
+
+- Uses `pmemd` (CPU) or `pmemd.cuda` (GPU) for MD stages; minimization stays on CPU `pmemd`
+- Executable discovery in **Settings**; cluster submit rewrites the cluster runner when GPUs &gt; 0
 
 #### 5. Select Equilibration Scheme
 
@@ -438,7 +444,7 @@ This creates:
 
 - Engine-specific configuration files for each stage
 - Restraint files (PDB format with beta factors)
-- Run script (`run_equilibration.sh`)
+- Run scripts (`run_equilibration.sh` for local; `run_equilibration_cluster.sh` for Slurm)
 - Protocol summary (`protocol_summary.json`)
 
 If COM restraints are enabled, GateWizard also writes the corresponding colvars
@@ -457,25 +463,46 @@ equilibration/namd/
 ├── step2_restraints.pdb
 ├── ...
 ├── run_equilibration.sh
+├── run_equilibration_cluster.sh
 └── protocol_summary.json
 ```
 
-#### 9. Run Equilibration
+#### 9. Run locally or from a job card
 
-**Click "Run Equilibration"**
+After **Generate Input Files**, start MD from the left panel or from a job card in **Progress**:
 
-Options:
+- **Run locally** (left panel) — runs `run_equilibration.sh` in the current output folder
+- **Progress → job card** — each generated or discovered run appears as a compact card; use **Run locally** on the card to start or resume, or **Run on cluster…** for Slurm (see [Running on HPC Clusters](#running-on-hpc-clusters))
 
-- **Background process**: Runs independently, terminal can be closed
-- **Progress tracking**: Monitor via log files
-- **Stage-by-stage**: Each stage runs sequentially
-- **Automatic**: Stops on error
+**Use in form** on a card loads that job’s engine, protocol stages, and resources into the right-hand protocol editor (from `equilibration_job.json` / `protocol_summary.json`).
 
-**Monitoring:**
+#### 10. Monitor in Progress
 
-- Check `.log` files for each stage
-- Review DCD trajectory files
-- Monitor energy output
+The **Progress** strip lists all equilibration folders under the working directory. Toolbar (single row):
+
+- **Auto** + interval (seconds, default 60) — poll **watched** cards on a timer; manual refresh icon when Auto is off or for an immediate update
+- **Location** — All | Local | Remote
+- **Status** — All | Pending | Running | Completed | Cancelled | Failed | Ready (Slurm state for remote jobs; local run state otherwise)
+- **Cluster** (when remote jobs exist) — pick a profile, optional password, **Connect** / **Disconnect**; one shared SSH session for all cards and the cluster dialog
+
+Each job card shows engine, Local/Remote badge (Slurm id, node, scheduler state when known), generation date, MD **Runtime** from stage logs, a stage progress bar, and optional **Local / Remote** sync ring (folder sizes; **Measure remote** when connected).
+
+Card actions:
+
+- **Watch** — poll status for that job (turns **Auto** on; clearing all watches turns it off). Remote **Watch** polls Slurm and syncs lightweight stage logs only (`step*.log`, mdout, Slurm outs — not trajectories); stage bars update from **local** logs after sync. An amber banner appears if you watch a remote job without **Connect** in the toolbar.
+- **Pull** — full download from the cluster (progress bar); **Pull (partial)** while the job is still running
+- **Cluster…** / **Run on cluster…** / **Resubmit…** — submit, status, cancel, or resubmit (reuses the Progress **Connect** session when active)
+- **Stages** — per-stage progress and ns/day
+- **Details** — Slurm/process info and an inline log viewer (**Head** / **Tail**, presets 50–1000 lines or **Custom…** up to 100,000 lines)
+- **Use in form** — load protocol into the editor
+
+Remote jobs **pending in queue** show an amber indicator and stage outline until Slurm assigns a node.
+
+**Monitoring (files):**
+
+- Check `.log` files for each stage (or use **Details** on the card)
+- Review trajectory files after stages complete
+- Monitor energy output in logs
 
 ### COM Restraints
 
@@ -558,17 +585,40 @@ into the generated engine inputs automatically.
 
 ### Running on HPC Clusters
 
-The generated `run_equilibration.sh` can be adapted for:
+GateWizard submits equilibration to a remote Slurm cluster from the **job card** (generate locally first):
 
-- SLURM job scheduler
-- PBS/Torque systems
-- SGE clusters
+1. **Settings → Clusters** — save a profile (host, user, SSH key path, submit/scratch roots, workdir strategy). Passwords are never stored; optional **Connect & probe** here is only a connection test.
+2. **Equilibration** — set protocol / engine / CPU·GPU, then **Generate Input Files**. Use **Run locally** on the left panel, or open the job card and choose **Run on cluster…**.
+3. In the **Run on cluster** dialog: pick a profile, **Connect & probe** (discovers real `module avail` / partitions), review remote path, partition, time, modules, CPUs/GPUs, then **Upload & submit**. Upload is verified before `sbatch` (empty remote folders no longer reach the scheduler). If you already **Connect**ed in the Progress toolbar, the dialog reuses that session.
+4. **Progress** filters: **Location** (All | Local | Remote) and **Status** (All | Pending | Running | Completed | Cancelled | Failed | Ready). Remote cards show a badge with Slurm id, node, and scheduler state; use **Cluster…** on the card for Status / Cancel / resubmit, and **Pull** on the card to download files (Watching does not replace Pull).
 
-Modify the script header to add:
+Workdir strategies (profile setting):
+
+- **Run in submit directory** — run where files were uploaded
+- **Scratch per Slurm job id** — copy to `$SCRATCH_DIR/$SLURM_JOB_ID`, run, copy back (common on HPC)
+- **Scratch named / TMPDIR** — variants of the same pattern
+- **Custom batch template** — edit `run_equilibration.slurm` placeholders for site-specific software paths
+
+Resource choices after probe:
+
+- **Modules** — parsed from `module avail`; prefer `+cuda` variants when GPUs &gt; 0
+- **Partition** — from `sinfo`; prefer GPU partitions when GPUs are requested (Slurm allocates the node)
+- **Node (optional)** — from `sinfo -N`; pick a host that reports GPU GRES when using CUDA engines. Leaving this empty lets Slurm choose any node in the partition (CPU-only hosts often show `CUDA driver: 0.0` / stub library and fail)
+- **CPUs / GPUs / time** — seeded from the generated job / left panel; editable in the dialog
+
+**Watching** a remote job card polls Slurm status and runs a **light log sync** (`pull_logs`: stage logs and Slurm outs, not trajectories), then re-reads **local** stage logs for the progress bar. Use **Connect** in the Progress toolbar (or an SSH key on the profile) so polls can reach the cluster; otherwise an amber banner warns that status sync is limited. For a full snapshot including trajectories, click **Pull** on the card. Under **scratch** workdir strategies, MD writes on the compute node; the batch script also rsyncs `step*.log` every 60s into the submit directory on new jobs, and Watch/Pull can copy logs from node scratch before download.
+
+Generate writes two runners:
+
+- **`run_equilibration.sh`** — local Executable path (used by **Run locally** / Continue)
+- **`run_equilibration_cluster.sh`** — module-friendly names (`namd3`, `gmx`, `python3`, `pmemd.cuda` / `pmemd`); no `/mnt/c/...` paths
+
+`run_equilibration.slurm` wraps modules, `#SBATCH` resources, and scratch staging, then runs `bash run_equilibration_cluster.sh`. Older folders without the cluster script still fall back to `run_equilibration.sh`. You can still edit the batch script manually if needed:
+
 ```bash
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=16
-#SBATCH --gres=gpu:1
+#SBATCH --gpus=1
 #SBATCH --time=24:00:00
 ```
 
