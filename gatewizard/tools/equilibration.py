@@ -2192,13 +2192,26 @@ class NAMDEquilibrationManager:
                 f"System PDB not found: {system_pdb}, skipping restraints"
             )
 
-        # Step 4: Generate run script
-        self.logger.info("Generating run script...")
+        # Step 4: Generate run scripts (local + cluster)
+        self.logger.info("Generating run scripts...")
         run_script_content = self.generate_run_script(protocols_dict, namd_executable)
         run_script = namd_dir / "run_equilibration.sh"
         run_script.write_text(run_script_content)
         run_script.chmod(0o755)
         self.logger.info(f"  Generated: {run_script.name}")
+        try:
+            from gatewizard.utils.equilibration_cluster_script import (
+                cluster_engine_executable,
+                write_cluster_run_script,
+            )
+
+            cluster_exe = cluster_engine_executable("namd", namd_executable)
+            write_cluster_run_script(
+                namd_dir, self.generate_run_script(protocols_dict, cluster_exe)
+            )
+            self.logger.info("  Generated: run_equilibration_cluster.sh")
+        except Exception as exc:
+            self.logger.warning(f"  Could not write cluster run script: {exc}")
 
         # Step 5: Create protocol summary
         protocol_summary = {
@@ -4122,6 +4135,36 @@ class OpenMMEquilibrationManager:
             num_gpus=compute["num_gpus"] or 1,
         )
         self.logger.info(f"Run script: {run_script_path.name}")
+        try:
+            from gatewizard.utils.equilibration_cluster_script import (
+                CLUSTER_RUN_SCRIPT,
+                cluster_engine_executable,
+                stamp_cluster_run_script_header,
+            )
+
+            cluster_py = cluster_engine_executable("openmm", "python")
+            cluster_path = self.generate_run_script(
+                stage_config_names=stage_config_names,
+                openmm_dir=openmm_dir,
+                prmtop_name=prmtop_name,
+                inpcrd_name=inpcrd_name,
+                bilayer_pdb_name=bilayer_pdb_name,
+                cpu_cores=compute["cpu_cores"],
+                use_gpu=compute["use_gpu"],
+                gpu_id=compute["gpu_id"],
+                num_gpus=compute["num_gpus"] or 1,
+                python_executable=cluster_py,
+                script_filename=CLUSTER_RUN_SCRIPT,
+            )
+            cluster_path.write_text(
+                stamp_cluster_run_script_header(
+                    cluster_path.read_text(encoding="utf-8")
+                ),
+                encoding="utf-8",
+            )
+            self.logger.info(f"Cluster run script: {cluster_path.name}")
+        except Exception as exc:
+            self.logger.warning(f"Could not write cluster run script: {exc}")
         self.logger.info("=== OpenMM equilibration setup complete ===")
 
         # --- COM restraint (writes com_restraint_params.json for omm_restraints.py) ---
@@ -4421,6 +4464,8 @@ class OpenMMEquilibrationManager:
         gpu_id: int = 0,
         num_gpus: int = 1,
         platform: Optional[str] = None,
+        python_executable: str = "python",
+        script_filename: str = "run_equilibration.sh",
     ) -> Path:
         """
         Generate a bash script that runs all equilibration stages sequentially.
@@ -4444,9 +4489,11 @@ class OpenMMEquilibrationManager:
             gpu_id: First GPU device index for ``--device``.
             num_gpus: Number of consecutive GPU devices starting at ``gpu_id``.
             platform: Explicit OpenMM platform name (CUDA / OpenCL / CPU / Metal).
+            python_executable: Default Python interpreter for the script.
+            script_filename: Output basename (local or cluster runner).
 
         Returns:
-            Path to the generated ``run_equilibration.sh`` script.
+            Path to the generated run script.
         """
         default_platform = (platform or "").strip()
         if not default_platform and use_gpu is False:
@@ -4466,6 +4513,7 @@ class OpenMMEquilibrationManager:
             device_index = ",".join(str(gid + i) for i in range(ngpu))
 
         threads = int(cpu_cores) if cpu_cores and int(cpu_cores) > 0 else None
+        py_cmd = (python_executable or "python").strip() or "python"
 
         lines = [
             "#!/bin/bash",
@@ -4492,8 +4540,8 @@ class OpenMMEquilibrationManager:
                 "",
             ]
         lines += [
-            "# Override Python interpreter with: PYTHON=python3 bash run_equilibration.sh",
-            'PYTHON="${PYTHON:-python}"',
+            f"# Override Python interpreter with: PYTHON=python3 bash {script_filename}",
+            f'PYTHON="${{PYTHON:-{py_cmd}}}"',
             f'PRMTOP="{prmtop_name}"',
             f'INPCRD="{inpcrd_name}"',
         ]
@@ -4550,7 +4598,7 @@ class OpenMMEquilibrationManager:
         lines.append('echo "Equilibration complete."')
         lines.append("")
 
-        script_path = openmm_dir / "run_equilibration.sh"
+        script_path = openmm_dir / script_filename
         script_path.write_text("\n".join(lines))
         script_path.chmod(0o755)
         return script_path
@@ -6779,6 +6827,7 @@ class GROMACSEquilibrationManager:
         use_gpu: bool = False,
         gpu_id: int = 0,
         num_gpus: int = 1,
+        script_filename: str = "run_equilibration.sh",
     ) -> Path:
         """Generate a bash run script for the full GROMACS equilibration protocol.
 
@@ -6797,9 +6846,10 @@ class GROMACSEquilibrationManager:
             use_gpu: When True, enable GPU offload (``-nb gpu -pme gpu``).
             gpu_id: First GPU device index for ``-gpu_id``.
             num_gpus: Number of consecutive GPU devices starting at ``gpu_id``.
+            script_filename: Output basename (local or cluster runner).
 
         Returns:
-            Path to the written ``run_equilibration.sh``.
+            Path to the written run script.
         """
         # Dynamics stages may use GPU offload; energy minimisation cannot
         # (PME GPU rejects non-dynamical integrators such as steep/cg).
@@ -6885,7 +6935,7 @@ class GROMACSEquilibrationManager:
             "",
             'echo "GROMACS equilibration complete."',
         ]
-        script_path = gromacs_dir / "run_equilibration.sh"
+        script_path = gromacs_dir / script_filename
         script_path.write_text("\n".join(lines) + "\n")
         script_path.chmod(0o755)
         self.logger.info(f"Run script: {script_path.name}")
@@ -7359,7 +7409,7 @@ class GROMACSEquilibrationManager:
                     "No PDB found in output dir; COM colvars file not generated."
                 )
 
-        # --- Run script ---
+        # --- Run scripts (local + cluster) ---
         compute = resolve_compute_resources_from_stages(stage_params_list)
         run_script = self.generate_run_script(
             gromacs_dir=gromacs_dir,
@@ -7374,6 +7424,37 @@ class GROMACSEquilibrationManager:
             gpu_id=compute["gpu_id"],
             num_gpus=compute["num_gpus"] or 1,
         )
+        try:
+            from gatewizard.utils.equilibration_cluster_script import (
+                CLUSTER_RUN_SCRIPT,
+                cluster_engine_executable,
+                stamp_cluster_run_script_header,
+            )
+
+            cluster_gmx = cluster_engine_executable("gromacs", gmx_executable)
+            cluster_path = self.generate_run_script(
+                gromacs_dir=gromacs_dir,
+                gro_name=gro_path.name,
+                top_name=top_path.name,
+                ndx_name=ndx_name,
+                n_stages=n_eq_stages,
+                gmx_executable=cluster_gmx,
+                gmxrc_path=None,
+                cpu_cores=compute["cpu_cores"],
+                use_gpu=compute["use_gpu"],
+                gpu_id=compute["gpu_id"],
+                num_gpus=compute["num_gpus"] or 1,
+                script_filename=CLUSTER_RUN_SCRIPT,
+            )
+            cluster_path.write_text(
+                stamp_cluster_run_script_header(
+                    cluster_path.read_text(encoding="utf-8")
+                ),
+                encoding="utf-8",
+            )
+            self.logger.info(f"Cluster run script: {cluster_path.name}")
+        except Exception as exc:
+            self.logger.warning(f"Could not write cluster run script: {exc}")
 
         self.logger.info("=== GROMACS equilibration setup complete ===")
         return {
@@ -7913,8 +7994,9 @@ class AmberEquilibrationManager:
         use_gpu: Optional[bool] = None,
         gpu_id: int = 0,
         num_gpus: int = 1,
+        script_filename: str = "run_equilibration.sh",
     ) -> Path:
-        """Generate ``run_equilibration.sh`` for Amber ``pmemd`` / ``sander``.
+        """Generate run script for Amber ``pmemd`` / ``sander``.
 
         Energy minimization prefers a CPU binary when the selected executable is
         ``pmemd.cuda`` (CHARMM-GUI caution). Dynamics use the selected executable;
@@ -7991,7 +8073,7 @@ class AmberEquilibrationManager:
             ]
 
         lines += ['echo "Amber equilibration complete."', ""]
-        script_path = amber_dir / "run_equilibration.sh"
+        script_path = amber_dir / script_filename
         script_path.write_text("\n".join(lines))
         script_path.chmod(0o755)
         self.logger.info(f"Run script: {script_path.name}")
@@ -8167,6 +8249,37 @@ class AmberEquilibrationManager:
             gpu_id=compute["gpu_id"],
             num_gpus=compute["num_gpus"] or 1,
         )
+        try:
+            from gatewizard.utils.equilibration_cluster_script import (
+                CLUSTER_RUN_SCRIPT,
+                cluster_engine_executable,
+                stamp_cluster_run_script_header,
+            )
+
+            cluster_exe = cluster_engine_executable(
+                "amber", exe, use_gpu=bool(compute["use_gpu"])
+            )
+            cluster_path = self.generate_run_script(
+                amber_dir=amber_dir,
+                prmtop_name=prmtop_name,
+                inpcrd_name=inpcrd_name,
+                stage_stems=stage_stems,
+                amber_executable=cluster_exe,
+                cpu_cores=compute["cpu_cores"],
+                use_gpu=compute["use_gpu"],
+                gpu_id=compute["gpu_id"],
+                num_gpus=compute["num_gpus"] or 1,
+                script_filename=CLUSTER_RUN_SCRIPT,
+            )
+            cluster_path.write_text(
+                stamp_cluster_run_script_header(
+                    cluster_path.read_text(encoding="utf-8")
+                ),
+                encoding="utf-8",
+            )
+            self.logger.info(f"Cluster run script: {cluster_path.name}")
+        except Exception as exc:
+            self.logger.warning(f"Could not write cluster run script: {exc}")
 
         try:
             from gatewizard.utils.equilibration_resources import (

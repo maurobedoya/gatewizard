@@ -9,6 +9,42 @@ from gatewizard.utils.equilibration_resume import (
 )
 
 
+def test_protocol_was_interrupted_false_when_eq_stages_done(tmp_path: Path) -> None:
+    """Start markers alone must not flag a finished protocol as interrupted."""
+    from gatewizard.utils.equilibration_resume import protocol_was_interrupted
+
+    eq = tmp_path / "job"
+    eq.mkdir()
+    (eq / "equilibration_start_time.txt").write_text("2026-01-01T00:00:00+00:00")
+    for stem in (
+        "step1_equilibration",
+        "step2_equilibration",
+        "step3_equilibration",
+        "step4_equilibration",
+        "step5_equilibration",
+        "step6_equilibration",
+    ):
+        (eq / f"{stem}.inp").write_text("nstep = 125000\ndt = 0.001\n")
+        (eq / f"{stem}.log").write_text(
+            '#"Progress (%)"\t"Step"\t"Time (ps)"\t"Speed (ns/day)"\n'
+            "99.2%\t125000\t125.0\t40.0\n"
+        )
+    (eq / "step7_production.inp").write_text("nstep = 100000000\ndt = 0.002\n")
+    (eq / "step7_production.log").write_text(
+        '#"Progress (%)"\t"Step"\t"Time (ps)"\t"Speed (ns/day)"\n'
+        "2.5%\t2500000\t5000.0\t159.0\n"
+    )
+
+    assert protocol_was_interrupted(eq, "openmm") is True
+
+    (eq / "step7_production.log").write_text(
+        '#"Progress (%)"\t"Step"\t"Time (ps)"\t"Speed (ns/day)"\n'
+        "100.0%\t100000000\t200000.0\t159.0\n"
+    )
+
+    assert protocol_was_interrupted(eq, "openmm") is False
+
+
 def test_get_equilibration_resume_point_openmm_partial(tmp_path: Path) -> None:
     eq = tmp_path / "job"
     eq.mkdir()

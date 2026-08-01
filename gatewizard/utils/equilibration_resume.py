@@ -119,7 +119,11 @@ def _namd_stage_complete(eq_dir: Path, stem: str) -> bool:
         return False
     try:
         text = log.read_text(encoding="utf-8", errors="replace")
-        if "Error in Stage" in text:
+        if "Error in Stage" in text or "FATAL ERROR" in text.upper():
+            return False
+        from gatewizard.utils.equilibration_failure import failure_line_from_text
+
+        if failure_line_from_text(text):
             return False
         timing = namd_analysis.parse_namd_log(log)
         if timing.total_steps > 0 and timing.steps_completed >= timing.total_steps:
@@ -201,15 +205,32 @@ def _stage_has_partial_output(eq_dir: Path, engine: str, stem: str) -> bool:
 def protocol_was_interrupted(eq_dir: Path, engine: str) -> bool:
     """True when a protocol was started but has not finished all stages."""
     eq_dir = Path(eq_dir)
-    if (eq_dir / "equilibration_start_time.txt").is_file():
-        return True
-    bg_log = eq_dir / "equilibration_background.log"
-    if bg_log.is_file() and bg_log.stat().st_size > 0:
-        return True
-    for _, _, stem in _stage_stems_on_disk(eq_dir, engine):
-        if _stage_has_partial_output(eq_dir, engine, stem):
-            return True
-    return False
+    stems = _stage_stems_on_disk(eq_dir, engine)
+    if not stems:
+        return False
+
+    completed = sum(
+        1 for _, _, stem in stems if _is_stage_complete(eq_dir, engine, stem)
+    )
+    if completed >= len(stems):
+        return False
+
+    started = (eq_dir / "equilibration_start_time.txt").is_file()
+    if not started:
+        bg_log = eq_dir / "equilibration_background.log"
+        if bg_log.is_file() and bg_log.stat().st_size > 0:
+            started = True
+    if not started:
+        for _, _, stem in stems:
+            if _is_stage_complete(eq_dir, engine, stem) or _stage_has_partial_output(
+                eq_dir, engine, stem
+            ):
+                started = True
+                break
+    if not started:
+        return False
+
+    return completed < len(stems)
 
 
 def equilibration_script_supports_resume(script_path: Path) -> bool:
@@ -275,7 +296,8 @@ def _parse_namd_protocols_from_script(text: str) -> Tuple[Optional[str], dict]:
 
 def refresh_equilibration_run_script(eq_dir: Path, engine: str) -> bool:
     """
-    Rewrite ``run_equilibration.sh`` from on-disk stage files (configs unchanged).
+    Rewrite ``run_equilibration.sh`` and ``run_equilibration_cluster.sh``
+    from on-disk stage files (configs unchanged).
 
     Used when an older script predates stage-level RESUME support.
     """
@@ -286,6 +308,13 @@ def refresh_equilibration_run_script(eq_dir: Path, engine: str) -> bool:
         return False
 
     try:
+        from gatewizard.utils.equilibration_cluster_script import (
+            CLUSTER_RUN_SCRIPT,
+            cluster_engine_executable,
+            stamp_cluster_run_script_header,
+            write_cluster_run_script,
+        )
+
         if engine == "openmm":
             from gatewizard.tools.equilibration import OpenMMEquilibrationManager
             from gatewizard.utils.equilibration_resources import (
@@ -299,8 +328,9 @@ def refresh_equilibration_run_script(eq_dir: Path, engine: str) -> bool:
             compute = resolve_compute_resources_from_eq_dir(eq_dir)
             # Prefer PLATFORM default already written into the script (backend may patch it).
             script_platform = _parse_bash_default_var(text, "PLATFORM")
+            local_py = _parse_bash_default_var(text, "PYTHON") or "python"
             manager = OpenMMEquilibrationManager(eq_dir)
-            manager.generate_run_script(
+            common = dict(
                 stage_config_names=stage_config_names,
                 openmm_dir=eq_dir,
                 prmtop_name=_parse_script_var(text, "PRMTOP") or "system.prmtop",
@@ -311,6 +341,20 @@ def refresh_equilibration_run_script(eq_dir: Path, engine: str) -> bool:
                 gpu_id=compute["gpu_id"],
                 num_gpus=compute["num_gpus"] or 1,
                 platform=script_platform or compute.get("platform"),
+            )
+            manager.generate_run_script(
+                **common, python_executable=local_py, script_filename="run_equilibration.sh"
+            )
+            cluster_path = manager.generate_run_script(
+                **common,
+                python_executable=cluster_engine_executable("openmm", local_py),
+                script_filename=CLUSTER_RUN_SCRIPT,
+            )
+            cluster_path.write_text(
+                stamp_cluster_run_script_header(
+                    cluster_path.read_text(encoding="utf-8")
+                ),
+                encoding="utf-8",
             )
             return True
 
@@ -327,18 +371,35 @@ def refresh_equilibration_run_script(eq_dir: Path, engine: str) -> bool:
             compute = resolve_compute_resources_from_eq_dir(eq_dir)
             manager = GROMACSEquilibrationManager(eq_dir)
             ndx_name = _parse_script_var(text, "NDX")
-            manager.generate_run_script(
+            local_gmx = _parse_script_var(text, "GMX") or "gmx"
+            common = dict(
                 gromacs_dir=eq_dir,
                 gro_name=_parse_script_var(text, "GRO") or "step5_input.gro",
                 top_name=_parse_script_var(text, "TOP") or "topol_posres.top",
                 ndx_name=ndx_name,
                 n_stages=n_stages,
-                gmx_executable=_parse_script_var(text, "GMX") or "gmx",
-                gmxrc_path=_parse_gmxrc_path(text),
                 cpu_cores=compute["cpu_cores"],
                 use_gpu=compute["use_gpu"],
                 gpu_id=compute["gpu_id"],
                 num_gpus=compute["num_gpus"] or 1,
+            )
+            manager.generate_run_script(
+                **common,
+                gmx_executable=local_gmx,
+                gmxrc_path=_parse_gmxrc_path(text),
+                script_filename="run_equilibration.sh",
+            )
+            cluster_path = manager.generate_run_script(
+                **common,
+                gmx_executable=cluster_engine_executable("gromacs", local_gmx),
+                gmxrc_path=None,
+                script_filename=CLUSTER_RUN_SCRIPT,
+            )
+            cluster_path.write_text(
+                stamp_cluster_run_script_header(
+                    cluster_path.read_text(encoding="utf-8")
+                ),
+                encoding="utf-8",
             )
             return True
 
@@ -362,9 +423,16 @@ def refresh_equilibration_run_script(eq_dir: Path, engine: str) -> bool:
                 namd_exe, protocols = _parse_namd_protocols_from_script(text)
             if not protocols:
                 return False
-            manager = NAMDEquilibrationManager(eq_dir, namd_executable=namd_exe or "namd3")
-            script.write_text(manager.generate_run_script(protocols, namd_exe))
+            local_exe = namd_exe or "namd3"
+            manager = NAMDEquilibrationManager(eq_dir, namd_executable=local_exe)
+            script.write_text(manager.generate_run_script(protocols, local_exe))
             script.chmod(0o755)
+            write_cluster_run_script(
+                eq_dir,
+                manager.generate_run_script(
+                    protocols, cluster_engine_executable("namd", local_exe)
+                ),
+            )
             return True
 
         if engine == "amber":
@@ -379,16 +447,34 @@ def refresh_equilibration_run_script(eq_dir: Path, engine: str) -> bool:
                 return False
             compute = resolve_compute_resources_from_eq_dir(eq_dir)
             manager = AmberEquilibrationManager(eq_dir)
-            manager.generate_run_script(
+            local_amber = _parse_script_var(text, "AMBER") or "pmemd"
+            common = dict(
                 amber_dir=eq_dir,
                 prmtop_name=_parse_script_var(text, "PRMTOP") or "system.prmtop",
                 inpcrd_name=_parse_script_var(text, "INPCRD") or "system.inpcrd",
                 stage_stems=stage_stems,
-                amber_executable=_parse_script_var(text, "AMBER") or "pmemd",
                 cpu_cores=compute["cpu_cores"],
                 use_gpu=compute["use_gpu"],
                 gpu_id=compute["gpu_id"],
                 num_gpus=compute["num_gpus"] or 1,
+            )
+            manager.generate_run_script(
+                **common,
+                amber_executable=local_amber,
+                script_filename="run_equilibration.sh",
+            )
+            cluster_path = manager.generate_run_script(
+                **common,
+                amber_executable=cluster_engine_executable(
+                    "amber", local_amber, use_gpu=bool(compute["use_gpu"])
+                ),
+                script_filename=CLUSTER_RUN_SCRIPT,
+            )
+            cluster_path.write_text(
+                stamp_cluster_run_script_header(
+                    cluster_path.read_text(encoding="utf-8")
+                ),
+                encoding="utf-8",
             )
             return True
     except Exception as exc:
