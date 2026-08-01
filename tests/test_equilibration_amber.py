@@ -222,6 +222,38 @@ class TestSetupAmberEquilibration:
             assert "{GW_VERSION}" not in text
             assert "{GW_GENERATED_ON}" not in text
 
+    def test_setup_npgt_scheme_type(self, tmp_path):
+        """NPgT must stay NPgT — not NPGT from .upper()."""
+        work = tmp_path / "work"
+        work.mkdir()
+        for src in (PRMTOP, INPCRD):
+            (work / src.name).write_bytes(src.read_bytes())
+        mgr = _make_manager(work)
+        stages = AmberEquilibrationManager.get_default_stage_params("NPgT")[:2]
+        result = mgr.setup_amber_equilibration(
+            stage_params_list=stages,
+            output_name="eq_npgt",
+            scheme_type="NPgT",
+        )
+        mdin = (result["amber_dir"] / "step1_equilibration.mdin").read_text()
+        assert "NPgT SCHEME" in mdin
+        assert "NPGT SCHEME" not in mdin
+
+    def test_setup_npgt_from_npgt_alias(self, tmp_path):
+        """All-caps NPGT from legacy callers maps to NPgT."""
+        work = tmp_path / "work"
+        work.mkdir()
+        for src in (PRMTOP, INPCRD):
+            (work / src.name).write_bytes(src.read_bytes())
+        mgr = _make_manager(work)
+        stages = AmberEquilibrationManager.get_default_stage_params("NPgT")[:2]
+        result = mgr.setup_amber_equilibration(
+            stage_params_list=stages,
+            output_name="eq_npgt2",
+            scheme_type="NPGT",
+        )
+        assert (result["amber_dir"] / "run_equilibration.sh").is_file()
+
     def test_generate_mdin_substitutes_nstlim_and_dt(self, tmp_path):
         mgr = _make_manager(tmp_path)
         content = mgr.generate_mdin_file(
