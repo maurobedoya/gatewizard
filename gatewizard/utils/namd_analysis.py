@@ -425,8 +425,22 @@ def get_equilibration_progress(equilibration_dir: Path) -> Dict[str, NAMDProgres
             timing = parse_namd_log(log_file)
             stage_progress.timing = timing
 
+            try:
+                from gatewizard.utils.equilibration_failure import failure_line_from_text
+
+                log_text = log_file.read_text(encoding="utf-8", errors="replace")
+                fatal = failure_line_from_text(log_text)
+            except Exception:
+                fatal = None
+
             # Determine status and progress
-            if timing.steps_completed > 0:
+            if fatal:
+                stage_progress.status = "error"
+                if timing.total_steps > 0 and timing.steps_completed > 0:
+                    stage_progress.progress_percent = (
+                        timing.steps_completed / timing.total_steps
+                    ) * 100.0
+            elif timing.steps_completed > 0:
                 stage_progress.status = "running"
                 if timing.total_steps > 0:
                     stage_progress.progress_percent = (

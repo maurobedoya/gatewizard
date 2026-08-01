@@ -845,6 +845,27 @@ def _parse_openmm_inp(inp_file: Path) -> tuple[int, float]:
     return nstep, dt_fs
 
 
+def _read_openmm_log_head_tail(
+    log_file: Path, *, head_bytes: int = 16_384, tail_bytes: int = 256_000
+) -> tuple[str, str]:
+    """Read the log header (column names) and the most recent progress rows only."""
+    size = log_file.stat().st_size
+    with open(log_file, "rb") as handle:
+        head = handle.read(min(head_bytes, size))
+        if size > tail_bytes:
+            handle.seek(max(0, size - tail_bytes))
+            tail = handle.read()
+        elif size > head_bytes:
+            handle.seek(0)
+            tail = handle.read()
+        else:
+            tail = head
+    return (
+        head.decode("utf-8", errors="ignore"),
+        tail.decode("utf-8", errors="ignore"),
+    )
+
+
 def parse_openmm_log(
     log_file: Path, inp_file: Optional[Path] = None
 ) -> OpenMMTimingInfo:
@@ -863,7 +884,7 @@ def parse_openmm_log(
         return info
 
     try:
-        content = log_file.read_text(encoding="utf-8", errors="ignore")
+        head_text, tail_text = _read_openmm_log_head_tail(log_file)
 
         # ── Total steps & timestep from .inp file ────────────────────────────────
         if inp_file is None:
@@ -873,8 +894,9 @@ def parse_openmm_log(
         info.timestep_fs = dt_fs
 
         # ── Parse header to find column positions ────────────────────────────────
-        # Header line starts with '#"Progress'
-        header_m = re.search(r'^#"Progress[^\n]*', content, re.MULTILINE)
+        header_m = re.search(r'^#"Progress[^\n]*', head_text, re.MULTILINE)
+        if not header_m:
+            header_m = re.search(r'^#"Progress[^\n]*', tail_text, re.MULTILINE)
         if not header_m:
             return info
 
@@ -894,17 +916,19 @@ def parse_openmm_log(
         except ValueError:
             speed_idx = len(header_cols) - 2  # second to last
 
-        # ── Parse data rows ──────────────────────────────────────────────────────
-        # Data rows start with a percentage like "0.8%"
-        data_rows = re.findall(r"^\d+\.?\d*%\t[^\n]+", content, re.MULTILINE)
+        # ── Parse data rows (first row from head, last row from tail) ──────────
+        first_rows = re.findall(r"^\d+\.?\d*%\t[^\n]+", head_text, re.MULTILINE)
+        tail_rows = re.findall(r"^\d+\.?\d*%\t[^\n]+", tail_text, re.MULTILINE)
+        data_rows = tail_rows or first_rows
         if not data_rows:
             return info
 
         last_row = data_rows[-1].split("\t")
-        first_row = data_rows[0].split("\t")
+        first_row = (first_rows or data_rows)[0].split("\t")
 
         # Step is cumulative when stages chain via -irst; Progress (%) is stage-local.
         steps_from_progress: int | None = None
+        progress_pct: float | None = None
         try:
             progress_pct = float(last_row[progress_idx].rstrip("%"))
             if info.total_steps > 0 and progress_pct >= 0:
@@ -932,14 +956,27 @@ def parse_openmm_log(
             pass
 
         # ── Completion / error markers ───────────────────────────────────────────
-        if "Equilibration complete" in content or (
-            info.total_steps > 0 and info.steps_completed >= info.total_steps
-        ):
-            info.completed = True
+        # OpenMM StateDataReporter often stops at 99.x% even when the final step
+        # ran (shell resume checks for 100(\.0)?% for the same reason).
+        stage_finished = False
+        if progress_pct is not None and progress_pct >= 99.0:
+            stage_finished = True
+        if info.total_steps > 0 and info.steps_completed >= info.total_steps:
+            stage_finished = True
+        if "Equilibration complete" in tail_text or "Equilibration complete" in head_text:
+            stage_finished = True
 
-        if re.search(r"(Error|Traceback|failed)", content, re.IGNORECASE):
+        if stage_finished:
+            info.completed = True
+            if info.total_steps > 0:
+                info.steps_completed = info.total_steps
+
+        scan_text = tail_text + "\n" + head_text
+        if re.search(r"(Error|Traceback|failed)", scan_text, re.IGNORECASE):
             # Avoid false positives from log messages that mention 'error' casually
-            if re.search(r"^(Error|Traceback)", content, re.MULTILINE | re.IGNORECASE):
+            if re.search(
+                r"^(Error|Traceback)", scan_text, re.MULTILINE | re.IGNORECASE
+            ):
                 info.has_error = True
 
     except Exception as exc:

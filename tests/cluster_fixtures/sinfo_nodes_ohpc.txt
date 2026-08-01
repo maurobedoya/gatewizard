@@ -1,0 +1,5 @@
+wc01|normal|idle|8|(null)|(null)
+wc02|normal|idle|8|(null)|(null)
+gpu01|gpu|idle|32|gpu:4|volta
+gpu02|gpu|mix|32|gpu:2|volta
+gpu03|gpu|drain|32|gpu:4|volta
