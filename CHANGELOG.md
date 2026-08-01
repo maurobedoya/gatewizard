@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Equilibration (NAMD):** `gpu_resident` option on `setup_namd_equilibration` — writes `GPUresident` on the production stage only; equilibration keeps `reassignFreq`/`reassignTemp`; persisted on `equilibration_job.json`
 - **Cluster mid-run progress:** sync `step*.log` (and related progress files) from node-local scratch → submit directory — batch scripts rsync every 60s; API helper SSHs to the allocated node for Watching/Pull on jobs already running
 - **Cluster status:** job-status records allocated CPUs, node name, and node GPU type (from `sinfo` GRES) on `execution` for Watching cards
 - **Equilibration job metadata:** if `equilibration_job.json` has only an `execution` block, infer protocol/ensemble/input_dir from `protocol_summary.json` and heal the job JSON (fixes **Use in form** after cluster Watching)
