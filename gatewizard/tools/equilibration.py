@@ -21,7 +21,10 @@ import json
 import tempfile
 
 from gatewizard.utils.logger import get_logger
-from gatewizard.utils.equilibration_templates import stamp_equilibration_header
+from gatewizard.utils.equilibration_templates import (
+    normalize_scheme_label,
+    stamp_equilibration_header,
+)
 from gatewizard.utils.equilibration_resume import (
     AMBER_RESUME_SHELL,
     GROMACS_RESUME_SHELL,
@@ -396,6 +399,7 @@ class NAMDEquilibrationManager:
         self.working_dir = Path(working_dir)
         self.namd_executable = namd_executable
         self.logger = get_logger(self.__class__.__name__)
+        self.gpu_resident = False
 
         # Path to NAMD templates (homogeneous layout with other engines)
         self.namd_templates_dir = (
@@ -1939,6 +1943,7 @@ class NAMDEquilibrationManager:
         ref_positions_col: Optional[str] = None,
         ref_positions_col_value: Optional[float] = None,
         water_model: Optional[str] = None,
+        gpu_resident: bool = False,
     ) -> Dict[str, Any]:
         """
         Complete NAMD equilibration setup - replicates GUI workflow.
@@ -1966,6 +1971,8 @@ class NAMDEquilibrationManager:
                 If None, will be extracted from the 'ensemble' field of the first stage.
                 Can be explicitly set if needed (NVT, NPT, NPAT, or NPgT).
             namd_executable: NAMD executable path (default: "namd3")
+            gpu_resident: If True, enable GPUresident on the production stage only.
+                Equilibration stages keep reassignFreq/reassignTemp and omit GPUresident.
 
         Returns:
             Dictionary with paths to generated files:
@@ -2015,7 +2022,13 @@ class NAMDEquilibrationManager:
         if water_model is None:
             water_model = read_water_model_from_builder_status(self.working_dir)
         self.water_model = normalize_water_model(water_model or "tip3p")
+        self.gpu_resident = bool(gpu_resident)
         self.logger.info(f"NAMD water model for config: {self.water_model}")
+        if self.gpu_resident:
+            self.logger.info(
+                "GPU-resident enabled for production only "
+                "(equilibration stages keep reassignFreq/reassignTemp)"
+            )
 
         self.logger.info("=== Setting up NAMD equilibration ===")
 
@@ -3315,7 +3328,7 @@ colvarsRestartFrequency 5000
             stage_ensemble = stage_params.get("ensemble") or scheme_type
 
         if isinstance(stage_ensemble, str):
-            stage_ensemble = stage_ensemble.upper()
+            stage_ensemble = normalize_scheme_label(stage_ensemble)
 
         # Check if user explicitly specified a custom template
         custom_template = stage_params.get("custom_template", None)
@@ -3547,6 +3560,10 @@ colvarsRestartFrequency 5000
             "{WATER_MODEL_BLOCK}",
             namd_water_model_config_block(getattr(self, "water_model", "tip3p")),
         )
+        customized_content = customized_content.replace(
+            "{GPU_RESIDENT_BLOCK}",
+            self._gpu_resident_block(stage_name, stage_index),
+        )
 
         # Replace system file paths (parmfile and ambercoor)
         # This allows using either relative paths (when files are copied) or absolute paths
@@ -3634,6 +3651,20 @@ colvarsRestartFrequency 5000
             )
 
         return customized_content
+
+    def _gpu_resident_block(self, stage_name: str, stage_index: int) -> str:
+        """Return GPUresident lines for production only, or empty/comment."""
+        if not getattr(self, "gpu_resident", False):
+            return ""
+        if self._get_config_name(stage_name, stage_index) != "step7_production":
+            return (
+                "# GPU-resident reserved for production "
+                "(equilibration keeps reassignFreq/reassignTemp)\n"
+            )
+        return (
+            "# GPU-resident mode (NAMD 3.x)\n"
+            "GPUresident             on\n"
+        )
 
     def _calculate_first_timestep(
         self,
@@ -8115,7 +8146,7 @@ class AmberEquilibrationManager:
             scheme_type = stage_params_list[0].get("ensemble", "NPT")
             self.logger.info(f"Auto-detected scheme_type: {scheme_type}")
         if isinstance(scheme_type, str):
-            scheme_type = scheme_type.upper()
+            scheme_type = normalize_scheme_label(scheme_type)
         if scheme_type not in self.SCHEME_MAPPING:
             raise ValueError(
                 f"Unknown scheme_type '{scheme_type}'. "
@@ -8307,7 +8338,7 @@ class AmberEquilibrationManager:
             stage_name=stage_name,
             stage_params=stage_params,
             stage_index=1,
-            scheme_type=str(stage_params.get("ensemble", "NPT")).upper(),
+            scheme_type=normalize_scheme_label(str(stage_params.get("ensemble", "NPT"))),
             restraint_block="",
         )
 

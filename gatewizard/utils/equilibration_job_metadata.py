@@ -34,6 +34,7 @@ def write_equilibration_job_metadata(
     protocol: Dict[str, Any],
     engine: str,
     openmm_platform: Optional[str] = None,
+    gpu_resident: Optional[bool] = None,
 ) -> Path:
     """Persist GUI form state used to generate this equilibration job."""
     eq_dir = Path(eq_dir)
@@ -54,6 +55,8 @@ def write_equilibration_job_metadata(
     }
     if openmm_platform:
         payload["openmm_platform"] = openmm_platform
+    if gpu_resident is not None:
+        payload["gpu_resident"] = bool(gpu_resident)
     # Preserve remote execution block across local re-generates
     if isinstance(existing.get("execution"), dict):
         payload["execution"] = existing["execution"]
@@ -1134,6 +1137,7 @@ def infer_equilibration_job_metadata(
     ensemble: Optional[str] = None
     protocol: Optional[Dict[str, Any]] = None
     engine: Optional[str] = None
+    gpu_resident: Optional[bool] = None
     existing: Dict[str, Any] = {}
 
     metadata_file = eq_dir / JOB_METADATA_FILE
@@ -1152,6 +1156,8 @@ def infer_equilibration_job_metadata(
                 eng = data.get("engine")
                 if isinstance(eng, str) and eng.strip():
                     engine = eng.strip().lower()
+                if isinstance(data.get("gpu_resident"), bool):
+                    gpu_resident = data["gpu_resident"]
         except (json.JSONDecodeError, OSError, TypeError, ValueError):
             existing = {}
 
@@ -1215,4 +1221,5 @@ def infer_equilibration_job_metadata(
         "ensemble": ensemble,
         "protocol": protocol,
         "engine": engine,
+        "gpu_resident": gpu_resident,
     }

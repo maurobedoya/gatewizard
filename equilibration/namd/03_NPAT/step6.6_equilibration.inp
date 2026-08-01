@@ -56,6 +56,8 @@ rigidBonds              all;                # Bound constraint all bonds involvi
 nonbondedFreq           1;                  # nonbonded forces every step
 fullElectFrequency      1;                  # PME every step
 
+{GPU_RESIDENT_BLOCK}
+
 # Constant Temperature Control ONLY DURING EQUILB
 reassignFreq            500;                # reassignFreq:  use this to reassign velocity every 500 steps
 reassignTemp            $temp;
