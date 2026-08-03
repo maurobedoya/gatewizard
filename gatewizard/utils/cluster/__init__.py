@@ -39,6 +39,7 @@ from gatewizard.utils.cluster.scheduler import SlurmAdapter, get_scheduler
 from gatewizard.utils.cluster.ssh import (
     ClusterSSHError,
     close_session,
+    compute_rsync_timeout,
     connect_ssh,
     format_byte_size,
     local_dir_byte_size,
@@ -76,6 +77,7 @@ __all__ = [
     "apply_probe_defaults",
     "canonicalize_slurm_state",
     "close_session",
+    "compute_rsync_timeout",
     "connect_ssh",
     "default_template_for_strategy",
     "enrich_execution_resources",

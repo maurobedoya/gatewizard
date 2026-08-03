@@ -69,6 +69,24 @@ def format_byte_size(num: int) -> str:
     return f"{int(num)} B"
 
 
+def compute_rsync_timeout(
+    expected_bytes: Optional[int] = None,
+    *,
+    base: int = 600,
+    max_wall: int = 86400,
+    bytes_per_second_floor: int = 256 * 1024,
+) -> int:
+    """Wall-clock limit for rsync, scaled when the remote payload size is known.
+
+    Uses a conservative floor transfer rate (256 KiB/s by default) so large
+    trajectory pulls are not cut off at the small-job default (600 s).
+    """
+    if not expected_bytes or expected_bytes <= 0:
+        return base
+    scaled = base + int(expected_bytes / max(1, bytes_per_second_floor))
+    return max(base, min(max_wall, scaled))
+
+
 def local_dir_byte_size(
     local_dir: str | Path, *, excludes: Optional[List[str]] = None
 ) -> int:
@@ -333,6 +351,7 @@ def rsync_from_remote(
     excludes: Optional[List[str]] = None,
     includes: Optional[List[str]] = None,
     timeout: int = 600,
+    idle_timeout: int = 600,
     ignore_times: bool = False,
     on_progress: Optional[ProgressCallback] = None,
     expected_bytes: Optional[int] = None,
@@ -390,9 +409,12 @@ def rsync_from_remote(
         cmd.extend(["--exclude", ex])
     cmd.extend([remote, local])
 
+    wall_timeout = compute_rsync_timeout(expected_bytes, base=timeout)
+    idle_limit = max(60, int(idle_timeout))
+
     if on_progress is None:
         proc = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout, check=False
+            cmd, capture_output=True, text=True, timeout=wall_timeout, check=False
         )
         return proc.returncode, proc.stdout or "", proc.stderr or ""
 
@@ -431,9 +453,21 @@ def rsync_from_remote(
     lock = threading.Lock()
     progress2_seen = threading.Event()
     start_local = local_dir_byte_size(local_dir, excludes=ex_list)
+    start_time = time.time()
+    activity = {"time": start_time, "bytes": start_local}
+
+    def _mark_activity(bytes_hint: Optional[int] = None) -> None:
+        activity["time"] = time.time()
+        if isinstance(bytes_hint, int) and bytes_hint >= 0:
+            activity["bytes"] = max(activity["bytes"], bytes_hint)
 
     def _emit(evt: Dict[str, object]) -> None:
         nonlocal last_pct
+        transferred = evt.get("bytes")
+        if isinstance(transferred, int):
+            _mark_activity(transferred)
+        else:
+            _mark_activity()
         with lock:
             pct_raw = evt.get("percent")
             pct = int(pct_raw) if isinstance(pct_raw, (int, float)) else -1
@@ -554,6 +588,8 @@ def rsync_from_remote(
                 )
                 continue
             cur = local_dir_byte_size(local_dir, excludes=ex_list)
+            if cur > activity["bytes"]:
+                _mark_activity(cur)
             pct = max(0, min(99, int(100.0 * cur / total_bytes)))
             _emit(
                 {
@@ -575,12 +611,24 @@ def rsync_from_remote(
     err_thread.start()
     size_thread.start()
 
-    deadline = time.time() + max(1, int(timeout))
     while proc.poll() is None:
-        if time.time() > deadline:
+        now = time.time()
+        if now - activity["time"] > idle_limit:
             proc.kill()
             stop.set()
-            raise ClusterSSHError(f"rsync timed out after {timeout}s")
+            transferred = max(0, local_dir_byte_size(local_dir, excludes=ex_list) - start_local)
+            raise ClusterSSHError(
+                f"rsync stalled (no progress for {idle_limit}s; "
+                f"{format_byte_size(transferred)} transferred)"
+            )
+        if now - start_time > wall_timeout:
+            proc.kill()
+            stop.set()
+            transferred = max(0, local_dir_byte_size(local_dir, excludes=ex_list) - start_local)
+            raise ClusterSSHError(
+                f"rsync timed out after {wall_timeout}s "
+                f"({format_byte_size(transferred)} transferred)"
+            )
         time.sleep(0.2)
 
     stop.set()
