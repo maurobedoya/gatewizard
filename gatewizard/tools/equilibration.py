@@ -7756,6 +7756,185 @@ class AmberEquilibrationManager:
         return True
 
     @staticmethod
+    def _prmtop_has_box(prmtop_path: Path) -> bool:
+        """True when an AMBER prmtop records periodic box information (IFBOX > 0)."""
+        try:
+            text = prmtop_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return False
+        if "%FLAG IFBOX" not in text:
+            return False
+        match = re.search(
+            r"%FLAG IFBOX\s*\n%FORMAT\(10I8\)\s*\n\s*(\d+)",
+            text,
+        )
+        return match is not None and int(match.group(1)) > 0
+
+    @staticmethod
+    def _read_inpcrd_box_cell(
+        inpcrd_path: Path,
+    ) -> Optional[Tuple[float, float, float, float, float, float]]:
+        """Return ``(a, b, c, alpha, beta, gamma)`` from an inpcrd box line."""
+        if not AmberEquilibrationManager._inpcrd_has_box(inpcrd_path):
+            return None
+        try:
+            lines = inpcrd_path.read_text(encoding="utf-8", errors="replace").splitlines()
+            if len(lines) < 3:
+                return None
+            natom = int(lines[1].split()[0])
+            floats: List[float] = []
+            for line in lines[2:]:
+                for tok in line.split():
+                    try:
+                        floats.append(float(tok))
+                    except ValueError:
+                        continue
+            n = len(floats)
+            if n in (natom * 3 + 3, natom * 6 + 3):
+                a, b, c = floats[-3:]
+                return a, b, c, 90.0, 90.0, 90.0
+            if n in (natom * 3 + 6, natom * 6 + 6):
+                return tuple(floats[-6:])  # type: ignore[return-value]
+        except (OSError, ValueError, IndexError):
+            return None
+        return None
+
+    @staticmethod
+    def _patch_prmtop_ifbox_text(
+        prmtop_text: str,
+        a: float,
+        b: float,
+        c: float,
+        beta: float = 90.0,
+    ) -> str:
+        """Insert IFBOX/BOX_DIMENSIONS and update the POINTERS IFBOX entry."""
+        ifbox_idx = 27  # 0-based index in the POINTERS array (Amber/OpenMM convention)
+        pointers_match = re.search(
+            r"(%FLAG POINTERS\s*\n%FORMAT\(10I8\)\s*\n)(.*?)(?=\n%FLAG|\Z)",
+            prmtop_text,
+            re.DOTALL,
+        )
+        if pointers_match is None:
+            raise ValueError("Could not locate %FLAG POINTERS in prmtop")
+
+        header, body = pointers_match.group(1), pointers_match.group(2)
+        nums = [int(x) for x in body.split()]
+        if len(nums) <= ifbox_idx:
+            raise ValueError("POINTERS array too short to update IFBOX")
+        nums[ifbox_idx] = 1
+        pointer_lines = [
+            "".join(f"{n:8d}" for n in nums[i : i + 10])
+            for i in range(0, len(nums), 10)
+        ]
+        patched = (
+            prmtop_text[: pointers_match.start()]
+            + header
+            + "\n".join(pointer_lines)
+            + prmtop_text[pointers_match.end() :]
+        )
+
+        box_block = (
+            "%FLAG IFBOX\n"
+            "%FORMAT(10I8)\n"
+            "       1\n"
+            "%FLAG BOX_DIMENSIONS\n"
+            "%FORMAT(5E16.8)\n"
+            f"  {beta:16.8E}  {a:16.8E}  {b:16.8E}  {c:16.8E}\n"
+        )
+        if "%FLAG IFBOX" in patched:
+            return patched
+        solty = "%FLAG SOLTY"
+        if solty not in patched:
+            raise ValueError("Could not locate %FLAG SOLTY for IFBOX insertion")
+        return patched.replace(solty, box_block + solty, 1)
+
+    def ensure_prmtop_box(
+        self,
+        prmtop_path: Path,
+        inpcrd_path: Optional[Path] = None,
+        bilayer_pdb: Optional[Path] = None,
+        system_pdb: Optional[Path] = None,
+    ) -> bool:
+        """Ensure *prmtop_path* has ``IFBOX=1`` when barostat stages will run.
+
+        Membrane ``system.prmtop`` files from packmol-memgen often omit periodic
+        box metadata (``IFBOX=0``). NVT/minimization can still run when the box
+        is supplied only in ``system.inpcrd``, but ``pmemd`` rejects
+        ``ntb != 0, ntp != 0, ifbox == 0`` at the first NPT/NPAT/NPgT stage.
+
+        Box dimensions are taken from the coordinate file (preferred after
+        :meth:`ensure_inpcrd_box`) or from bilayer/system PDB ``CRYST1``.
+        """
+        prmtop_path = Path(prmtop_path)
+        if not prmtop_path.is_file():
+            self.logger.error(f"prmtop not found: {prmtop_path}")
+            return False
+        if self._prmtop_has_box(prmtop_path):
+            self.logger.info(f"  prmtop already has IFBOX: {prmtop_path.name}")
+            return True
+
+        cell: Optional[Tuple[float, float, float, float, float, float]] = None
+        source = ""
+        if inpcrd_path is not None:
+            cell = self._read_inpcrd_box_cell(Path(inpcrd_path))
+            if cell is not None:
+                source = f"inpcrd ({Path(inpcrd_path).name})"
+        if cell is None:
+            for cand, label in (
+                (bilayer_pdb, "bilayer PDB CRYST1"),
+                (system_pdb, "system PDB CRYST1"),
+            ):
+                if cand is None:
+                    continue
+                cand = Path(cand)
+                if not cand.is_file():
+                    continue
+                cell = self._read_cryst1_cell(cand)
+                if cell is not None:
+                    source = f"{label} ({cand.name})"
+                    break
+
+        if cell is None:
+            self.logger.error(
+                "No box parameters available for prmtop IFBOX patch. "
+                "NPT/NPAT/NPgT stages will fail with 'ifbox == 0 is not supported'."
+            )
+            return False
+
+        a, b, c, _alpha, beta, _gamma = cell
+        try:
+            import parmed as pmd  # type: ignore
+
+            struct = pmd.load_file(str(prmtop_path))
+            struct.box = [a, b, c, cell[3], cell[4], cell[5]]
+            struct.save(str(prmtop_path), overwrite=True)
+        except ImportError:
+            text = prmtop_path.read_text(encoding="utf-8", errors="replace")
+            prmtop_path.write_text(
+                self._patch_prmtop_ifbox_text(text, a, b, c, beta=beta),
+                encoding="utf-8",
+            )
+        except Exception as exc:
+            self.logger.warning(
+                f"ParmEd prmtop box patch failed ({exc}); trying text fallback"
+            )
+            text = prmtop_path.read_text(encoding="utf-8", errors="replace")
+            prmtop_path.write_text(
+                self._patch_prmtop_ifbox_text(text, a, b, c, beta=beta),
+                encoding="utf-8",
+            )
+
+        if not self._prmtop_has_box(prmtop_path):
+            self.logger.error(f"Failed to patch IFBOX in {prmtop_path.name}")
+            return False
+
+        self.logger.info(
+            f"  Patched IFBOX in {prmtop_path.name} from {source}: "
+            f"{a:.3f} x {b:.3f} x {c:.3f} Å"
+        )
+        return True
+
+    @staticmethod
     def get_default_stage_params(
         scheme_type: str = "NPT",
         temperature: float = 310.15,
@@ -8029,24 +8208,27 @@ class AmberEquilibrationManager:
     ) -> Path:
         """Generate run script for Amber ``pmemd`` / ``sander``.
 
-        Energy minimization prefers a CPU binary when the selected executable is
-        ``pmemd.cuda`` (CHARMM-GUI caution). Dynamics use the selected executable;
-        CUDA device selection uses ``CUDA_VISIBLE_DEVICES`` when GPU is requested.
+        When GPU dynamics are requested (``use_gpu`` and a CUDA executable),
+        minimization also uses ``pmemd.cuda`` so long CPU minimizations do not
+        dominate cluster wall time. With ``use_gpu=False``, a CUDA executable
+        still minimizes on the matching CPU binary (CHARMM-GUI-style caution).
         """
         exe = (amber_executable or self.amber_executable or "pmemd").strip()
         exe_name = Path(exe).name
         is_cuda = "cuda" in exe_name.lower()
-        # Prefer CPU binary for minimization when CUDA was selected
-        mini_exe = exe
-        if is_cuda:
-            # pmemd.cuda -> pmemd; pmemd.cuda.MPI -> pmemd.MPI
+        wants_gpu = use_gpu is True or (use_gpu is None and is_cuda)
+
+        if wants_gpu and is_cuda:
+            mini_exe = exe
+        elif is_cuda:
+            # Explicit CPU run while the picker name is a CUDA binary.
             mini_name = exe_name.replace(".cuda", "").replace("cuda.", "")
             if mini_name == exe_name:
                 mini_name = "pmemd"
             mini_candidate = Path(exe).with_name(mini_name)
             mini_exe = str(mini_candidate) if mini_candidate.name else mini_name
-
-        wants_gpu = use_gpu is True or (use_gpu is None and is_cuda)
+        else:
+            mini_exe = exe
         ngpu = max(1, int(num_gpus or 1))
         gid = int(gpu_id or 0)
         device_list = ",".join(str(gid + i) for i in range(ngpu))
@@ -8071,11 +8253,21 @@ class AmberEquilibrationManager:
             ]
         cores_label = int(cpu_cores) if cpu_cores and int(cpu_cores) > 0 else "auto"
         gpu_info = f"Yes (CUDA_VISIBLE_DEVICES={device_list})" if wants_gpu and is_cuda else "No"
+        mini_note = (
+            "GPU minimization and dynamics use pmemd.cuda."
+            if wants_gpu and is_cuda
+            else "Minimization uses CPU pmemd; dynamics use the selected executable."
+            if is_cuda and not wants_gpu
+            else ""
+        )
         lines += [
             'echo "Starting Amber equilibration protocol…"',
             f'echo "Resources: {cores_label} CPU threads (host), GPU: {gpu_info}"',
             f'echo "Executable: $AMBER (minimization: $MINI_AMBER)"',
-            'echo "Note: minimization prefers CPU pmemd/sander when CUDA was selected."',
+        ]
+        if mini_note:
+            lines.append(f'echo "Note: {mini_note}"')
+        lines += [
             "",
             AMBER_RESUME_SHELL,
             "",
@@ -8098,7 +8290,7 @@ class AmberEquilibrationManager:
                 "else",
                 f"  {amber_var} -O -i {stem}.mdin -o {stem}.mdout -p $PRMTOP \\",
                 f"      -c {coord} -r {stem}.rst7 -inf {stem}.mdinfo{ref_flag}{traj} \\",
-                f"      || {{ echo '{stem} failed'; exit 1; }}",
+                f"      || {{ ec=$?; echo \"ERROR: {stem} failed (exit code ${{ec}})\" >&2; exit ${{ec}}; }}",
                 "fi",
                 "",
             ]
@@ -8224,6 +8416,16 @@ class AmberEquilibrationManager:
             bilayer_pdb=bilayer_dest,
             system_pdb=pdb_path,
         )
+        if scheme_type in {"NPT", "NPAT", "NPgT"}:
+            prmtop_dest = amber_dir / Path(
+                system_files.get("prmtop", "system.prmtop")
+            ).name
+            self.ensure_prmtop_box(
+                prmtop_path=prmtop_dest,
+                inpcrd_path=inpcrd_dest,
+                bilayer_pdb=bilayer_dest,
+                system_pdb=pdb_path,
+            )
 
         resolved_sels = selections
         if resolved_sels is None and pdb_path is not None:
