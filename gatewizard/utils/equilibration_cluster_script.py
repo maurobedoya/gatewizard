@@ -135,8 +135,8 @@ def _parse_script_assignment(text: str, var: str) -> str:
 def ensure_amber_cluster_runner_for_gpus(eq_dir: Path, *, gpus: int) -> bool:
     """Rewrite Amber ``run_equilibration_cluster.sh`` for the submit GPU count.
 
-    When ``gpus > 0``, dynamics use ``pmemd.cuda`` (minimization stays on CPU
-    ``pmemd``). When ``gpus == 0``, dynamics use CPU ``pmemd``.
+    When ``gpus > 0``, both minimization and dynamics use ``pmemd.cuda``.
+    When ``gpus == 0``, both use CPU ``pmemd``.
 
     Returns True if this looks like an Amber job folder and the cluster runner
     was updated (or already correct after rewrite).

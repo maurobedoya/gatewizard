@@ -199,6 +199,23 @@ class TestSetupAmberEquilibration:
         assert abs(vals[0] - cryst[0]) < 1e-3
         assert abs(vals[1] - cryst[1]) < 1e-3
         assert abs(vals[2] - cryst[2]) < 1e-3
+        out_prmtop = result["amber_dir"] / "system.prmtop"
+        assert AmberEquilibrationManager._prmtop_has_box(out_prmtop)
+
+    def test_prmtop_ifbox_text_patch(self, tmp_path):
+        """Text fallback sets IFBOX when ParmEd is unavailable."""
+        src = tmp_path / "system.prmtop"
+        src.write_bytes(PRMTOP.read_bytes())
+        cell = AmberEquilibrationManager._read_cryst1_cell(BILAYER_PDB)
+        assert cell is not None
+        a, b, c, _alpha, beta, _gamma = cell
+        patched = AmberEquilibrationManager._patch_prmtop_ifbox_text(
+            src.read_text(), a, b, c, beta=beta
+        )
+        dst = tmp_path / "patched.prmtop"
+        dst.write_text(patched)
+        assert AmberEquilibrationManager._prmtop_has_box(dst)
+        assert "%FLAG BOX_DIMENSIONS" in patched
 
     def test_nvt_generated_is_true_nvt(self, tmp_path):
         """Generated Amber NVT inputs must not enable a barostat."""
@@ -368,7 +385,23 @@ class TestRunScriptResources:
         text = path.read_text()
         assert "CUDA_VISIBLE_DEVICES" in text
         assert "1,2" in text
-        assert "MINI_AMBER=" in text
+        assert 'MINI_AMBER="pmemd.cuda"' in text
+        assert "GPU minimization" in text
+        assert "exit code ${ec}" in text
+
+    def test_cpu_fallback_keeps_cpu_minimization(self, tmp_path):
+        mgr = _make_manager(tmp_path)
+        path = mgr.generate_run_script(
+            amber_dir=tmp_path,
+            prmtop_name="system.prmtop",
+            inpcrd_name="system.inpcrd",
+            stage_stems=["step0_minimization"],
+            amber_executable="pmemd.cuda",
+            use_gpu=False,
+        )
+        text = path.read_text()
+        assert 'MINI_AMBER="pmemd"' in text
+        assert 'AMBER="pmemd.cuda"' in text
 
 
 # ---------------------------------------------------------------------------
@@ -534,3 +567,36 @@ class TestAmberAnalysis:
         assert prog["minimization"].status == "running"
         assert prog["minimization"].log_file == mdinfo
         assert prog["minimization"].timing.steps_completed == 200
+
+    def test_running_production_uses_mdinfo_cumulative_timings(self, tmp_path):
+        """Running production must not estimate ns/day from mdinfo mtime (~1 min)."""
+        mdout = tmp_path / "step7_production.mdout"
+        mdinfo = tmp_path / "step7_production.mdinfo"
+        mdin = tmp_path / "step7_production.mdin"
+        mdin.write_text(" &cntrl\n nstlim=100000000,\n dt=0.002,\n /\n")
+        # Partial mdout without TIMINGS — typical while production is still running.
+        mdout.write_text(
+            "  NSTEP =  45000000   TIME(PS) =   90000.000  TEMP(K) =   300.00\n"
+            " Etot   = -1000.0000  EPtot      =     -1500.0000\n"
+        )
+        mdinfo.write_text(
+            "| Current Timing Info\n"
+            "| Total steps : 100000000 | Completed : 46500000 | Remaining : 53500000\n"
+            "|\n"
+            "| Average timings for last    5000 steps:\n"
+            "|     Elapsed(s) =      64.4 Per Step(ms) =      12.9\n"
+            "|         ns/day =     130.0   seconds/ns =    663.5\n"
+            "|\n"
+            "| Average timings for all steps:\n"
+            "|     Elapsed(s) =   62300.0 Per Step(ms) =      13.0\n"
+            "|         ns/day =     129.0   seconds/ns =    669.0\n"
+        )
+        info = amber_analysis.parse_amber_mdout(
+            mdout, mdin_file=mdin, mdinfo_file=mdinfo
+        )
+        assert info.steps_completed == 46500000
+        assert info.ns_per_day == pytest.approx(129.0)
+        assert info.wall_elapsed_seconds == pytest.approx(62300.0)
+        assert info.completed is False
+        sim_ns = info.steps_completed * info.timestep_fs * 1e-6
+        assert sim_ns == pytest.approx(93.0)
