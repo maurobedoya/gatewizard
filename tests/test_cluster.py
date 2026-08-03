@@ -197,10 +197,14 @@ def test_render_scratch_job_id_template():
     )
     assert "#SBATCH -J eq_popc" in script
     assert "#SBATCH --gpus=1" in script
+    assert "#SBATCH -e eq_popc.%j.err" in script
     assert "ml purge" in script
     assert "module load md/namd/3.0b6+cuda" in script
     assert 'workdir="$SCRATCH_DIR/$SLURM_JOB_ID"' in script
-    assert "bash run_equilibration_cluster.sh" in script
+    assert "stdbuf -oL -eL bash run_equilibration_cluster.sh" in script
+    assert "_gw_log" in script
+    assert 'GW_JOB_LOG="${SUBMIT_DIR}/gw_${GW_SLURM_JOB_ID}.log"' in script
+    assert 'exec > >(tee -a "$GW_JOB_LOG")' in script
     assert "rsync -a" in script
     # Mid-run log sync so Watching can show progress while scratch is node-local
     assert "include='step*.log'" in script
@@ -313,13 +317,15 @@ def test_ensure_amber_cluster_runner_for_gpus(tmp_path: Path):
     assert ensure_amber_cluster_runner_for_gpus(tmp_path, gpus=1)
     cluster = (tmp_path / CLUSTER_RUN_SCRIPT).read_text(encoding="utf-8")
     assert 'AMBER="pmemd.cuda"' in cluster
-    assert 'MINI_AMBER="pmemd"' in cluster
+    assert 'MINI_AMBER="pmemd.cuda"' in cluster
     assert "CUDA_VISIBLE_DEVICES" in cluster
     assert "GPU: Yes" in cluster
+    assert "GPU minimization" in cluster
 
     assert ensure_amber_cluster_runner_for_gpus(tmp_path, gpus=0)
     cluster_cpu = (tmp_path / CLUSTER_RUN_SCRIPT).read_text(encoding="utf-8")
     assert 'AMBER="pmemd"' in cluster_cpu
+    assert 'MINI_AMBER="pmemd"' in cluster_cpu
     assert "GPU: No" in cluster_cpu
 
 
@@ -551,6 +557,19 @@ def test_parse_rsync_progress_line() -> None:
     assert evt["speed"] == "10.50MB/s"
     assert evt["phase"] == "sync"
     assert parse_rsync_progress_line("random noise") is None
+
+
+def test_compute_rsync_timeout_scales_with_payload() -> None:
+    from gatewizard.utils.cluster.ssh import compute_rsync_timeout
+
+    assert compute_rsync_timeout(None) == 600
+    assert compute_rsync_timeout(0) == 600
+    small = compute_rsync_timeout(50 * 1024 * 1024, base=600)
+    assert 600 <= small <= 1200
+    # ~2.4 GB at 256 KiB/s floor → well above the old fixed 600 s cap.
+    large = compute_rsync_timeout(int(2.4 * 1024**3), base=600)
+    assert large > 6000
+    assert large <= 86400
 
 
 def test_format_byte_size_and_local_dir_byte_size(tmp_path: Path) -> None:

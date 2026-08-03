@@ -6,9 +6,35 @@ from typing import Dict, List, Optional
 
 from gatewizard.utils.cluster.types import BatchScriptRequest, WORKDIR_STRATEGIES
 
+# Preamble: tee all stdout/stderr to submit dir (visible while job runs on scratch).
+_SLURM_JOB_LOG_PREAMBLE = """\
+# GateWizard job log → $SUBMIT_DIR/gw_<jobid>.log (live) + Slurm .out/.err
+export GW_SLURM_JOB_ID="${SLURM_JOB_ID:-local}"
+GW_JOB_LOG="${SUBMIT_DIR}/gw_${GW_SLURM_JOB_ID}.log"
+_gw_log() { printf '[%s] %s\\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
+if [ -n "${SUBMIT_DIR:-}" ] && [ -d "$SUBMIT_DIR" ]; then
+  _gw_log "Tee logging to ${GW_JOB_LOG}"
+  exec > >(tee -a "$GW_JOB_LOG") 2>&1
+else
+  _gw_log "WARNING: SUBMIT_DIR unavailable; using Slurm .out/.err only"
+fi
+_gw_log "GateWizard equilibration starting on $(hostname)"
+_gw_log "Submit dir: ${SUBMIT_DIR:-$PWD}"
+"""
+
+_SLURM_RUN_COMMAND_BLOCK = """\
+if command -v stdbuf >/dev/null 2>&1; then
+  stdbuf -oL -eL {{run_command}}
+else
+  {{run_command}}
+fi
+status=$?
+"""
+
 DEFAULT_SCRATCH_JOB_ID_TEMPLATE = """#!/bin/bash
 #SBATCH -J {{job_name}}
 #SBATCH -o {{job_name}}.%j.out
+#SBATCH -e {{job_name}}.%j.err
 #SBATCH -c {{cpus}}
 #SBATCH -t {{time_limit}}
 {{extra_sbatch}}
@@ -18,11 +44,12 @@ DEFAULT_SCRATCH_JOB_ID_TEMPLATE = """#!/bin/bash
 {{module_loads}}
 
 SUBMIT_DIR="$SLURM_SUBMIT_DIR"
+{{slurm_log_preamble}}
 workdir="{{scratch_root}}/$SLURM_JOB_ID"
 mkdir -p "$workdir" || exit 1
 rsync -a --exclude='*.dcd' --exclude='*.xtc' --exclude='*.nc' "$SUBMIT_DIR"/ "$workdir"/ || exit 1
 cd "$workdir" || exit 1
-
+_gw_log "Scratch workdir: $(pwd)"
 # Periodically copy lightweight logs back so Watching can show mid-run progress
 # (scratch is often node-local and invisible from the login node until job end).
 (
@@ -35,11 +62,10 @@ cd "$workdir" || exit 1
   done
 ) &
 _GW_SYNC_PID=$!
-trap 'kill $_GW_SYNC_PID 2>/dev/null || true' EXIT
+trap 'ec=$?; kill $_GW_SYNC_PID 2>/dev/null || true; _gw_log "Job ${GW_SLURM_JOB_ID} exit code ${ec}"' EXIT
 
-{{run_command}}
-status=$?
-
+{{run_command_block}}
+_gw_log "Final rsync to submit dir"
 kill $_GW_SYNC_PID 2>/dev/null || true
 wait $_GW_SYNC_PID 2>/dev/null || true
 rsync -a "$workdir"/ "$SUBMIT_DIR"/ || exit 1
@@ -50,6 +76,7 @@ exit $status
 DEFAULT_RUN_IN_PLACE_TEMPLATE = """#!/bin/bash
 #SBATCH -J {{job_name}}
 #SBATCH -o {{job_name}}.%j.out
+#SBATCH -e {{job_name}}.%j.err
 #SBATCH -c {{cpus}}
 #SBATCH -t {{time_limit}}
 {{extra_sbatch}}
@@ -59,12 +86,18 @@ DEFAULT_RUN_IN_PLACE_TEMPLATE = """#!/bin/bash
 {{module_loads}}
 
 cd "$SLURM_SUBMIT_DIR" || exit 1
-{{run_command}}
+SUBMIT_DIR="$SLURM_SUBMIT_DIR"
+{{slurm_log_preamble}}
+_gw_log "Working dir: $(pwd)"
+trap 'ec=$?; _gw_log "Job ${GW_SLURM_JOB_ID} exit code ${ec}"' EXIT
+{{run_command_block}}
+exit $status
 """
 
 DEFAULT_SCRATCH_NAMED_TEMPLATE = """#!/bin/bash
 #SBATCH -J {{job_name}}
 #SBATCH -o {{job_name}}.%j.out
+#SBATCH -e {{job_name}}.%j.err
 #SBATCH -c {{cpus}}
 #SBATCH -t {{time_limit}}
 {{extra_sbatch}}
@@ -74,11 +107,12 @@ DEFAULT_SCRATCH_NAMED_TEMPLATE = """#!/bin/bash
 {{module_loads}}
 
 SUBMIT_DIR="$SLURM_SUBMIT_DIR"
+{{slurm_log_preamble}}
 workdir="{{scratch_root}}/{{job_folder_name}}"
 mkdir -p "$workdir" || exit 1
 rsync -a --exclude='*.dcd' --exclude='*.xtc' --exclude='*.nc' "$SUBMIT_DIR"/ "$workdir"/ || exit 1
 cd "$workdir" || exit 1
-
+_gw_log "Scratch workdir: $(pwd)"
 (
   while true; do
     sleep 60
@@ -89,11 +123,10 @@ cd "$workdir" || exit 1
   done
 ) &
 _GW_SYNC_PID=$!
-trap 'kill $_GW_SYNC_PID 2>/dev/null || true' EXIT
+trap 'ec=$?; kill $_GW_SYNC_PID 2>/dev/null || true; _gw_log "Job ${GW_SLURM_JOB_ID} exit code ${ec}"' EXIT
 
-{{run_command}}
-status=$?
-
+{{run_command_block}}
+_gw_log "Final rsync to submit dir"
 kill $_GW_SYNC_PID 2>/dev/null || true
 wait $_GW_SYNC_PID 2>/dev/null || true
 rsync -a "$workdir"/ "$SUBMIT_DIR"/ || exit 1
@@ -104,6 +137,7 @@ exit $status
 DEFAULT_TMPDIR_TEMPLATE = """#!/bin/bash
 #SBATCH -J {{job_name}}
 #SBATCH -o {{job_name}}.%j.out
+#SBATCH -e {{job_name}}.%j.err
 #SBATCH -c {{cpus}}
 #SBATCH -t {{time_limit}}
 {{extra_sbatch}}
@@ -113,11 +147,12 @@ DEFAULT_TMPDIR_TEMPLATE = """#!/bin/bash
 {{module_loads}}
 
 SUBMIT_DIR="$SLURM_SUBMIT_DIR"
+{{slurm_log_preamble}}
 workdir="${SLURM_TMPDIR:-${TMPDIR:-/tmp}}/$SLURM_JOB_ID"
 mkdir -p "$workdir" || exit 1
 rsync -a --exclude='*.dcd' --exclude='*.xtc' --exclude='*.nc' "$SUBMIT_DIR"/ "$workdir"/ || exit 1
 cd "$workdir" || exit 1
-
+_gw_log "Scratch workdir: $(pwd)"
 (
   while true; do
     sleep 60
@@ -128,11 +163,10 @@ cd "$workdir" || exit 1
   done
 ) &
 _GW_SYNC_PID=$!
-trap 'kill $_GW_SYNC_PID 2>/dev/null || true' EXIT
+trap 'ec=$?; kill $_GW_SYNC_PID 2>/dev/null || true; _gw_log "Job ${GW_SLURM_JOB_ID} exit code ${ec}"' EXIT
 
-{{run_command}}
-status=$?
-
+{{run_command_block}}
+_gw_log "Final rsync to submit dir"
 kill $_GW_SYNC_PID 2>/dev/null || true
 wait $_GW_SYNC_PID 2>/dev/null || true
 rsync -a "$workdir"/ "$SUBMIT_DIR"/ || exit 1
@@ -207,6 +241,8 @@ def render_batch_script(req: BatchScriptRequest) -> str:
 
     purge_block = "ml purge" if req.purge_modules else ""
     module_loads = "\n".join(f"module load {m}" for m in req.modules if m)
+    run_cmd = req.run_command or "bash run_equilibration_cluster.sh"
+    run_command_block = _SLURM_RUN_COMMAND_BLOCK.replace("{{run_command}}", run_cmd)
 
     values = {
         "job_name": _safe_job_name(req.job_name),
@@ -226,7 +262,9 @@ def render_batch_script(req: BatchScriptRequest) -> str:
         "submit_dir": "$SLURM_SUBMIT_DIR",
         "workdir_strategy": strategy,
         "job_folder_name": req.job_folder_name or _safe_job_name(req.job_name),
-        "run_command": req.run_command or "bash run_equilibration_cluster.sh",
+        "run_command": run_cmd,
+        "slurm_log_preamble": _SLURM_JOB_LOG_PREAMBLE,
+        "run_command_block": run_command_block,
     }
     return _render_simple(template, values)
 
