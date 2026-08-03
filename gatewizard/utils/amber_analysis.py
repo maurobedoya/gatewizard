@@ -8,7 +8,6 @@ Analysis energetic endpoints.
 from __future__ import annotations
 
 import re
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -67,6 +66,35 @@ _ERROR_MARKERS = (
     "NaN",
     "******",
 )
+
+# mdinfo "Current Timing Info" — prefer cumulative "all steps" over last-window sample.
+_MDINFO_ALL_STEPS_TIMING_RE = re.compile(
+    r"Average timings for all steps:.*?"
+    r"Elapsed\(s\)\s*=\s*([\d.Ee+-]+).*?"
+    r"ns/day\s*=\s*([\d.Ee+-]+)",
+    re.I | re.DOTALL,
+)
+_MDINFO_LAST_STEPS_TIMING_RE = re.compile(
+    r"Average timings for last\s+\d+\s+steps:.*?"
+    r"Elapsed\(s\)\s*=\s*([\d.Ee+-]+).*?"
+    r"ns/day\s*=\s*([\d.Ee+-]+)",
+    re.I | re.DOTALL,
+)
+_MDINFO_COMPLETED_STEPS_RE = re.compile(
+    r"Completed\s*:\s*(\d+)",
+    re.I,
+)
+
+
+def _parse_mdinfo_timings(mdinfo_content: str) -> tuple[float, float]:
+    """Return (elapsed_wall_s, ns_per_day) from Amber mdinfo timing blocks."""
+    if not mdinfo_content:
+        return 0.0, 0.0
+    for pattern in (_MDINFO_ALL_STEPS_TIMING_RE, _MDINFO_LAST_STEPS_TIMING_RE):
+        match = pattern.search(mdinfo_content)
+        if match:
+            return float(match.group(1)), float(match.group(2))
+    return 0.0, 0.0
 
 
 def _parse_mdin_totals(mdin_path: Optional[Path]) -> tuple[int, float, bool]:
@@ -170,6 +198,9 @@ def parse_amber_mdout(
         mdinfo_content, is_minimization=info.is_minimization
     )
     info.steps_completed = max(steps_mdout, steps_mdinfo)
+    completed_m = _MDINFO_COMPLETED_STEPS_RE.search(mdinfo_content)
+    if completed_m:
+        info.steps_completed = max(info.steps_completed, int(completed_m.group(1)))
 
     if not info.is_minimization:
         # Prefer dt / nstlim echoed in mdout control section when present
@@ -180,7 +211,14 @@ def parse_amber_mdout(
         if nstlim_m and info.total_steps <= 0:
             info.total_steps = int(nstlim_m.group(1))
 
-    # Wall time / ns/day from TIMINGS / Average timings when present
+    # Live cumulative timings from mdinfo (pmemd flushes ~every ntpr / 60s).
+    mdinfo_elapsed, mdinfo_nsday = _parse_mdinfo_timings(mdinfo_content)
+    if mdinfo_nsday > 0:
+        info.ns_per_day = mdinfo_nsday
+    if mdinfo_elapsed > 0:
+        info.wall_elapsed_seconds = mdinfo_elapsed
+
+    # Wall time / ns/day from mdout TIMINGS when present (usually at stage end).
     nsday_m = re.search(
         r"(?:ns/day|ns per day)\s*[:=]\s*([\d.Ee+-]+)", content, re.I
     )
@@ -195,17 +233,6 @@ def parse_amber_mdout(
     )
     if wall_m:
         info.wall_elapsed_seconds = float(wall_m.group(1))
-    else:
-        # Prefer mdinfo mtime while running (updated every ntpr)
-        for path in (mdinfo_file, mdout_file):
-            if path.is_file() and path.stat().st_size > 0:
-                try:
-                    info.wall_elapsed_seconds = max(
-                        0.0, time.time() - path.stat().st_mtime
-                    )
-                    break
-                except OSError:
-                    pass
 
     has_final = bool(
         re.search(r"Final Results|TIMINGS|Final Performance", content, re.I)
@@ -231,7 +258,7 @@ def parse_amber_mdout(
     elif has_final and info.total_steps > 0 and info.steps_completed < info.total_steps:
         info.interrupted = True
 
-    # ns/day from wall when TIMINGS block omitted it (running or completed)
+    # ns/day from wall when neither mdinfo nor TIMINGS reported it.
     if (
         info.ns_per_day == 0.0
         and info.steps_completed > 0
@@ -242,6 +269,14 @@ def parse_amber_mdout(
         days = info.wall_elapsed_seconds / 86400.0
         if days > 0:
             info.ns_per_day = sim_ns / days
+    elif (
+        info.wall_elapsed_seconds == 0.0
+        and info.ns_per_day > 0
+        and info.steps_completed > 0
+        and info.timestep_fs > 0
+    ):
+        sim_ns = info.steps_completed * info.timestep_fs * 1e-6
+        info.wall_elapsed_seconds = (sim_ns / info.ns_per_day) * 86400.0
 
     return info
 
