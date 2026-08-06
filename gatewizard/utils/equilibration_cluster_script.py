@@ -135,8 +135,8 @@ def _parse_script_assignment(text: str, var: str) -> str:
 def ensure_amber_cluster_runner_for_gpus(eq_dir: Path, *, gpus: int) -> bool:
     """Rewrite Amber ``run_equilibration_cluster.sh`` for the submit GPU count.
 
-    When ``gpus > 0``, both minimization and dynamics use ``pmemd.cuda``.
-    When ``gpus == 0``, both use CPU ``pmemd``.
+    When ``gpus > 0``, dynamics use ``pmemd.cuda`` and minimization stays on
+    CPU ``pmemd``. When ``gpus == 0``, both use CPU ``pmemd``.
 
     Returns True if this looks like an Amber job folder and the cluster runner
     was updated (or already correct after rewrite).
@@ -159,11 +159,22 @@ def ensure_amber_cluster_runner_for_gpus(eq_dir: Path, *, gpus: int) -> bool:
 
     from gatewizard.tools.equilibration import AmberEquilibrationManager
     from gatewizard.utils.equilibration_resources import (
+        resolve_all_stage_resources,
         resolve_compute_resources_from_eq_dir,
     )
 
     want_gpu = int(gpus or 0) > 0
     compute = resolve_compute_resources_from_eq_dir(eq_dir)
+    resolved_stages = compute.get("stages") or resolve_all_stage_resources(
+        [], compute.get("compute_defaults"), engine="amber", stems=stage_stems
+    )
+    if not resolved_stages:
+        resolved_stages = resolve_all_stage_resources(
+            [{"name": s.replace("_", " ").title()} for s in stage_stems],
+            compute.get("compute_defaults"),
+            engine="amber",
+            stems=stage_stems,
+        )
     local_amber = _parse_script_assignment(text, "AMBER") or "pmemd"
     cluster_exe = cluster_engine_executable(
         "amber", local_amber, use_gpu=want_gpu
@@ -182,6 +193,7 @@ def ensure_amber_cluster_runner_for_gpus(eq_dir: Path, *, gpus: int) -> bool:
         gpu_id=int(compute.get("gpu_id") or 0),
         num_gpus=num_gpus,
         script_filename=CLUSTER_RUN_SCRIPT,
+        stage_resources=resolved_stages,
     )
     path.write_text(
         stamp_cluster_run_script_header(path.read_text(encoding="utf-8")),

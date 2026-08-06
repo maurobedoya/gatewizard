@@ -205,6 +205,7 @@ def test_render_scratch_job_id_template():
     assert "_gw_log" in script
     assert 'GW_JOB_LOG="${SUBMIT_DIR}/gw_${GW_SLURM_JOB_ID}.log"' in script
     assert 'exec > >(tee -a "$GW_JOB_LOG")' in script
+    assert "--exclude='gw_*.log'" in script
     assert "rsync -a" in script
     # Mid-run log sync so Watching can show progress while scratch is node-local
     assert "include='step*.log'" in script
@@ -317,10 +318,8 @@ def test_ensure_amber_cluster_runner_for_gpus(tmp_path: Path):
     assert ensure_amber_cluster_runner_for_gpus(tmp_path, gpus=1)
     cluster = (tmp_path / CLUSTER_RUN_SCRIPT).read_text(encoding="utf-8")
     assert 'AMBER="pmemd.cuda"' in cluster
-    assert 'MINI_AMBER="pmemd.cuda"' in cluster
-    assert "CUDA_VISIBLE_DEVICES" in cluster
-    assert "GPU: Yes" in cluster
-    assert "GPU minimization" in cluster
+    assert 'MINI_AMBER="pmemd"' in cluster
+    assert "GPU=$AMBER, CPU=$MINI_AMBER" in cluster or "CPU stages use $MINI_AMBER" in cluster
 
     assert ensure_amber_cluster_runner_for_gpus(tmp_path, gpus=0)
     cluster_cpu = (tmp_path / CLUSTER_RUN_SCRIPT).read_text(encoding="utf-8")

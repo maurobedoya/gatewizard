@@ -385,9 +385,61 @@ class TestRunScriptResources:
         text = path.read_text()
         assert "CUDA_VISIBLE_DEVICES" in text
         assert "1,2" in text
-        assert 'MINI_AMBER="pmemd.cuda"' in text
-        assert "GPU minimization" in text
+        assert 'MINI_AMBER="pmemd"' in text
+        assert 'AMBER="pmemd.cuda"' in text
+        assert "$AMBER" in text
         assert "exit code ${ec}" in text
+
+    def test_cpu_eq_gpu_prod_uses_per_stage_executable(self, tmp_path):
+        mgr = _make_manager(tmp_path)
+        stage_resources = [
+            {
+                "stage_kind": "minimization",
+                "cpu_cores": 6,
+                "use_gpu": False,
+                "num_gpus": 0,
+            },
+            {
+                "stage_kind": "equilibration",
+                "cpu_cores": 6,
+                "use_gpu": False,
+                "num_gpus": 0,
+            },
+            {
+                "stage_kind": "production",
+                "cpu_cores": 1,
+                "use_gpu": True,
+                "num_gpus": 1,
+                "gpu_id": 0,
+            },
+        ]
+        path = mgr.generate_run_script(
+            amber_dir=tmp_path,
+            prmtop_name="system.prmtop",
+            inpcrd_name="system.inpcrd",
+            stage_stems=[
+                "step0_minimization",
+                "step1_equilibration",
+                "step7_production",
+            ],
+            amber_executable="pmemd.cuda",
+            use_gpu=True,
+            stage_resources=stage_resources,
+        )
+        text = path.read_text()
+        assert "# --- step0_minimization ---" in text
+        assert "# --- step1_equilibration ---" in text
+        assert "# --- step7_production ---" in text
+        mini_block = text.split("# --- step1_equilibration ---")[0]
+        eq_block = text.split("# --- step1_equilibration ---")[1].split(
+            "# --- step7_production ---"
+        )[0]
+        prod_block = text.split("# --- step7_production ---")[1]
+        assert "$MINI_AMBER" in mini_block
+        assert "$MINI_AMBER" in eq_block
+        assert "$AMBER" in prod_block
+        assert "CUDA_VISIBLE_DEVICES" in prod_block
+        assert "CPU stages use $MINI_AMBER" in text
 
     def test_cpu_fallback_keeps_cpu_minimization(self, tmp_path):
         mgr = _make_manager(tmp_path)

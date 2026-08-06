@@ -329,6 +329,13 @@ class EquilibrationStage:
     constraints: Dict[str, float] = field(default_factory=dict)
     minimize_steps: int = 0
     dcd_freq: int = 5000
+    stage_kind: Optional[str] = None
+    cpu_cores: Optional[int] = None
+    gpu_id: Optional[int] = None
+    num_gpus: Optional[int] = None
+    use_gpu: Optional[bool] = None
+    resources_inherit: Optional[bool] = None
+    compute_target: Optional[str] = None
     # NAMD-specific optional fields
     steps: Optional[int] = None
     pressure: Optional[float] = None
@@ -361,6 +368,18 @@ class EquilibrationStage:
             d["pressure"] = self.pressure
         if self.surface_tension is not None:
             d["surface_tension"] = self.surface_tension
+        for key in (
+            "stage_kind",
+            "cpu_cores",
+            "gpu_id",
+            "num_gpus",
+            "use_gpu",
+            "resources_inherit",
+            "compute_target",
+        ):
+            val = getattr(self, key, None)
+            if val is not None:
+                d[key] = val
         return d
 
 
@@ -6859,45 +6878,47 @@ class GROMACSEquilibrationManager:
         gpu_id: int = 0,
         num_gpus: int = 1,
         script_filename: str = "run_equilibration.sh",
+        stage_resources_by_stem: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> Path:
         """Generate a bash run script for the full GROMACS equilibration protocol.
 
         Optionally sources a GROMACS ``GMXRC`` (typical for ``/usr/local/gromacs``
         installs). Conda / absolute ``gmx`` binaries usually do not need this.
 
-        Args:
-            gromacs_dir: Output directory containing all input files.
-            gro_name: Name of the input GRO file.
-            top_name: Name of the topology file (``topol_posres.top`` when posres).
-            ndx_name: Name of the index file (``None`` → not passed to grompp).
-            n_stages: Number of equilibration stages (6 by default).
-            gmx_executable: GROMACS executable name/path.
-            gmxrc_path: Optional path to ``GMXRC`` to ``source`` before running.
-            cpu_cores: OpenMP thread count for ``mdrun -ntomp``.
-            use_gpu: When True, enable GPU offload (``-nb gpu -pme gpu``).
-            gpu_id: First GPU device index for ``-gpu_id``.
-            num_gpus: Number of consecutive GPU devices starting at ``gpu_id``.
-            script_filename: Output basename (local or cluster runner).
-
-        Returns:
-            Path to the written run script.
+        Per-stage ``stage_resources_by_stem`` maps filesystem stems to resolved
+        compute settings (minimization always runs on CPU).
         """
-        # Dynamics stages may use GPU offload; energy minimisation cannot
-        # (PME GPU rejects non-dynamical integrators such as steep/cg).
-        md_flags = _gromacs_mdrun_resource_flags(
+        def _flags_for_stem(stem: str, *, minimization: bool = False) -> str:
+            res = (stage_resources_by_stem or {}).get(stem) or {}
+            stage_use_gpu = bool(res.get("use_gpu")) if res else use_gpu
+            stage_cpu = res.get("cpu_cores") or cpu_cores
+            stage_gpu = int(res.get("gpu_id") if res.get("gpu_id") is not None else gpu_id)
+            stage_ngpu = int(res.get("num_gpus") or num_gpus or 1)
+            return _gromacs_mdrun_resource_flags(
+                cpu_cores=stage_cpu,
+                use_gpu=False if minimization else stage_use_gpu,
+                gpu_id=stage_gpu,
+                num_gpus=stage_ngpu,
+            )
+
+        md_flags_default = _gromacs_mdrun_resource_flags(
             cpu_cores=cpu_cores,
             use_gpu=use_gpu,
             gpu_id=gpu_id,
             num_gpus=num_gpus,
         )
-        em_flags = _gromacs_mdrun_resource_flags(
+        em_flags_default = _gromacs_mdrun_resource_flags(
             cpu_cores=cpu_cores,
             use_gpu=False,
             gpu_id=gpu_id,
             num_gpus=num_gpus,
         )
-        mdrun_md = f" {md_flags}" if md_flags else ""
+        em_stem = "step0_minimization"
+        em_flags = _flags_for_stem(em_stem, minimization=True) or em_flags_default
         mdrun_em = f" {em_flags}" if em_flags else ""
+        prod_stem = "step7_production"
+        prod_flags = _flags_for_stem(prod_stem) or md_flags_default
+        mdrun_prod = f" {prod_flags}" if prod_flags else ""
         gpu_info = _gromacs_gpu_info(use_gpu, gpu_id, num_gpus)
         cores_label = int(cpu_cores or 0) if cpu_cores else "auto"
         lines = [
@@ -6944,6 +6965,8 @@ class GROMACSEquilibrationManager:
         for i in range(1, n_stages + 1):
             prev = "step0_minimization" if i == 1 else f"step{i - 1}_equilibration"
             curr = f"step{i}_equilibration"
+            stage_flags = _flags_for_stem(curr) or md_flags_default
+            mdrun_md = f" {stage_flags}" if stage_flags else ""
             lines += [
                 f'if [ "$RESUME" = "1" ] && _gw_gromacs_stage_done "{curr}"; then',
                 f'  echo "RESUME: skipping {curr}"',
@@ -6961,7 +6984,7 @@ class GROMACSEquilibrationManager:
             "else",
             f"  ${{GMX}} grompp -f step7_production.mdp -o step7_production.tpr \\",
             f"      -c step{n_stages}_equilibration.gro -p ${{TOP}} {grompp_ndx} -maxwarn 2",
-            f"  ${{GMX}} mdrun -v{mdrun_md} -s step7_production.tpr -deffnm step7_production || {{ echo 'Production failed'; exit 1; }}",
+            f"  ${{GMX}} mdrun -v{mdrun_prod} -s step7_production.tpr -deffnm step7_production || {{ echo 'Production failed'; exit 1; }}",
             "fi",
             "",
             'echo "GROMACS equilibration complete."',
@@ -7142,6 +7165,7 @@ class GROMACSEquilibrationManager:
         ref_positions_file: Optional[str] = None,
         ref_positions_col: Optional[str] = None,
         ref_positions_col_value: Optional[float] = None,
+        compute_defaults: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Complete GROMACS equilibration setup.
 
@@ -7237,30 +7261,6 @@ class GROMACSEquilibrationManager:
             raise ValueError(
                 f"Unknown scheme_type '{scheme_type}'. "
                 f"Must be one of {list(self.SCHEME_MAPPING.keys())}"
-            )
-
-        # GROMACS uses a dedicated step0 minimization stage before equilibration
-        # (unlike NAMD/OpenMM where minimization is embedded in Equilibration 1).
-        # If the first stage is not explicitly named "Minimization" but carries
-        # minimize_steps > 0, auto-split it so GROMACS always emits the full
-        # step0 + step1…step6 + step7 sequence.
-        first_stage = stage_params_list[0]
-        if (
-            first_stage.get("name", "").lower()
-            not in ("minimization", "energy minimization", "energy_minimization")
-            and int(first_stage.get("minimize_steps", 0)) > 0
-        ):
-            mini_stage = dict(first_stage)
-            mini_stage["name"] = "Minimization"
-            mini_stage["time_ns"] = 0.0
-
-            eq1_stage = dict(first_stage)
-            eq1_stage["minimize_steps"] = 0
-
-            stage_params_list = [mini_stage, eq1_stage] + stage_params_list[1:]
-            self.logger.info(
-                "  Auto-inserted GROMACS Minimization stage (split from "
-                f"'{first_stage.get('name', 'first stage')}')"
             )
 
         # output_name may be an absolute Path (mirrors OpenMM behaviour)
@@ -7441,7 +7441,28 @@ class GROMACSEquilibrationManager:
                 )
 
         # --- Run scripts (local + cluster) ---
-        compute = resolve_compute_resources_from_stages(stage_params_list)
+        from gatewizard.utils.equilibration_resources import (
+            resolve_all_stage_resources,
+            resolve_compute_resources_from_stages,
+            write_equilibration_resources,
+        )
+
+        stage_stems = [
+            p.stem
+            for p in sorted(gromacs_dir.glob("step*.mdp"))
+        ]
+        resolved_stages = resolve_all_stage_resources(
+            stage_params_list,
+            compute_defaults,
+            engine="gromacs",
+            stems=stage_stems,
+        )
+        resources_by_stem = {
+            s["stem"]: s for s in resolved_stages if s.get("stem")
+        }
+        compute = resolve_compute_resources_from_stages(
+            stage_params_list, compute_defaults, engine="gromacs"
+        )
         run_script = self.generate_run_script(
             gromacs_dir=gromacs_dir,
             gro_name=gro_path.name,
@@ -7454,6 +7475,7 @@ class GROMACSEquilibrationManager:
             use_gpu=compute["use_gpu"],
             gpu_id=compute["gpu_id"],
             num_gpus=compute["num_gpus"] or 1,
+            stage_resources_by_stem=resources_by_stem,
         )
         try:
             from gatewizard.utils.equilibration_cluster_script import (
@@ -7476,6 +7498,7 @@ class GROMACSEquilibrationManager:
                 gpu_id=compute["gpu_id"],
                 num_gpus=compute["num_gpus"] or 1,
                 script_filename=CLUSTER_RUN_SCRIPT,
+                stage_resources_by_stem=resources_by_stem,
             )
             cluster_path.write_text(
                 stamp_cluster_run_script_header(
@@ -7486,6 +7509,17 @@ class GROMACSEquilibrationManager:
             self.logger.info(f"Cluster run script: {cluster_path.name}")
         except Exception as exc:
             self.logger.warning(f"Could not write cluster run script: {exc}")
+
+        try:
+            write_equilibration_resources(
+                gromacs_dir,
+                "gromacs",
+                stage_params_list,
+                compute_defaults=compute_defaults,
+                stems=stage_stems,
+            )
+        except Exception:
+            pass
 
         self.logger.info("=== GROMACS equilibration setup complete ===")
         return {
@@ -8205,65 +8239,86 @@ class AmberEquilibrationManager:
         gpu_id: int = 0,
         num_gpus: int = 1,
         script_filename: str = "run_equilibration.sh",
+        stage_resources: Optional[List[Dict[str, Any]]] = None,
     ) -> Path:
         """Generate run script for Amber ``pmemd`` / ``sander``.
 
-        When GPU dynamics are requested (``use_gpu`` and a CUDA executable),
-        minimization also uses ``pmemd.cuda`` so long CPU minimizations do not
-        dominate cluster wall time. With ``use_gpu=False``, a CUDA executable
-        still minimizes on the matching CPU binary (CHARMM-GUI-style caution).
+        Minimization and CPU-only stages use ``MINI_AMBER`` (``pmemd``); GPU stages
+        use ``AMBER`` (``pmemd.cuda``). Per-stage ``stage_resources`` selects
+        executable, OpenMP threads, and GPU devices within one Slurm allocation.
         """
         exe = (amber_executable or self.amber_executable or "pmemd").strip()
         exe_name = Path(exe).name
         is_cuda = "cuda" in exe_name.lower()
         wants_gpu = use_gpu is True or (use_gpu is None and is_cuda)
 
-        if wants_gpu and is_cuda:
-            mini_exe = exe
-        elif is_cuda:
-            # Explicit CPU run while the picker name is a CUDA binary.
+        if is_cuda:
             mini_name = exe_name.replace(".cuda", "").replace("cuda.", "")
             if mini_name == exe_name:
                 mini_name = "pmemd"
             mini_candidate = Path(exe).with_name(mini_name)
             mini_exe = str(mini_candidate) if mini_candidate.name else mini_name
+            gpu_exe = exe
         else:
             mini_exe = exe
+            cuda_name = f"{exe_name}.cuda" if exe_name else "pmemd.cuda"
+            cuda_candidate = Path(exe).with_name(cuda_name)
+            gpu_exe = str(cuda_candidate)
         ngpu = max(1, int(num_gpus or 1))
         gid = int(gpu_id or 0)
         device_list = ",".join(str(gid + i) for i in range(ngpu))
+
+        def _stage_uses_gpu(idx: int, stem: str) -> bool:
+            stage_res = (
+                stage_resources[idx]
+                if stage_resources and idx < len(stage_resources)
+                else None
+            )
+            is_min = "minimization" in stem or (
+                stage_res and stage_res.get("stage_kind") == "minimization"
+            )
+            if is_min:
+                return False
+            if stage_res is not None:
+                return bool(stage_res.get("use_gpu"))
+            return wants_gpu
+
+        any_gpu_stage = any(
+            _stage_uses_gpu(i, stem) for i, stem in enumerate(stage_stems)
+        )
 
         lines = [
             "#!/bin/bash",
             "## Amber Equilibration Run Script",
             "## Generated by GateWizard — run from the directory containing this file",
             "",
-            f'AMBER="{exe}"',
+            f'AMBER="{gpu_exe}"',
             f'MINI_AMBER="{mini_exe}"',
             f'PRMTOP="{prmtop_name}"',
             f'INPCRD="{inpcrd_name}"',
             f'REF="$INPCRD"',
             "",
         ]
-        if wants_gpu and is_cuda:
-            lines += [
-                "# GPU device selection for pmemd.cuda",
-                f'export CUDA_VISIBLE_DEVICES="${{CUDA_VISIBLE_DEVICES:-{device_list}}}"',
-                "",
-            ]
         cores_label = int(cpu_cores) if cpu_cores and int(cpu_cores) > 0 else "auto"
-        gpu_info = f"Yes (CUDA_VISIBLE_DEVICES={device_list})" if wants_gpu and is_cuda else "No"
-        mini_note = (
-            "GPU minimization and dynamics use pmemd.cuda."
-            if wants_gpu and is_cuda
-            else "Minimization uses CPU pmemd; dynamics use the selected executable."
-            if is_cuda and not wants_gpu
-            else ""
+        gpu_info = (
+            f"Yes (per-stage CUDA_VISIBLE_DEVICES, default {device_list})"
+            if any_gpu_stage
+            else "No"
         )
+        mixed_cpu_gpu = any_gpu_stage and any(
+            not _stage_uses_gpu(i, stem) for i, stem in enumerate(stage_stems)
+        )
+        mini_note = ""
+        if mixed_cpu_gpu:
+            mini_note = (
+                "CPU stages use $MINI_AMBER; GPU stages use $AMBER (pmemd.cuda)."
+            )
+        elif any_gpu_stage:
+            mini_note = "Minimization uses CPU pmemd when present; GPU stages use pmemd.cuda."
         lines += [
             'echo "Starting Amber equilibration protocol…"',
             f'echo "Resources: {cores_label} CPU threads (host), GPU: {gpu_info}"',
-            f'echo "Executable: $AMBER (minimization: $MINI_AMBER)"',
+            f'echo "Executable: GPU=$AMBER, CPU=$MINI_AMBER"',
         ]
         if mini_note:
             lines.append(f'echo "Note: {mini_note}"')
@@ -8275,19 +8330,54 @@ class AmberEquilibrationManager:
 
         for i, stem in enumerate(stage_stems):
             prev = None if i == 0 else stage_stems[i - 1]
-            is_min = "minimization" in stem
-            amber_var = "$MINI_AMBER" if is_min else "$AMBER"
+            stage_res = (
+                stage_resources[i]
+                if stage_resources and i < len(stage_resources)
+                else None
+            )
+            is_min = "minimization" in stem or (
+                stage_res and stage_res.get("stage_kind") == "minimization"
+            )
+            stage_use_gpu = _stage_uses_gpu(i, stem)
+            amber_var = "$AMBER" if stage_use_gpu else "$MINI_AMBER"
             coord = "$INPCRD" if prev is None else f"{prev}.rst7"
-            ref_flag = ""
-            # Use -ref whenever this stage mdin may have ntr=1; always pass REF
-            # for restrained stages — Amber ignores -ref when ntr=0.
             ref_flag = " -ref $REF"
             traj = "" if is_min else f" -x {stem}.nc"
+            omp_lines: List[str] = []
+            if stage_res and int(stage_res.get("cpu_cores") or 0) > 0:
+                omp_lines = [
+                    f"  export OMP_NUM_THREADS={int(stage_res['cpu_cores'])}",
+                ]
+            cuda_lines: List[str] = []
+            if stage_use_gpu:
+                stage_gid = int(
+                    stage_res.get("gpu_id")
+                    if stage_res and stage_res.get("gpu_id") is not None
+                    else gid
+                )
+                stage_ngpu = max(
+                    1,
+                    int(
+                        stage_res.get("num_gpus")
+                        if stage_res and stage_res.get("num_gpus")
+                        else ngpu
+                    ),
+                )
+                stage_devices = ",".join(
+                    str(stage_gid + j) for j in range(stage_ngpu)
+                )
+                cuda_lines = [
+                    f'  export CUDA_VISIBLE_DEVICES="${{CUDA_VISIBLE_DEVICES:-{stage_devices}}}"',
+                ]
             lines += [
                 f"# --- {stem} ---",
                 f'if [ "$RESUME" = "1" ] && _gw_amber_stage_done "{stem}"; then',
                 f'  echo "RESUME: skipping {stem}"',
                 "else",
+            ]
+            lines.extend(omp_lines)
+            lines.extend(cuda_lines)
+            lines += [
                 f"  {amber_var} -O -i {stem}.mdin -o {stem}.mdout -p $PRMTOP \\",
                 f"      -c {coord} -r {stem}.rst7 -inf {stem}.mdinfo{ref_flag}{traj} \\",
                 f"      || {{ ec=$?; echo \"ERROR: {stem} failed (exit code ${{ec}})\" >&2; exit ${{ec}}; }}",
@@ -8310,6 +8400,7 @@ class AmberEquilibrationManager:
         scheme_type: Optional[str] = None,
         selections: Optional[Dict[str, str]] = None,
         amber_executable: Optional[str] = None,
+        compute_defaults: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Complete Amber equilibration setup (mdins, GROUP restraints, run script)."""
         self.logger.info("=== Setting up Amber equilibration ===")
@@ -8343,24 +8434,6 @@ class AmberEquilibrationManager:
             raise ValueError(
                 f"Unknown scheme_type '{scheme_type}'. "
                 f"Must be one of {list(self.SCHEME_MAPPING.keys())}"
-            )
-
-        # Separate minimization like GROMACS / CHARMM-GUI Amber
-        first_stage = stage_params_list[0]
-        if (
-            first_stage.get("name", "").lower()
-            not in ("minimization", "energy minimization", "energy_minimization")
-            and int(first_stage.get("minimize_steps", 0)) > 0
-        ):
-            mini_stage = dict(first_stage)
-            mini_stage["name"] = "Minimization"
-            mini_stage["time_ns"] = 0.0
-            eq1_stage = dict(first_stage)
-            eq1_stage["minimize_steps"] = 0
-            stage_params_list = [mini_stage, eq1_stage] + stage_params_list[1:]
-            self.logger.info(
-                "  Auto-inserted Amber Minimization stage (split from "
-                f"'{first_stage.get('name', 'first stage')}')"
             )
 
         amber_dir = (
@@ -8469,7 +8542,21 @@ class AmberEquilibrationManager:
 
         prmtop_name = Path(system_files.get("prmtop", "system.prmtop")).name
         inpcrd_name = Path(system_files.get("inpcrd", "system.inpcrd")).name
-        compute = resolve_compute_resources_from_stages(stage_params_list)
+        from gatewizard.utils.equilibration_resources import (
+            resolve_all_stage_resources,
+            resolve_compute_resources_from_stages,
+            write_equilibration_resources,
+        )
+
+        resolved_stages = resolve_all_stage_resources(
+            stage_params_list,
+            compute_defaults,
+            engine="amber",
+            stems=stage_stems,
+        )
+        compute = resolve_compute_resources_from_stages(
+            stage_params_list, compute_defaults, engine="amber"
+        )
         exe = amber_executable or self.amber_executable
         run_script = self.generate_run_script(
             amber_dir=amber_dir,
@@ -8481,6 +8568,7 @@ class AmberEquilibrationManager:
             use_gpu=compute["use_gpu"],
             gpu_id=compute["gpu_id"],
             num_gpus=compute["num_gpus"] or 1,
+            stage_resources=resolved_stages,
         )
         try:
             from gatewizard.utils.equilibration_cluster_script import (
@@ -8503,6 +8591,7 @@ class AmberEquilibrationManager:
                 gpu_id=compute["gpu_id"],
                 num_gpus=compute["num_gpus"] or 1,
                 script_filename=CLUSTER_RUN_SCRIPT,
+                stage_resources=resolved_stages,
             )
             cluster_path.write_text(
                 stamp_cluster_run_script_header(
@@ -8515,12 +8604,12 @@ class AmberEquilibrationManager:
             self.logger.warning(f"Could not write cluster run script: {exc}")
 
         try:
-            from gatewizard.utils.equilibration_resources import (
-                write_equilibration_resources,
-            )
-
             write_equilibration_resources(
-                amber_dir, "amber", stage_params_list
+                amber_dir,
+                "amber",
+                stage_params_list,
+                compute_defaults=compute_defaults,
+                stems=stage_stems,
             )
         except Exception:
             pass

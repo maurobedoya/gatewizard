@@ -6,6 +6,10 @@ from typing import Dict, List, Optional
 
 from gatewizard.utils.cluster.types import BatchScriptRequest, WORKDIR_STRATEGIES
 
+# Scratch stage-in/out must not clobber logs written live in $SUBMIT_DIR (tee gw_*.log,
+# Slurm #SBATCH -o/-e). A stale copy staged at job start was overwriting the full log
+# on the final rsync back from node-local scratch.
+
 # Preamble: tee all stdout/stderr to submit dir (visible while job runs on scratch).
 _SLURM_JOB_LOG_PREAMBLE = """\
 # GateWizard job log → $SUBMIT_DIR/gw_<jobid>.log (live) + Slurm .out/.err
@@ -47,7 +51,7 @@ SUBMIT_DIR="$SLURM_SUBMIT_DIR"
 {{slurm_log_preamble}}
 workdir="{{scratch_root}}/$SLURM_JOB_ID"
 mkdir -p "$workdir" || exit 1
-rsync -a --exclude='*.dcd' --exclude='*.xtc' --exclude='*.nc' "$SUBMIT_DIR"/ "$workdir"/ || exit 1
+rsync -a --exclude='*.dcd' --exclude='*.xtc' --exclude='*.nc' --exclude='gw_*.log' --exclude='*.out' --exclude='*.err' "$SUBMIT_DIR"/ "$workdir"/ || exit 1
 cd "$workdir" || exit 1
 _gw_log "Scratch workdir: $(pwd)"
 # Periodically copy lightweight logs back so Watching can show mid-run progress
@@ -68,7 +72,7 @@ trap 'ec=$?; kill $_GW_SYNC_PID 2>/dev/null || true; _gw_log "Job ${GW_SLURM_JOB
 _gw_log "Final rsync to submit dir"
 kill $_GW_SYNC_PID 2>/dev/null || true
 wait $_GW_SYNC_PID 2>/dev/null || true
-rsync -a "$workdir"/ "$SUBMIT_DIR"/ || exit 1
+rsync -a --exclude='gw_*.log' --exclude='*.out' --exclude='*.err' "$workdir"/ "$SUBMIT_DIR"/ || exit 1
 rm -rf "$workdir"
 exit $status
 """
@@ -110,7 +114,7 @@ SUBMIT_DIR="$SLURM_SUBMIT_DIR"
 {{slurm_log_preamble}}
 workdir="{{scratch_root}}/{{job_folder_name}}"
 mkdir -p "$workdir" || exit 1
-rsync -a --exclude='*.dcd' --exclude='*.xtc' --exclude='*.nc' "$SUBMIT_DIR"/ "$workdir"/ || exit 1
+rsync -a --exclude='*.dcd' --exclude='*.xtc' --exclude='*.nc' --exclude='gw_*.log' --exclude='*.out' --exclude='*.err' "$SUBMIT_DIR"/ "$workdir"/ || exit 1
 cd "$workdir" || exit 1
 _gw_log "Scratch workdir: $(pwd)"
 (
@@ -129,7 +133,7 @@ trap 'ec=$?; kill $_GW_SYNC_PID 2>/dev/null || true; _gw_log "Job ${GW_SLURM_JOB
 _gw_log "Final rsync to submit dir"
 kill $_GW_SYNC_PID 2>/dev/null || true
 wait $_GW_SYNC_PID 2>/dev/null || true
-rsync -a "$workdir"/ "$SUBMIT_DIR"/ || exit 1
+rsync -a --exclude='gw_*.log' --exclude='*.out' --exclude='*.err' "$workdir"/ "$SUBMIT_DIR"/ || exit 1
 rm -rf "$workdir"
 exit $status
 """
@@ -150,7 +154,7 @@ SUBMIT_DIR="$SLURM_SUBMIT_DIR"
 {{slurm_log_preamble}}
 workdir="${SLURM_TMPDIR:-${TMPDIR:-/tmp}}/$SLURM_JOB_ID"
 mkdir -p "$workdir" || exit 1
-rsync -a --exclude='*.dcd' --exclude='*.xtc' --exclude='*.nc' "$SUBMIT_DIR"/ "$workdir"/ || exit 1
+rsync -a --exclude='*.dcd' --exclude='*.xtc' --exclude='*.nc' --exclude='gw_*.log' --exclude='*.out' --exclude='*.err' "$SUBMIT_DIR"/ "$workdir"/ || exit 1
 cd "$workdir" || exit 1
 _gw_log "Scratch workdir: $(pwd)"
 (
@@ -169,7 +173,7 @@ trap 'ec=$?; kill $_GW_SYNC_PID 2>/dev/null || true; _gw_log "Job ${GW_SLURM_JOB
 _gw_log "Final rsync to submit dir"
 kill $_GW_SYNC_PID 2>/dev/null || true
 wait $_GW_SYNC_PID 2>/dev/null || true
-rsync -a "$workdir"/ "$SUBMIT_DIR"/ || exit 1
+rsync -a --exclude='gw_*.log' --exclude='*.out' --exclude='*.err' "$workdir"/ "$SUBMIT_DIR"/ || exit 1
 rm -rf "$workdir"
 exit $status
 """

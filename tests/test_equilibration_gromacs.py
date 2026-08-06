@@ -795,7 +795,7 @@ class TestComColvarsSetupPaths:
         )
 
         def _fake_run_script(
-            gromacs_dir, gro_name, top_name, ndx_name, n_stages, gmx_executable
+            gromacs_dir, gro_name, top_name, ndx_name, n_stages, gmx_executable, **kwargs
         ):
             run_script = gromacs_dir / "run_equilibration.sh"
             run_script.write_text("#!/bin/bash\n")
