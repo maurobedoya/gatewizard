@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Analysis:** PlotSpec rendering helpers; structural per-file `file_strides`; energetic log stride helper (`energy_stride`)
+- **Tools:** trajectory PBC fixing (`trajectory_tools` / `fix_pbc_worker`) with GROMACS / cpptraj / MDAnalysis paths
+- **Equilibration resources:** per-stage CPU/GPU in `equilibration_resources.json` (engine-specific defaults; Amber picks `pmemd` vs `pmemd.cuda` per stage)
 - **Equilibration (NAMD):** `gpu_resident` option on `setup_namd_equilibration` — writes `GPUresident` on the production stage only; equilibration keeps `reassignFreq`/`reassignTemp`; persisted on `equilibration_job.json`
 - **Cluster mid-run progress:** sync `step*.log` (and related progress files) from node-local scratch → submit directory — batch scripts rsync every 60s; API helper SSHs to the allocated node for Watching/Pull on jobs already running
 - **Cluster status:** job-status records allocated CPUs, node name, and node GPU type (from `sinfo` GRES) on `execution` for Watching cards
@@ -26,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Cluster probe:** reject help-text tokens from broken `module avail` output; surface probe errors; prefer GPU partitions via `prefer_partitions`
 - **Equilibration (NAMD):** production (and any stage that finishes after the last `TIMING` print) no longer shows `0.0 ns/day` — use `Wall:` / final `WallClock:` for performance and elapsed time instead of overwriting wall time with `0.0` when promoting the final output step
 - **Analysis (bilayer thickness):** when the membrane straddles the periodic z boundary, thickness no longer reports the water gap (`L_z − d` ≈ 100 Å); center the bilayer in z before lipyphilic and fold long PBC paths back to the headgroup–headgroup distance (~35-40 Å for POPC)
+- **Analysis (bilayer time axis):** APL/thickness x-axis follows the sum of `file_times` instead of falling back to a tiny default dt
 - **Equilibration (Amber/GROMACS):** if official ns/day is missing from the log, estimate it from wall elapsed × simulated time (completed stages included)
 - **Equilibration (NVT):** Amber, NAMD, and GROMACS `01_NVT` templates are true constant-volume NVT through production (aligned with OpenMM); CHARMM-GUI’s NVT packs incorrectly matched NPT after early heating
 - **Equilibration (NAMD NPAT):** steps 6.3–6.6 now use `useConstantArea` like CHARMM-GUI (they incorrectly had NPgT `useConstantRatio` / `SurfaceTensionTarget`)
