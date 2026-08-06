@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Equilibration failure detection:** scan stage logs / Slurm outs for FATAL / CUDA stub / Error in Stage (empty `.out` no longer hides NAMD failures)
 - **Cluster probe:** list compute nodes via `sinfo -N`; batch templates support `#SBATCH --nodelist=` / `--constraint`
 - **Equilibration (Amber):** full `AmberEquilibrationManager` — mdin templates for NVT/NPT/NPAT/NPgT, MDA GROUP positional restraints (no dihedrals), `run_equilibration.sh` with resume/resources, executable discovery (`pmemd.cuda` → `pmemd` → MPI → `sander`), and `amber_analysis` progress/energetic parsing
-- **Equilibration templates:** generated inputs stamp GateWizard API version, local generation time (with timezone), and shared templates version (`v1`) for traceability
+- **Equilibration templates:** generated inputs stamp GateWizard API version, local generation time (with timezone), and shared templates version (`testing` for now — protocols are still evolving) for traceability
 
 ### Fixed
 
