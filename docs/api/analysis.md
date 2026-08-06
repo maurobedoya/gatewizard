@@ -17,8 +17,32 @@ The analysis module provides three main trajectory/energy classes:
 - Multi-file support with proper time scaling
 - Unit conversions (Å/nm, ps/ns/µs, kcal/kJ)
 - Publication-quality plots (300 DPI)
+- **PlotSpec** — shared JSON plot contract for API matplotlib export and GUI publication PNG
 
-## Import
+## PlotSpec (energetic plots)
+
+All engines share a **PlotSpec** description (`gatewizard.utils.plot_spec`) consumed by
+`matplotlib_renderer.render_energetic()` for publication PNGs:
+
+```python
+from gatewizard.utils.plot_spec import build_plot_spec_from_series
+from gatewizard.utils.matplotlib_renderer import render_energetic_to_bytes
+
+data = run_energetic_analysis(log_files, properties=["TEMP", "PRESSURE"])
+spec = build_plot_spec_from_series(data["series"], layout="grid", cols=2)
+png_bytes = render_energetic_to_bytes(data, spec)
+```
+
+| Field | Values | Notes |
+|-------|--------|-------|
+| `layout` | `overlay` / `grid` | Overlay = one axis; grid = one property per panel |
+| `sync_x` | bool | Multi-panel shared time window |
+| `global` | colors, units, `xlim`, `dpi`, … | Dark-theme defaults match GUI |
+| `panels[]` | `key`, `line_color`, `xlim`, `ylim`, … | Per-series overrides |
+
+GUI **Analysis → Pub PNG** calls the same renderer via `POST /analysis-render-plot`.
+Amber and GROMACS: `plot_amber_properties()` / `plot_gromacs_properties()`.
+
 
 ```python
 from gatewizard.utils.namd_analysis import (

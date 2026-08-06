@@ -146,6 +146,59 @@ class TestEquilibrationStageDiscovery:
 # ============================================================================
 
 
+class TestTrajectoryAnalyzerStride:
+    """Per-file stride index selection for structural analysis."""
+
+    def test_analysis_frame_indices_per_file(self):
+        from gatewizard.utils.namd_analysis import TrajectoryAnalyzer
+
+        ta = TrajectoryAnalyzer.__new__(TrajectoryAnalyzer)
+        ta.file_strides = {"eq.dcd": 2, "prod.dcd": 10}
+        ta.trajectories = [Path("eq.dcd"), Path("prod.dcd")]
+        ta._file_frame_counts = {"eq.dcd": 6, "prod.dcd": 100}
+
+        indices = ta._analysis_frame_indices()
+        assert indices[:3] == [0, 2, 4]
+        assert indices[3] == 6
+        assert indices[4:] == list(range(16, 106, 10))
+
+    def test_uses_stride_false_when_all_one(self):
+        from gatewizard.utils.namd_analysis import TrajectoryAnalyzer
+
+        ta = TrajectoryAnalyzer.__new__(TrajectoryAnalyzer)
+        ta.file_strides = {"a.dcd": 1}
+        ta.trajectories = [Path("a.dcd")]
+        assert ta._uses_stride() is False
+
+    def test_uses_stride_true_when_any_above_one(self):
+        from gatewizard.utils.namd_analysis import TrajectoryAnalyzer
+
+        ta = TrajectoryAnalyzer.__new__(TrajectoryAnalyzer)
+        ta.file_strides = {"a.dcd": 1, "b.dcd": 5}
+        ta.trajectories = [Path("a.dcd"), Path("b.dcd")]
+        assert ta._uses_stride() is True
+
+    def test_strided_universe_uses_memory_reader_fac(self):
+        """Regression: pre-built MemoryReader caused ChainReader tuple index error."""
+        pytest.importorskip("MDAnalysis")
+        import MDAnalysis as mda
+        import numpy as np
+        from MDAnalysis.coordinates.memory import MemoryReader
+
+        pdb = Path(__file__).parent / "analysis_examples/equilibration_folder/system.pdb"
+        if not pdb.exists():
+            pytest.skip(f"PDB not found: {pdb}")
+
+        u_ref = mda.Universe(str(pdb))
+        n_atoms = u_ref.atoms.n_atoms
+        n_frames = 5
+        coords = np.random.rand(n_frames, n_atoms, 3).astype(np.float32)
+
+        u = mda.Universe(str(pdb), coords, format=MemoryReader, order="fac", dt=1.0)
+        assert len(u.trajectory) == n_frames
+        assert u.atoms.n_atoms == n_atoms
+
+
 class TestEnergyAnalyzer:
     """Test the EnergyAnalyzer class."""
 

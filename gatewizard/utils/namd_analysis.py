@@ -578,6 +578,7 @@ class EnergyAnalyzer:
         self,
         log_file: Union[Path, str, List[Union[Path, str]]],
         file_times: Optional[Dict[str, float]] = None,
+        file_strides: Optional[Dict[str, int]] = None,
     ):
         """
         Initialize energy analyzer with NAMD log file(s).
@@ -587,6 +588,7 @@ class EnergyAnalyzer:
             file_times: Dict mapping filename (just the name, not full path) to duration in ns
                        Example: {"step1.log": 0.05, "step2.log": 0.05}
                        Time is the DURATION of each file, not cumulative
+            file_strides: Dict mapping filename to keep-every-N ENERGY samples (≥1)
         """
         # Handle single file or list
         if isinstance(log_file, (str, Path)):
@@ -596,6 +598,7 @@ class EnergyAnalyzer:
 
         # Store file times (duration of each file in ns)
         self.file_times = file_times or {}
+        self.file_strides = file_strides or {}
 
         # Track file ranges for time calculation (must be before parsing!)
         self._file_ranges = {}  # {filepath: (start_idx, end_idx, min_ts, max_ts)}
@@ -648,10 +651,13 @@ class EnergyAnalyzer:
 
                 # Parse ENERGY lines
                 energy_lines = re.findall(r"^ENERGY:\s+(.+)$", content, re.MULTILINE)
+                stride = max(1, int(_lookup_file_map(self.file_strides, log_file) or 1))
 
                 min_ts, max_ts = None, None
 
-                for line in energy_lines:
+                for line_i, line in enumerate(energy_lines):
+                    if line_i % stride != 0:
+                        continue
                     values = line.split()
                     if len(values) >= 14:  # Minimum expected columns
                         try:
@@ -1023,67 +1029,117 @@ class EnergyAnalyzer:
                 "cyan",
             ]
 
-        # Auto-determine text color
-        if text_color == "Auto":
-            text_color = self._auto_text_color(bg_color)
+        from gatewizard.utils.plot_spec import plot_spec_from_plot_properties_kwargs
+        from gatewizard.utils import matplotlib_renderer
 
-        # Grid color defaults to text color if not specified
-        if grid_color is None:
-            grid_color = text_color
+        # Build series payload for renderer (units already applied via analyzer data)
+        series_payload: List[Dict[str, Any]] = []
+        for prop_name in properties:
+            data_key = self._normalize_property_name(prop_name)
+            if not data_key or data_key not in self.data or not self.data[data_key]:
+                logger.warning(f"Property '{prop_name}' not available or not recognized")
+                continue
+            import numpy as np
 
-        if separate_plots:
-            # Create separate plot for each property
-            for i, prop_name in enumerate(properties):
-                self._plot_single_property(
-                    prop_name,
-                    plot_time,
-                    time_units,
-                    energy_units,
-                    pressure_units,
-                    temperature_units,
-                    volume_units,
-                    line_colors[i % len(line_colors)],
-                    bg_color,
-                    fig_bg_color,
-                    text_color,
-                    grid_color,
-                    show_grid,
-                    xlim,
-                    ylim,
-                    title,
-                    xlabel,
-                    ylabel,
-                    save_prefix,
-                    show,
-                    figsize,
-                    dpi,
-                )
-        else:
-            # Plot all properties on same figure
-            self._plot_combined_properties(
-                properties,
-                plot_time,
-                time_units,
+            y_data = np.array(self.data[data_key])
+            y_data, unit_label = self._convert_property_units(
+                data_key,
+                y_data,
                 energy_units,
                 pressure_units,
                 temperature_units,
                 volume_units,
-                line_colors,
-                bg_color,
-                fig_bg_color,
-                text_color,
-                grid_color,
-                show_grid,
-                xlim,
-                ylim,
-                title,
-                xlabel,
-                ylabel,
-                save,
-                show,
-                figsize,
-                dpi,
             )
+            series_payload.append(
+                {
+                    "key": data_key,
+                    "name": prop_name,
+                    "unit": unit_label,
+                    "y": y_data.tolist(),
+                    "x": plot_time.tolist() if hasattr(plot_time, "tolist") else list(plot_time),
+                }
+            )
+
+        if not series_payload:
+            logger.warning("No plottable properties resolved")
+            return
+
+        plot_spec = plot_spec_from_plot_properties_kwargs(
+            [s["name"] for s in series_payload],
+            separate_plots=separate_plots,
+            line_colors=line_colors,
+            energy_units=energy_units,
+            time_units=time_units,
+            pressure_units=pressure_units,
+            temperature_units=temperature_units,
+            volume_units=volume_units,
+            bg_color=bg_color,
+            fig_bg_color=fig_bg_color,
+            text_color=text_color,
+            grid_color=grid_color,
+            show_grid=show_grid,
+            xlim=xlim,
+            ylim=ylim,
+            title=title,
+            xlabel=xlabel,
+            ylabel=ylabel,
+            figsize=figsize,
+            dpi=dpi,
+        )
+        # Attach resolved keys/colors to panels
+        for i, panel in enumerate(plot_spec["panels"]):
+            if i < len(series_payload):
+                panel["key"] = series_payload[i]["key"]
+                panel["ylabel"] = ylabel or f"{series_payload[i]['name']} ({series_payload[i]['unit']})"
+
+        data = {"x": series_payload[0]["x"], "series": series_payload}
+
+        if separate_plots:
+            prefix = save_prefix or "plot_"
+            for i, panel in enumerate(plot_spec["panels"]):
+                single_spec = plot_spec_from_plot_properties_kwargs(
+                    [panel.get("name") or panel["key"]],
+                    separate_plots=False,
+                    line_colors=[panel.get("line_color")],
+                    energy_units=energy_units,
+                    time_units=time_units,
+                    pressure_units=pressure_units,
+                    temperature_units=temperature_units,
+                    volume_units=volume_units,
+                    bg_color=bg_color,
+                    fig_bg_color=fig_bg_color,
+                    text_color=text_color,
+                    grid_color=grid_color,
+                    show_grid=show_grid,
+                    xlim=xlim,
+                    ylim=ylim,
+                    title=title or panel.get("name"),
+                    xlabel=xlabel,
+                    ylabel=panel.get("ylabel"),
+                    figsize=figsize,
+                    dpi=dpi,
+                )
+                single_spec["panels"][0]["key"] = panel["key"]
+                fig = matplotlib_renderer.render_energetic(data, single_spec)
+                import matplotlib.pyplot as plt
+
+                safe_name = str(panel.get("name") or panel["key"]).lower().replace(" ", "_")
+                filename = f"{prefix}{safe_name}.png"
+                fig.savefig(filename, dpi=dpi, bbox_inches="tight")
+                plt.close(fig)
+                logger.info(f"Plot saved: {filename}")
+                if show:
+                    plt.show()
+        else:
+            fig = matplotlib_renderer.render_energetic(data, plot_spec)
+            import matplotlib.pyplot as plt
+
+            if save:
+                fig.savefig(save, dpi=dpi, bbox_inches="tight")
+                logger.info(f"Plot saved: {save}")
+            if show:
+                plt.show()
+            plt.close(fig)
 
     def _auto_text_color(self, bg_color: str) -> str:
         """Auto-determine text color based on background luminance."""
@@ -1579,20 +1635,150 @@ def _to_path_list(paths: List[Union[str, Path]]) -> List[Path]:
     return [Path(p).expanduser().resolve() for p in paths]
 
 
+def _lookup_file_map(file_map: Optional[Dict[str, Any]], path: Path) -> Any:
+    """Look up a per-file value using basename, with case-insensitive fallback."""
+    if not file_map:
+        return None
+    name = path.name
+    if name in file_map:
+        return file_map[name]
+    name_lower = name.lower()
+    for key, val in file_map.items():
+        if key.lower() == name_lower:
+            return val
+    return None
+
+
+def _align_time_to_frame_count(
+    full_time: "np.ndarray",
+    n_frames: int,
+    start: Optional[int] = None,
+    stop: Optional[int] = None,
+    step: Optional[int] = None,
+) -> "np.ndarray":
+    """
+    Slice/resample a full time axis to match an analyzed frame count.
+
+    Never substitutes a fake 0.01 ns/frame axis when ``full_time`` spans a
+    positive duration — resamples within the assigned range instead.
+    """
+    import numpy as np
+
+    if n_frames <= 0:
+        return np.asarray([], dtype=float)
+
+    full = np.asarray(full_time, dtype=float)
+    if len(full) == 0:
+        return np.linspace(0.0, max(n_frames - 1, 0) * 0.002, n_frames)
+
+    s = 0 if start is None else max(0, int(start))
+    st = 1 if step is None else max(1, int(step))
+    stop_idx = len(full) if stop is None else min(int(stop), len(full))
+    sliced = full[s:stop_idx:st]
+
+    if len(sliced) == n_frames:
+        return sliced.astype(float)
+    if len(sliced) > n_frames:
+        return sliced[:n_frames].astype(float)
+
+    t_start = float(full[0])
+    t_end = float(full[-1])
+    if t_end > t_start:
+        return np.linspace(t_start, t_end, n_frames)
+    if len(sliced) >= 1:
+        return np.linspace(float(sliced[0]), float(sliced[-1]), n_frames)
+    return np.linspace(t_start, t_end if t_end > t_start else t_start, n_frames)
+
+
 def list_namd_energy_properties(
     log_files: List[Union[str, Path]],
     file_times: Optional[Dict[str, float]] = None,
 ) -> List[str]:
-    """Return available NAMD ENERGY properties detected from log files."""
+    """Return available NAMD ENERGY properties detected from log files.
+
+    Fast path: scan for ``ETITLE`` / first ``ENERGY`` line instead of parsing
+    every ENERGY sample (full parse is reserved for run_energetic_analysis).
+    """
+    del file_times
     logs = _to_path_list(log_files)
-    analyzer = EnergyAnalyzer(logs, file_times=file_times)
-    return analyzer.get_available_properties()
+    property_map = {
+        "TOTAL": "Total Energy",
+        "POTENTIAL": "Potential Energy",
+        "KINETIC": "Kinetic Energy",
+        "ELECT": "Electrostatic Energy",
+        "VDW": "Van der Waals Energy",
+        "BOND": "Bond Energy",
+        "ANGLE": "Angle Energy",
+        "DIHED": "Dihedral Energy",
+        "IMPRP": "Improper Energy",
+        "TEMP": "Temperature",
+        "PRESSURE": "Pressure",
+        "VOLUME": "Volume",
+    }
+    # Fallback order matching EnergyAnalyzer.get_available_properties
+    default_order = [
+        "Total Energy",
+        "Potential Energy",
+        "Kinetic Energy",
+        "Electrostatic Energy",
+        "Van der Waals Energy",
+        "Bond Energy",
+        "Angle Energy",
+        "Dihedral Energy",
+        "Improper Energy",
+        "Temperature",
+        "Pressure",
+        "Volume",
+    ]
+
+    for log_file in logs:
+        if not log_file.is_file():
+            continue
+        try:
+            with open(log_file, "r", encoding="utf-8", errors="ignore") as fh:
+                etitle_cols: Optional[List[str]] = None
+                for _ in range(5000):
+                    line = fh.readline()
+                    if not line:
+                        break
+                    if line.startswith("ETITLE:"):
+                        etitle_cols = line.split()[1:]  # drop ETITLE:
+                        break
+                    if line.startswith("ENERGY:"):
+                        # No ETITLE yet — assume standard NAMD columns present
+                        return [
+                            "Total Energy",
+                            "Potential Energy",
+                            "Kinetic Energy",
+                            "Temperature",
+                            "Pressure",
+                            "Volume",
+                        ]
+                if etitle_cols:
+                    found = []
+                    for col in etitle_cols:
+                        name = property_map.get(col.upper())
+                        if name and name not in found:
+                            found.append(name)
+                    if found:
+                        # Stable order
+                        return [n for n in default_order if n in found]
+        except OSError as exc:
+            logger.warning(f"Cannot peek NAMD log {log_file}: {exc}")
+            continue
+
+    # Last resort: full parse of first file
+    if logs:
+        analyzer = EnergyAnalyzer([logs[0]])
+        return analyzer.get_available_properties()
+    return []
 
 
 def run_energetic_analysis(
     log_files: List[Union[str, Path]],
     properties: Optional[List[str]] = None,
     file_times: Optional[Dict[str, float]] = None,
+    file_strides: Optional[Dict[str, int]] = None,
     time_units: str = "ns",
     energy_units: str = "kcal/mol",
     pressure_units: str = "atm",
@@ -1609,7 +1795,7 @@ def run_energetic_analysis(
     import numpy as np
 
     logs = _to_path_list(log_files)
-    analyzer = EnergyAnalyzer(logs, file_times=file_times)
+    analyzer = EnergyAnalyzer(logs, file_times=file_times, file_strides=file_strides)
 
     # Time in ns from analyzer, then convert for display
     x = analyzer._calculate_time_array()
@@ -1664,6 +1850,7 @@ def run_structural_analysis(
     reference_frame: int = 0,
     align: bool = True,
     file_times: Optional[Dict[str, float]] = None,
+    file_strides: Optional[Dict[str, int]] = None,
     rmsf_xaxis_type: str = "residue_number",
 ) -> Dict[str, Any]:
     """
@@ -1671,11 +1858,41 @@ def run_structural_analysis(
 
     Supported analysis types: `rmsd`, `rmsf`, `distance`, `radius_of_gyration`.
     """
-    import numpy as np
+    import gc
 
     top = Path(topology_file).expanduser().resolve()
     trajs = _to_path_list(trajectory_files)
-    analyzer = TrajectoryAnalyzer(top, trajs, file_times=file_times)
+    analyzer = TrajectoryAnalyzer(
+        top, trajs, file_times=file_times, file_strides=file_strides
+    )
+
+    try:
+        return _run_structural_analysis_body(
+            analyzer,
+            analysis_type,
+            selection,
+            selection2,
+            reference_frame,
+            align,
+            rmsf_xaxis_type,
+        )
+    finally:
+        analyzer.clear_analysis_cache()
+        del analyzer
+        gc.collect()
+
+
+def _run_structural_analysis_body(
+    analyzer: "TrajectoryAnalyzer",
+    analysis_type: str,
+    selection: str,
+    selection2: str,
+    reference_frame: int,
+    align: bool,
+    rmsf_xaxis_type: str,
+) -> Dict[str, Any]:
+    """Compute structural analysis arrays (caller owns analyzer lifecycle)."""
+    import numpy as np
 
     atype = analysis_type.strip().lower().replace(" ", "_")
     if atype in {"rmsd"}:
@@ -1821,6 +2038,7 @@ class TrajectoryAnalyzer:
         topology: Path,
         trajectory: Path | List[Path],
         file_times: Optional[Dict[str, float]] = None,
+        file_strides: Optional[Dict[str, int]] = None,
     ):
         """
         Initialize trajectory analyzer.
@@ -1832,6 +2050,7 @@ class TrajectoryAnalyzer:
             file_times: Optional dictionary mapping trajectory filenames to their
                        simulation durations in nanoseconds. Used for proper time scaling.
                        Example: {"eq1.dcd": 1.0, "eq2.dcd": 2.0, "prod.dcd": 10.0}
+            file_strides: Optional per-file frame stride (≥1). Skips frames when iterating.
         """
         try:
             import MDAnalysis as mda
@@ -1850,6 +2069,10 @@ class TrajectoryAnalyzer:
 
         # Store file times for proper time scaling
         self.file_times = file_times or {}
+        self.file_strides = {
+            k: max(1, int(v)) for k, v in (file_strides or {}).items()
+        }
+        self._file_frame_counts: Dict[str, int] = {}
 
         # Load trajectories into MDAnalysis
         if len(self.trajectories) == 1:
@@ -1865,12 +2088,148 @@ class TrajectoryAnalyzer:
             f"from {len(self.trajectories)} file(s)"
         )
 
+    def _ensure_frame_counts(self) -> None:
+        if self._file_frame_counts:
+            return
+        try:
+            import MDAnalysis as mda
+        except ImportError:
+            raise ImportError("MDAnalysis is required")
+
+        for traj_path in self.trajectories:
+            temp_universe = mda.Universe(str(self.topology), str(traj_path))
+            self._file_frame_counts[traj_path.name] = len(temp_universe.trajectory)
+
+    def _uses_stride(self) -> bool:
+        if not self.file_strides:
+            return False
+        return any(
+            max(1, int(_lookup_file_map(self.file_strides, p) or 1)) > 1
+            for p in self.trajectories
+        )
+
+    def _uniform_stride(self) -> Optional[int]:
+        if not self.file_strides:
+            return None
+        strides = [
+            max(1, int(_lookup_file_map(self.file_strides, p) or 1))
+            for p in self.trajectories
+        ]
+        if len(set(strides)) == 1:
+            return strides[0]
+        return None
+
+    def _analysis_frame_indices(self) -> List[int]:
+        """Global frame indices kept when per-file strides are applied."""
+        self._ensure_frame_counts()
+        indices: List[int] = []
+        offset = 0
+        for traj_path in self.trajectories:
+            n_frames = self._file_frame_counts.get(traj_path.name, 0)
+            stride = max(1, int(_lookup_file_map(self.file_strides, traj_path) or 1))
+            for local_i in range(0, n_frames, stride):
+                indices.append(offset + local_i)
+            offset += n_frames
+        return indices
+
+    def _analysis_universe_and_ref(
+        self, reference_frame: int = 0
+    ) -> tuple["Any", int]:
+        """
+        Return the universe used for analysis and a valid reference frame index.
+
+        When per-file strides are set (>1), builds an in-memory universe containing
+        only the kept frames so alignment and statistics never touch skipped frames.
+        """
+        import MDAnalysis as mda
+        import numpy as np
+
+        n_total = len(self.universe.trajectory)
+        if n_total == 0:
+            return self.universe, 0
+
+        ref_global = max(0, min(int(reference_frame), n_total - 1))
+
+        if not self._uses_stride():
+            return self.universe, ref_global
+
+        cache = getattr(self, "_analysis_u_cache", None)
+        indices = self._analysis_frame_indices()
+        if not indices:
+            return self.universe, ref_global
+
+        if cache is None:
+            from MDAnalysis.coordinates.memory import MemoryReader
+
+            n_atoms = self.universe.atoms.n_atoms
+            coordinates = np.empty((len(indices), n_atoms, 3), dtype=np.float32)
+            dimensions = np.zeros((len(indices), 6), dtype=np.float32)
+            for i, fi in enumerate(indices):
+                self.universe.trajectory[fi]
+                coordinates[i] = self.universe.atoms.positions.astype(
+                    np.float32, copy=False
+                )
+                dims = self.universe.trajectory.ts.dimensions
+                if dims is not None and len(dims) >= 6:
+                    dimensions[i] = dims[:6]
+            dt = float(getattr(self.universe.trajectory.ts, "dt", 1.0))
+            # Pass the array + format=MemoryReader (order fac = frames, atoms, xyz).
+            # Do not pass a pre-built MemoryReader — MDAnalysis wraps it in ChainReader
+            # and raises "tuple index out of range".
+            self._analysis_u_cache = mda.Universe(
+                str(self.topology),
+                coordinates,
+                format=MemoryReader,
+                order="fac",
+                dt=dt,
+                dimensions=dimensions,
+            )
+            self._analysis_index_map = indices
+            logger.info(
+                "Using strided in-memory trajectory: %d / %d frames for analysis",
+                len(indices),
+                n_total,
+            )
+
+        ref_local = (
+            self._analysis_index_map.index(ref_global)
+            if ref_global in self._analysis_index_map
+            else 0
+        )
+        return self._analysis_u_cache, ref_local
+
+    def clear_analysis_cache(self) -> None:
+        """Release in-memory strided trajectory copies to reduce RAM after analysis."""
+        self._analysis_u_cache = None
+        if hasattr(self, "_analysis_index_map"):
+            del self._analysis_index_map
+
+    def time_array_for_analysis(
+        self,
+        start: Optional[int] = None,
+        stop: Optional[int] = None,
+        step: Optional[int] = None,
+    ) -> "np.ndarray":
+        """Time axis aligned to analyzed frames (stride / start / stop / step)."""
+        import numpy as np
+
+        full = self._calculate_time_array()
+        if start is not None or stop is not None or step is not None:
+            s = 0 if start is None else int(start)
+            st = 1 if step is None else max(1, int(step))
+            stop_idx = len(full) if stop is None else int(stop)
+            return np.asarray(full[s:stop_idx:st], dtype=float)
+        if self._uses_stride():
+            indices = self._analysis_frame_indices()
+            return np.asarray([full[i] for i in indices if i < len(full)], dtype=float)
+        return np.asarray(full, dtype=float)
+
     def _calculate_time_array(self) -> "np.ndarray":
         """
         Calculate proper time array based on file_times dict.
 
         Returns:
-            Array of time values in nanoseconds
+            Array of time values in nanoseconds (one per trajectory frame).
         """
         try:
             import numpy as np
@@ -1884,38 +2243,48 @@ class TrajectoryAnalyzer:
             n_frames = len(self.universe.trajectory)
             return np.arange(n_frames) * timestep_ps / 1000.0  # Convert to ns
 
+        has_positive_times = any(
+            float(v) > 0 for v in self.file_times.values()
+        )
+
         # Calculate time array based on user-specified file durations
         time_array = []
         cumulative_time_ns = 0.0
 
-        # Load each trajectory separately to get frame counts
         for traj_path in self.trajectories:
-            # Get filename for lookup in file_times dict
-            filename = str(traj_path.name)
-
-            # Load this trajectory to count frames
             temp_universe = mda.Universe(str(self.topology), str(traj_path))
             n_frames = len(temp_universe.trajectory)
+            self._file_frame_counts[traj_path.name] = n_frames
 
-            # Get duration for this file (in ns)
-            duration_ns = self.file_times.get(filename, 0.0)
+            duration_ns = float(_lookup_file_map(self.file_times, traj_path) or 0.0)
 
-            if duration_ns > 0 and n_frames > 1:
-                # Create linearly spaced time points for this trajectory
-                file_times = np.linspace(
-                    cumulative_time_ns, cumulative_time_ns + duration_ns, n_frames
-                )
-            else:
-                # Fallback: use frame indices (assume 0.01 ns = 10 ps per frame)
-                file_times = cumulative_time_ns + np.arange(n_frames) * 0.01
-                if duration_ns > 0:
-                    cumulative_time_ns += duration_ns
+            if duration_ns > 0:
+                if n_frames == 1:
+                    file_times = np.array([cumulative_time_ns], dtype=float)
                 else:
-                    cumulative_time_ns += n_frames * 0.01
-                continue
-
-            time_array.extend(file_times)
-            cumulative_time_ns += duration_ns
+                    file_times = np.linspace(
+                        cumulative_time_ns,
+                        cumulative_time_ns + duration_ns,
+                        n_frames,
+                    )
+                time_array.extend(file_times.tolist())
+                cumulative_time_ns += duration_ns
+            elif has_positive_times:
+                # Other files have assigned times; keep index spacing minimal here
+                if n_frames == 1:
+                    file_times = np.array([cumulative_time_ns], dtype=float)
+                else:
+                    file_times = np.linspace(
+                        cumulative_time_ns,
+                        cumulative_time_ns + max(n_frames - 1, 0) * 0.002,
+                        n_frames,
+                    )
+                time_array.extend(file_times.tolist())
+                cumulative_time_ns = float(file_times[-1])
+            else:
+                file_times = cumulative_time_ns + np.arange(n_frames) * 0.01
+                time_array.extend(file_times.tolist())
+                cumulative_time_ns += n_frames * 0.01
 
         return np.array(time_array)
 
@@ -1938,49 +2307,47 @@ class TrajectoryAnalyzer:
             Dictionary with 'time' (ns) and 'rmsd' (Angstroms) arrays
         """
         try:
-            import MDAnalysis as mda
             from MDAnalysis.analysis import rms
-            from MDAnalysis.analysis import align as mda_align
             import numpy as np
         except ImportError:
             raise ImportError("MDAnalysis and numpy are required")
 
-        # Select atoms
-        atoms = self.universe.select_atoms(selection)
-
-        # Set reference frame
-        self.universe.trajectory[reference_frame]
-        ref_coords = self.universe.select_atoms(selection).positions.copy()
+        # Select atoms on the analysis universe (strided in-memory when stride > 1)
+        u, ref_local = self._analysis_universe_and_ref(reference_frame)
 
         if align:
-            # Perform alignment using MDAnalysis align module
-            # This modifies the trajectory in-place
-            aligner = mda_align.AlignTraj(
-                self.universe,
-                self.universe,
+            # Single-pass aligned RMSD (QCP superposition per frame). Faster than
+            # AlignTraj(in_memory=True) plus a redundant per-frame rms.rmsd loop.
+            rmsd_analysis = rms.RMSD(
+                u,
+                u,
                 select=selection,
-                ref_frame=reference_frame,
-                in_memory=True,
+                ref_frame=ref_local,
             )
-            aligner.run()
-            logger.info("Alignment completed (rotation + translation applied)")
-
-        # Calculate RMSD for each frame
-        rmsd_values = []
-        for ts in self.universe.trajectory:
-            if align:
-                # Structures already aligned, compute RMSD directly
-                rmsd = rms.rmsd(atoms.positions, ref_coords, superposition=False)
-            else:
-                # Raw RMSD without any alignment
-                diff = atoms.positions - ref_coords
-                rmsd = np.sqrt(np.mean(np.sum(diff**2, axis=1)))
-            rmsd_values.append(rmsd)
-
-        rmsd_array = np.array(rmsd_values)
+            rmsd_analysis.run()
+            rmsd_array = np.asarray(rmsd_analysis.results.rmsd[:, 2], dtype=float)
+            logger.info(
+                "Aligned RMSD computed for %d analysis frame(s)",
+                len(rmsd_array),
+            )
+        else:
+            atoms = u.select_atoms(selection)
+            u.trajectory[ref_local]
+            ref_coords = atoms.positions.astype(np.float64, copy=True)
+            n_frames = len(u.trajectory)
+            n_atoms = atoms.n_atoms
+            coords = np.empty((n_frames, n_atoms, 3), dtype=np.float64)
+            for i, _ts in enumerate(u.trajectory):
+                coords[i] = atoms.positions
+            diff = coords - ref_coords
+            rmsd_array = np.sqrt(np.mean(np.sum(diff * diff, axis=2), axis=1))
+            logger.info(
+                "Unaligned RMSD computed for %d analysis frame(s)",
+                len(rmsd_array),
+            )
 
         # Get proper time array (in nanoseconds)
-        time_ns = self._calculate_time_array()
+        time_ns = self.time_array_for_analysis()
 
         return {"time": time_ns, "rmsd": rmsd_array}  # RMSD values in Angstroms
 
@@ -2003,15 +2370,15 @@ class TrajectoryAnalyzer:
         except ImportError:
             raise ImportError("MDAnalysis and numpy are required")
 
-        # Select atoms
-        atoms = self.universe.select_atoms(selection)
+        u, _ = self._analysis_universe_and_ref(0)
+        atoms = u.select_atoms(selection)
 
-        # Calculate RMSF
         rmsf_analysis = rms.RMSF(atoms).run()
+        rmsf_vals = rmsf_analysis.results.rmsf
 
         return {
             "resids": atoms.resids,
-            "rmsf": rmsf_analysis.results.rmsf,  # RMSF in Angstroms
+            "rmsf": rmsf_vals,  # RMSF in Angstroms
             "resnames": atoms.resnames,  # Residue names (e.g., ALA, GLY)
             "atom_indices": atoms.indices,  # Atom indices
         }
@@ -2040,21 +2407,23 @@ class TrajectoryAnalyzer:
         except ImportError:
             raise ImportError("numpy is required")
 
+        u, _ = self._analysis_universe_and_ref(0)
         results = {}
 
         for name, (sel1, sel2) in selections.items():
-            atoms1 = self.universe.select_atoms(sel1)
-            atoms2 = self.universe.select_atoms(sel2)
+            atoms1 = u.select_atoms(sel1)
+            atoms2 = u.select_atoms(sel2)
 
             distances = []
 
-            for ts in self.universe.trajectory:
+            for fi in range(len(u.trajectory)):
+                u.trajectory[fi]
                 # Calculate center of mass distance in Angstroms
                 dist = np.linalg.norm(atoms1.center_of_mass() - atoms2.center_of_mass())
                 distances.append(dist)
 
             # Get proper time array (in nanoseconds)
-            time_ns = self._calculate_time_array()
+            time_ns = self.time_array_for_analysis()
 
             results[name] = {
                 "time": time_ns,
@@ -2080,15 +2449,17 @@ class TrajectoryAnalyzer:
         except ImportError:
             raise ImportError("numpy is required")
 
-        atoms = self.universe.select_atoms(selection)
+        u, _ = self._analysis_universe_and_ref(0)
+        atoms = u.select_atoms(selection)
 
         rg_values = []
 
-        for ts in self.universe.trajectory:
+        for fi in range(len(u.trajectory)):
+            u.trajectory[fi]
             rg_values.append(atoms.radius_of_gyration())  # In Angstroms
 
         # Get proper time array (in nanoseconds)
-        time_ns = self._calculate_time_array()
+        time_ns = self.time_array_for_analysis()
 
         return {"time": time_ns, "rg": np.array(rg_values)}  # Rg in Angstroms
 

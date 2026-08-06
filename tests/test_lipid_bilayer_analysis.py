@@ -109,6 +109,21 @@ class TestMembraneThickness:
         assert result["n_bins"] == 1
         assert "std" in result["stats"]
 
+    def test_bilayer_time_axis_spans_file_times(self, equilibration_bilayer_data):
+        """Regression: x-axis must honor file_times, not fall back to 0.01 ns/frame."""
+        topology, trajectories, file_times = equilibration_bilayer_data
+        expected_total = sum(file_times.values())
+        result = run_bilayer_analysis(
+            topology,
+            trajectories,
+            analysis_type="membrane_thickness",
+            lipid_sel=LIPID_SEL,
+            file_times=file_times,
+        )
+        x = result["x"]
+        assert len(x) == len(result["y"])
+        assert x[-1] == pytest.approx(expected_total, rel=0.02, abs=0.05)
+
     def test_pbc_straddling_thickness_is_folded_to_bilayer_gap(self):
         """Water-gap path Lz−d must not be reported as thickness."""
         import numpy as np

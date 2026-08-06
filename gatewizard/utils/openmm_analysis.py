@@ -18,8 +18,9 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
+from gatewizard.utils.energy_stride import lookup_file_map
 from gatewizard.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -84,6 +85,7 @@ class OpenMMLogAnalyzer:
         self,
         log_file: Union[Path, str, List[Union[Path, str]]],
         file_times: Optional[Dict[str, float]] = None,
+        file_strides: Optional[Dict[str, int]] = None,
     ):
         if isinstance(log_file, (str, Path)):
             self.log_files = [Path(log_file)]
@@ -91,6 +93,7 @@ class OpenMMLogAnalyzer:
             self.log_files = [Path(f) for f in log_file]
 
         self.file_times = file_times or {}
+        self.file_strides = file_strides or {}
         self._file_ranges: Dict[str, tuple] = {}
         self.data = self._parse_log_data()
 
@@ -109,6 +112,8 @@ class OpenMMLogAnalyzer:
 
             start_idx = len(data["step"])
             col_indices: Dict[str, int] = {}  # key → column index
+            stride = max(1, int(lookup_file_map(self.file_strides, log_file) or 1))
+            row_i = 0
 
             try:
                 with open(log_file, "r", encoding="utf-8", errors="ignore") as fh:
@@ -144,6 +149,11 @@ class OpenMMLogAnalyzer:
                                 valid = False
                                 break
                         if not valid or "step" not in row:
+                            continue
+
+                        keep = row_i % stride == 0
+                        row_i += 1
+                        if not keep:
                             continue
 
                         for key in _NUMERIC_KEYS:
@@ -320,7 +330,7 @@ class OpenMMLogAnalyzer:
         energy_keys = {"potential", "kinetic", "total"}
 
         _tc = _auto_text_color(text_color, bg_color)
-        default_colors = [
+        default_colors = list(colors or [
             "#61afef",
             "#98c379",
             "#e06c75",
@@ -329,76 +339,90 @@ class OpenMMLogAnalyzer:
             "#56b6c2",
             "#d19a66",
             "#abb2bf",
-        ]
+        ])
 
-        def _plot_one(ax, key, color):
+        from gatewizard.utils.plot_spec import plot_spec_from_plot_properties_kwargs
+        from gatewizard.utils import matplotlib_renderer
+        import numpy as np
+
+        series_payload: List[Dict[str, Any]] = []
+        for prop_i, key in enumerate(properties):
             raw = np.array(self.data.get(key, []), dtype=float)
             if len(raw) == 0:
-                return
+                continue
             y = raw * energy_factor if key in energy_keys else raw
             y_label = _property_label(key, energy_label)
-            ax.plot(plot_time[: len(y)], y, color=color, linewidth=0.8)
-            ax.set_xlabel(f"Time ({time_label})", color=_tc)
-            ax.set_ylabel(y_label, color=_tc)
-            ax.set_title(key.replace("_", " ").title(), color=_tc)
-            ax.tick_params(colors=_tc)
-            for spine in ax.spines.values():
-                spine.set_edgecolor(_tc)
-            if bg_color != "none":
-                ax.set_facecolor(bg_color)
-            if show_grid:
-                ax.grid(True, alpha=0.3, color=_tc, linewidth=0.5)
-            if xlim:
-                ax.set_xlim(xlim)
-            if ylim:
-                ax.set_ylim(ylim)
+            series_payload.append(
+                {
+                    "key": key,
+                    "name": key.replace("_", " ").title(),
+                    "unit": y_label.split("(")[-1].rstrip(")") if "(" in y_label else "",
+                    "y": y.tolist(),
+                    "x": plot_time[: len(y)].tolist() if hasattr(plot_time, "tolist") else list(plot_time[: len(y)]),
+                }
+            )
+
+        if not series_payload:
+            logger.warning("No plottable properties resolved")
+            return
+
+        plot_spec = plot_spec_from_plot_properties_kwargs(
+            [s["name"] for s in series_payload],
+            separate_plots=separate_plots,
+            line_colors=default_colors,
+            energy_units=energy_units,
+            time_units=time_units,
+            bg_color=bg_color,
+            fig_bg_color=fig_bg_color,
+            text_color=text_color,
+            show_grid=show_grid,
+            xlim=xlim,
+            ylim=ylim,
+            figsize=figsize or (10, 6),
+            dpi=dpi,
+        )
+        for i, panel in enumerate(plot_spec["panels"]):
+            if i < len(series_payload):
+                panel["key"] = series_payload[i]["key"]
+
+        data = {"x": series_payload[0]["x"], "series": series_payload}
 
         if separate_plots:
-            for prop_i, key in enumerate(properties):
-                fig, ax = plt.subplots(figsize=figsize or (10, 4))
-                if fig_bg_color != "none":
-                    fig.patch.set_facecolor(fig_bg_color)
-                color = (
-                    colors[prop_i]
-                    if colors and prop_i < len(colors)
-                    else default_colors[prop_i % len(default_colors)]
+            prefix = save or "plot_"
+            if prefix.endswith(".png"):
+                prefix = prefix[:-4] + "_"
+            elif not prefix.endswith("_"):
+                prefix = prefix + "_"
+            for i, panel in enumerate(plot_spec["panels"]):
+                single = plot_spec_from_plot_properties_kwargs(
+                    [panel.get("name") or panel["key"]],
+                    separate_plots=False,
+                    line_colors=[panel.get("line_color")],
+                    energy_units=energy_units,
+                    time_units=time_units,
+                    bg_color=bg_color,
+                    fig_bg_color=fig_bg_color,
+                    text_color=text_color,
+                    show_grid=show_grid,
+                    xlim=xlim,
+                    ylim=ylim,
+                    figsize=figsize or (10, 4),
+                    dpi=dpi,
                 )
-                _plot_one(ax, key, color)
-                plt.tight_layout()
-                if save:
-                    fname = (
-                        f"{save}_{key}.png"
-                        if not save.endswith(".png")
-                        else f"{key}_{save}"
-                    )
-                    plt.savefig(fname, dpi=dpi, bbox_inches="tight")
+                single["panels"][0]["key"] = panel["key"]
+                fig = matplotlib_renderer.render_energetic(data, single)
+                fname = f"{prefix}{panel['key']}.png"
+                fig.savefig(fname, dpi=dpi, bbox_inches="tight")
+                plt.close(fig)
                 if show:
                     plt.show()
-                plt.close(fig)
         else:
-            n = len(properties)
-            cols = min(n, 2)
-            rows = (n + cols - 1) // cols
-            fig, axes_arr = plt.subplots(
-                rows, cols, figsize=figsize or (12, 4 * rows), squeeze=False
-            )
-            if fig_bg_color != "none":
-                fig.patch.set_facecolor(fig_bg_color)
-            for prop_i, key in enumerate(properties):
-                r, c = divmod(prop_i, cols)
-                color = (
-                    colors[prop_i]
-                    if colors and prop_i < len(colors)
-                    else default_colors[prop_i % len(default_colors)]
-                )
-                _plot_one(axes_arr[r][c], key, color)
-            # Hide unused subplots
-            for prop_i in range(len(properties), rows * cols):
-                r, c = divmod(prop_i, cols)
-                axes_arr[r][c].set_visible(False)
-            plt.tight_layout()
+            if len(properties) > 1:
+                plot_spec["layout"] = "grid"
+                plot_spec["cols"] = min(len(series_payload), 2)
+            fig = matplotlib_renderer.render_energetic(data, plot_spec)
             if save:
-                plt.savefig(save, dpi=dpi, bbox_inches="tight")
+                fig.savefig(save, dpi=dpi, bbox_inches="tight")
             if show:
                 plt.show()
             plt.close(fig)
@@ -696,25 +720,65 @@ def list_openmm_energy_properties(
 ) -> List[str]:
     """Return available OpenMM energy properties detected from log files.
 
-    Returns display names (e.g. ``"Potential Energy"``) in a fixed order,
-    mirroring :func:`~gatewizard.utils.namd_analysis.list_namd_energy_properties`.
+    Fast path: reads only the StateDataReporter header (and a few data rows)
+    instead of parsing the entire log — property detection must stay snappy
+    on multi‑GB production logs.
     """
-    import math
-
+    del file_times  # unused; kept for API parity with other engines
     logs = [Path(f) for f in log_files]
-    analyzer = OpenMMLogAnalyzer(logs, file_times=file_times)
-    props = []
-    for key in _OPENMM_KEY_ORDER:
-        vals = analyzer.data.get(key, [])
-        if vals and any(not math.isnan(v) for v in vals):
-            props.append(_OPENMM_DISPLAY_NAMES[key])
-    return props
+    found_keys: set[str] = set()
+
+    for log_file in logs:
+        if not log_file.is_file():
+            continue
+        try:
+            with open(log_file, "r", encoding="utf-8", errors="ignore") as fh:
+                header_keys: Dict[str, int] = {}
+                for _ in range(200):  # header is near the top
+                    raw = fh.readline()
+                    if not raw:
+                        break
+                    line = raw.strip()
+                    if not line:
+                        continue
+                    if line.startswith("#"):
+                        parts = [
+                            p.strip().strip('"')
+                            for p in line.lstrip("#").strip().split("\t")
+                        ]
+                        header_keys = {}
+                        for idx, col_name in enumerate(parts):
+                            key = _COLUMN_MAP.get(col_name)
+                            if key in _NUMERIC_KEYS and key != "step" and key != "time_ps":
+                                header_keys[key] = idx
+                        if header_keys:
+                            found_keys.update(header_keys)
+                            break
+        except OSError as exc:
+            logger.warning(f"Cannot peek OpenMM log {log_file}: {exc}")
+            continue
+        if found_keys:
+            break
+
+    if not found_keys:
+        # Fallback for unusual layouts: full parse of first file only
+        if logs:
+            analyzer = OpenMMLogAnalyzer([logs[0]])
+            import math
+
+            for key in _OPENMM_KEY_ORDER:
+                vals = analyzer.data.get(key, [])
+                if vals and any(not math.isnan(v) for v in vals):
+                    found_keys.add(key)
+
+    return [_OPENMM_DISPLAY_NAMES[k] for k in _OPENMM_KEY_ORDER if k in found_keys]
 
 
 def run_openmm_energetic_analysis(
     log_files: List[Union[str, Path]],
     properties: Optional[List[str]] = None,
     file_times: Optional[Dict[str, float]] = None,
+    file_strides: Optional[Dict[str, int]] = None,
     time_units: str = "ns",
     energy_units: str = "kcal/mol",
     pressure_units: str = "atm",
@@ -731,7 +795,7 @@ def run_openmm_energetic_analysis(
     import numpy as np
 
     logs = [Path(f) for f in log_files]
-    analyzer = OpenMMLogAnalyzer(logs, file_times=file_times)
+    analyzer = OpenMMLogAnalyzer(logs, file_times=file_times, file_strides=file_strides)
 
     # Time axis
     x = analyzer._calculate_time_array()

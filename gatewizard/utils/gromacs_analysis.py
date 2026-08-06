@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+from .energy_stride import lookup_file_map
 from .logger import get_logger
 
 logger = get_logger(__name__)
@@ -420,12 +421,14 @@ class GROMACSLogEnergyAnalyzer:
         self,
         log_files: Union[Path, str, List[Union[Path, str]]],
         file_times: Optional[Dict[str, float]] = None,
+        file_strides: Optional[Dict[str, int]] = None,
     ) -> None:
         if isinstance(log_files, (str, Path)):
             self.log_files = [Path(log_files)]
         else:
             self.log_files = [Path(f) for f in log_files]
         self.file_times = file_times or {}
+        self.file_strides = file_strides or {}
         self._file_ranges: Dict[str, tuple] = {}
         self.data = self._parse_all()
 
@@ -509,6 +512,14 @@ class GROMACSLogEnergyAnalyzer:
 
             if n_points == 0:
                 continue
+
+            stride = max(1, int(lookup_file_map(self.file_strides, log_file) or 1))
+            if stride > 1:
+                for key in list(file_data.keys()):
+                    file_data[key] = file_data[key][::stride]
+                n_points = len(file_data.get("time_ns", []))
+                if n_points == 0:
+                    continue
 
             # Apply file_times override
             fname = log_file.name
@@ -633,17 +644,59 @@ def list_gromacs_energy_properties(
 ) -> List[str]:
     """Return available energy property labels from GROMACS log file(s).
 
-    Mirrors :func:`~gatewizard.utils.namd_analysis.list_namd_energy_properties`.
+    Fast path: parse only until the first Energies block is found.
     """
+    del file_times
     logs = [Path(f) for f in log_files]
-    analyzer = GROMACSLogEnergyAnalyzer(logs, file_times=file_times)
-    return analyzer.get_available_properties()
+    for log_file in logs:
+        if not log_file.is_file():
+            continue
+        try:
+            with open(log_file, "r", encoding="utf-8", errors="ignore") as fh:
+                lines = []
+                for i, line in enumerate(fh):
+                    lines.append(line)
+                    if i > 20000:
+                        break
+        except OSError as exc:
+            logger.warning(f"Cannot peek GROMACS log {log_file}: {exc}")
+            continue
+
+        i = 0
+        current_time_ns = None
+        while i < len(lines):
+            line = lines[i]
+            if re.match(r"^\s+Step\s+Time\s*$", line):
+                i += 1
+                if i < len(lines):
+                    m = re.match(r"^\s+(\d+)\s+([\d.]+)\s*$", lines[i])
+                    if m:
+                        current_time_ns = float(m.group(2)) / 1000.0
+                i += 1
+                continue
+            if "Energies (kJ/mol)" in line and current_time_ns is not None:
+                i += 1
+                block_lines: List[str] = []
+                while i < len(lines) and lines[i].strip():
+                    block_lines.append(lines[i])
+                    i += 1
+                energies = _parse_gromacs_energies_lines(block_lines)
+                if energies:
+                    return sorted(energies.keys())
+                continue
+            i += 1
+
+    if logs:
+        analyzer = GROMACSLogEnergyAnalyzer([logs[0]])
+        return analyzer.get_available_properties()
+    return []
 
 
 def run_gromacs_energetic_analysis(
     log_files: List[Union[str, Path]],
     properties: Optional[List[str]] = None,
     file_times: Optional[Dict[str, float]] = None,
+    file_strides: Optional[Dict[str, int]] = None,
     time_units: str = "ns",
     energy_units: str = "kcal/mol",
     pressure_units: str = "atm",
@@ -659,7 +712,9 @@ def run_gromacs_energetic_analysis(
     import numpy as np
 
     logs = [Path(f) for f in log_files]
-    analyzer = GROMACSLogEnergyAnalyzer(logs, file_times=file_times)
+    analyzer = GROMACSLogEnergyAnalyzer(
+        logs, file_times=file_times, file_strides=file_strides
+    )
 
     # Time axis
     x = analyzer._calculate_time_array()
@@ -716,3 +771,123 @@ def run_gromacs_energetic_analysis(
         "series": series,
         "statistics": statistics,
     }
+
+
+def plot_gromacs_properties(
+    log_files: List[Union[str, Path]],
+    properties: Optional[List[str]] = None,
+    file_times: Optional[Dict[str, float]] = None,
+    *,
+    separate_plots: bool = False,
+    energy_units: str = "kcal/mol",
+    time_units: str = "ns",
+    pressure_units: str = "atm",
+    temperature_units: str = "K",
+    volume_units: str = "Å³",
+    line_colors: Optional[List[str]] = None,
+    bg_color: str = "#2b2b2b",
+    fig_bg_color: str = "#212121",
+    text_color: str = "Auto",
+    grid_color: Optional[str] = None,
+    show_grid: bool = True,
+    xlim: Optional[tuple] = None,
+    ylim: Optional[tuple] = None,
+    title: Optional[str] = None,
+    xlabel: Optional[str] = None,
+    ylabel: Optional[str] = None,
+    save: Optional[str] = None,
+    save_prefix: Optional[str] = None,
+    show: bool = False,
+    figsize: tuple = (10, 6),
+    dpi: int = 300,
+) -> None:
+    """Plot GROMACS log energetic series using the shared PlotSpec renderer."""
+    from gatewizard.utils import matplotlib_renderer
+    from gatewizard.utils.plot_spec import plot_spec_from_plot_properties_kwargs
+
+    data = run_gromacs_energetic_analysis(
+        log_files,
+        properties=properties,
+        file_times=file_times,
+        time_units=time_units,
+        energy_units=energy_units,
+        pressure_units=pressure_units,
+        temperature_units=temperature_units,
+        volume_units=volume_units,
+    )
+    if not data.get("series"):
+        logger.warning("No GROMACS energetic data to plot")
+        return
+
+    plot_spec = plot_spec_from_plot_properties_kwargs(
+        [s["name"] for s in data["series"]],
+        separate_plots=separate_plots,
+        line_colors=line_colors,
+        energy_units=energy_units,
+        time_units=time_units,
+        pressure_units=pressure_units,
+        temperature_units=temperature_units,
+        volume_units=volume_units,
+        bg_color=bg_color,
+        fig_bg_color=fig_bg_color,
+        text_color=text_color,
+        grid_color=grid_color,
+        show_grid=show_grid,
+        xlim=xlim,
+        ylim=ylim,
+        title=title,
+        xlabel=xlabel,
+        ylabel=ylabel,
+        figsize=figsize,
+        dpi=dpi,
+    )
+    for i, panel in enumerate(plot_spec["panels"]):
+        if i < len(data["series"]):
+            panel["key"] = data["series"][i]["key"]
+
+    if separate_plots:
+        prefix = save_prefix or "gromacs_"
+        for i, panel in enumerate(plot_spec["panels"]):
+            single = plot_spec_from_plot_properties_kwargs(
+                [panel.get("name") or panel["key"]],
+                separate_plots=False,
+                line_colors=[panel.get("line_color")],
+                energy_units=energy_units,
+                time_units=time_units,
+                bg_color=bg_color,
+                fig_bg_color=fig_bg_color,
+                text_color=text_color,
+                grid_color=grid_color,
+                show_grid=show_grid,
+                xlim=xlim,
+                ylim=ylim,
+                title=title or panel.get("name"),
+                xlabel=xlabel,
+                ylabel=panel.get("ylabel"),
+                figsize=figsize,
+                dpi=dpi,
+            )
+            single["panels"][0]["key"] = panel["key"]
+            import matplotlib.pyplot as plt
+
+            fig = matplotlib_renderer.render_energetic(data, single)
+            safe = str(panel.get("name") or panel["key"]).lower().replace(" ", "_")
+            out = f"{prefix}{safe}.png"
+            fig.savefig(out, dpi=dpi, bbox_inches="tight")
+            plt.close(fig)
+            logger.info("Plot saved: %s", out)
+            if show:
+                plt.show()
+    else:
+        if len(data["series"]) > 1:
+            plot_spec["layout"] = "grid"
+            plot_spec["cols"] = min(len(data["series"]), 2)
+        import matplotlib.pyplot as plt
+
+        fig = matplotlib_renderer.render_energetic(data, plot_spec)
+        if save:
+            fig.savefig(save, dpi=dpi, bbox_inches="tight")
+            logger.info("Plot saved: %s", save)
+        if show:
+            plt.show()
+        plt.close(fig)

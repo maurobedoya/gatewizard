@@ -123,18 +123,39 @@ class BilayerTrajectoryAnalyzer:
         topology: Union[str, Path],
         trajectory: Union[str, Path, List[Union[str, Path]]],
         file_times: Optional[Dict[str, float]] = None,
+        file_strides: Optional[Dict[str, int]] = None,
     ):
         from gatewizard.utils.namd_analysis import TrajectoryAnalyzer
 
-        self._trajectory = TrajectoryAnalyzer(topology, trajectory, file_times=file_times)
+        self._trajectory = TrajectoryAnalyzer(
+            topology,
+            trajectory,
+            file_times=file_times,
+            file_strides=file_strides,
+        )
         self._z_centered_for: Optional[str] = None
 
     @property
     def universe(self):
-        return self._trajectory.universe
+        u, _ = self._trajectory._analysis_universe_and_ref(0)
+        return u
 
     def _calculate_time_array(self):
         return self._trajectory._calculate_time_array()
+
+    def _align_time_ns(
+        self,
+        n_frames: int,
+        start: Optional[int] = None,
+        stop: Optional[int] = None,
+        step: Optional[int] = None,
+    ):
+        if self._trajectory._uses_stride():
+            return self._trajectory.time_array_for_analysis()
+        from gatewizard.utils.namd_analysis import _align_time_to_frame_count
+
+        full = self._calculate_time_array()
+        return _align_time_to_frame_count(full, n_frames, start=start, stop=stop, step=step)
 
     def _ensure_membrane_centered_in_z(self, lipid_sel: str) -> None:
         """Shift the bilayer so it does not straddle the periodic z boundary.
@@ -256,13 +277,59 @@ class BilayerTrajectoryAnalyzer:
         mean_per_frame = np.nanmean(area_array, axis=0)
 
         n_frames = area_array.shape[1]
-        time_ns = self._calculate_time_array()
-        if len(time_ns) != n_frames:
-            time_ns = time_ns[:n_frames] if len(time_ns) > n_frames else np.linspace(
-                0.0, max(len(time_ns) - 1, 0) * 0.01, n_frames
-            )
+        time_ns = self._align_time_ns(n_frames, start=start, stop=stop, step=step)
 
         metadata = self._lipid_residue_metadata(lipid_sel)
+        n_lipids = int(area_array.shape[0])
+
+        # Diagnostics: Voronoi areas tile the lateral box, so mean APL ≈ Lx*Ly / n_lipids.
+        # A flat mean is expected when the XY box is fixed (e.g. NVT); leaflets may still vary.
+        box_areas = []
+        sample_idx = list(
+            dict.fromkeys(
+                [0, max(0, n_frames // 2), max(0, n_frames - 1)]
+            )
+        )
+        for fi in sample_idx:
+            try:
+                ts_i = (start or 0) + fi * (step or 1)
+                self.universe.trajectory[ts_i]
+                dims = self.universe.dimensions
+                if dims is not None and len(dims) >= 2:
+                    box_areas.append(float(dims[0]) * float(dims[1]))
+            except Exception:
+                continue
+        mean_apl = float(np.nanmean(mean_per_frame)) if n_frames else float("nan")
+        std_apl = float(np.nanstd(mean_per_frame)) if n_frames else float("nan")
+        min_apl = float(np.nanmin(mean_per_frame)) if n_frames else float("nan")
+        max_apl = float(np.nanmax(mean_per_frame)) if n_frames else float("nan")
+        box_mean = float(np.mean(box_areas)) if box_areas else float("nan")
+        expected = box_mean / n_lipids if n_lipids and np.isfinite(box_mean) else float("nan")
+        nearly_flat = bool(np.isfinite(std_apl) and std_apl < max(1e-6, 0.01 * abs(mean_apl)))
+        logger.info(
+            "Area per lipid: selection=%r n_lipids=%d n_frames=%d "
+            "mean=%.4f std=%.4f min=%.4f max=%.4f Å² | "
+            "sample_box_XY=%.2f Å² expected_mean≈box/n=%.4f Å² | "
+            "flat_mean=%s (expected when lateral box is fixed; not a bug)",
+            lipid_sel,
+            n_lipids,
+            n_frames,
+            mean_apl,
+            std_apl,
+            min_apl,
+            max_apl,
+            box_mean,
+            expected,
+            nearly_flat,
+        )
+        if nearly_flat:
+            logger.info(
+                "Area per lipid mean is nearly constant across frames. "
+                "In Voronoi APL the lipid areas tile the periodic XY box, so "
+                "mean ≈ Lx·Ly / n_lipids. Fixed-area ensembles (NVT, some NPAT) "
+                "yield a flat mean while upper/lower leaflet means can still fluctuate. "
+                "Variable-area ensembles (NPT, NPγT) should show a time-varying mean."
+            )
 
         return {
             "time": time_ns,
@@ -336,11 +403,7 @@ class BilayerTrajectoryAnalyzer:
         thickness = _correct_pbc_straddling_thickness(thickness, box_z)
 
         n_frames = thickness.size
-        time_ns = self._calculate_time_array()
-        if len(time_ns) != n_frames:
-            time_ns = time_ns[:n_frames] if len(time_ns) > n_frames else np.linspace(
-                0.0, max(len(time_ns) - 1, 0) * 0.01, n_frames
-            )
+        time_ns = self._align_time_ns(n_frames, start=start, stop=stop, step=step)
 
         return {
             "time": time_ns,
@@ -524,6 +587,7 @@ def run_bilayer_analysis(
     n_bins: int = 1,
     interpolate: bool = False,
     file_times: Optional[Dict[str, float]] = None,
+    file_strides: Optional[Dict[str, int]] = None,
     start: Optional[int] = None,
     stop: Optional[int] = None,
     step: Optional[int] = None,
@@ -534,67 +598,88 @@ def run_bilayer_analysis(
 
     Supported analysis types: ``area_per_lipid``, ``membrane_thickness``.
     """
+    import gc
     import numpy as np
 
     top = Path(topology_file).expanduser().resolve()
     trajs = _to_path_list(trajectory_files)
-    analyzer = BilayerTrajectoryAnalyzer(top, trajs, file_times=file_times)
+    effective_step = step
+    if file_strides and effective_step is None:
+        from gatewizard.utils.namd_analysis import _lookup_file_map
 
-    atype = analysis_type.strip().lower().replace(" ", "_").replace("-", "_")
-    if atype in {"area_per_lipid", "apl"}:
-        data = analyzer.calculate_area_per_lipid(
-            lipid_sel=lipid_sel,
-            leaflet_lipid_sel=leaflet_lipid_sel,
-            start=start,
-            stop=stop,
-            step=step,
-            verbose=verbose,
-        )
-        mean_y = np.asarray(data["mean_area_per_lipid"], dtype=float)
-        return {
-            "analysis_type": "area_per_lipid",
-            "x": np.asarray(data["time"], dtype=float).tolist(),
-            "y": mean_y.tolist(),
-            "x_label": "Time (ns)",
-            "y_label": "Area per lipid (Å²)",
-            "series_name": "Mean area per lipid",
-            "mean_upper_leaflet": np.asarray(
-                data["mean_upper_leaflet"], dtype=float
-            ).tolist(),
-            "mean_lower_leaflet": np.asarray(
-                data["mean_lower_leaflet"], dtype=float
-            ).tolist(),
-            "lipid_resids": data["resids"],
-            "lipid_resnames": data["resnames"],
-            "per_lipid_areas": np.asarray(data["areas"], dtype=float).tolist(),
-            "stats": _stats_from_series(mean_y),
-        }
-
-    if atype in {"membrane_thickness", "memb_thickness", "thickness"}:
-        data = analyzer.calculate_membrane_thickness(
-            lipid_sel=lipid_sel,
-            leaflet_lipid_sel=leaflet_lipid_sel,
-            leaflet_filter_sel=leaflet_filter_sel,
-            n_bins=n_bins,
-            interpolate=interpolate,
-            start=start,
-            stop=stop,
-            step=step,
-            verbose=verbose,
-        )
-        y = np.asarray(data["thickness"], dtype=float)
-        return {
-            "analysis_type": "membrane_thickness",
-            "x": np.asarray(data["time"], dtype=float).tolist(),
-            "y": y.tolist(),
-            "x_label": "Time (ns)",
-            "y_label": "Membrane thickness (Å)",
-            "series_name": "Membrane thickness",
-            "n_bins": n_bins,
-            "stats": _stats_from_series(y),
-        }
-
-    raise ValueError(
-        f"Unsupported bilayer analysis type: {analysis_type}. "
-        "Supported: area_per_lipid, membrane_thickness"
+        strides = [
+            max(1, int(_lookup_file_map(file_strides, p) or 1)) for p in trajs
+        ]
+        # Per-file stride is applied via in-memory subsampling on TrajectoryAnalyzer;
+        # only use a global step when there is a single file and no stride map yet.
+        if len(trajs) == 1 and len(set(strides)) == 1 and strides[0] > 1:
+            effective_step = strides[0]
+    analyzer = BilayerTrajectoryAnalyzer(
+        top, trajs, file_times=file_times, file_strides=file_strides
     )
+    if analyzer._trajectory._uses_stride():
+        effective_step = 1
+
+    try:
+        atype = analysis_type.strip().lower().replace(" ", "_").replace("-", "_")
+        if atype in {"area_per_lipid", "apl"}:
+            data = analyzer.calculate_area_per_lipid(
+                lipid_sel=lipid_sel,
+                leaflet_lipid_sel=leaflet_lipid_sel,
+                start=start,
+                stop=stop,
+                step=effective_step,
+                verbose=verbose,
+            )
+            mean_y = np.asarray(data["mean_area_per_lipid"], dtype=float)
+            return {
+                "analysis_type": "area_per_lipid",
+                "x": np.asarray(data["time"], dtype=float).tolist(),
+                "y": mean_y.tolist(),
+                "x_label": "Time (ns)",
+                "y_label": "Area per lipid (Å²)",
+                "series_name": "Mean area per lipid",
+                "mean_upper_leaflet": np.asarray(
+                    data["mean_upper_leaflet"], dtype=float
+                ).tolist(),
+                "mean_lower_leaflet": np.asarray(
+                    data["mean_lower_leaflet"], dtype=float
+                ).tolist(),
+                "lipid_resids": data["resids"],
+                "lipid_resnames": data["resnames"],
+                "per_lipid_areas": np.asarray(data["areas"], dtype=float).tolist(),
+                "stats": _stats_from_series(mean_y),
+            }
+
+        if atype in {"membrane_thickness", "memb_thickness", "thickness"}:
+            data = analyzer.calculate_membrane_thickness(
+                lipid_sel=lipid_sel,
+                leaflet_lipid_sel=leaflet_lipid_sel,
+                leaflet_filter_sel=leaflet_filter_sel,
+                n_bins=n_bins,
+                interpolate=interpolate,
+                start=start,
+                stop=stop,
+                step=effective_step,
+                verbose=verbose,
+            )
+            y = np.asarray(data["thickness"], dtype=float)
+            return {
+                "analysis_type": "membrane_thickness",
+                "x": np.asarray(data["time"], dtype=float).tolist(),
+                "y": y.tolist(),
+                "x_label": "Time (ns)",
+                "y_label": "Membrane thickness (Å)",
+                "series_name": "Membrane thickness",
+                "n_bins": n_bins,
+                "stats": _stats_from_series(y),
+            }
+
+        raise ValueError(
+            f"Unsupported bilayer analysis type: {analysis_type}. "
+            "Supported: area_per_lipid, membrane_thickness"
+        )
+    finally:
+        analyzer._trajectory.clear_analysis_cache()
+        del analyzer
+        gc.collect()
