@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.53] - 2026-08-06
+
 ### Added
 
 - **Analysis:** PlotSpec rendering helpers; structural per-file `file_strides`; energetic log stride helper (`energy_stride`)
@@ -22,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Cluster probe:** list compute nodes via `sinfo -N`; batch templates support `#SBATCH --nodelist=` / `--constraint`
 - **Equilibration (Amber):** full `AmberEquilibrationManager` — mdin templates for NVT/NPT/NPAT/NPgT, MDA GROUP positional restraints (no dihedrals), `run_equilibration.sh` with resume/resources, executable discovery (`pmemd.cuda` → `pmemd` → MPI → `sander`), and `amber_analysis` progress/energetic parsing
 - **Equilibration templates:** generated inputs stamp GateWizard API version, local generation time (with timezone), and shared templates version (`testing` for now — protocols are still evolving) for traceability
+
+### Changed
+
+- **README:** GateWizard splash lockup at the top of the repo README
 
 ### Fixed
 
