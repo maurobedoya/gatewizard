@@ -6,15 +6,16 @@ This directory contains all images used in the GateWizard documentation.
 
 ```
 docs/images/
-├── api/              # Images for API reference documentation
+├── splash.png              # Brand lockup (API README header; synced from GUI)
+├── api/                    # Images for API reference documentation
 │   ├── propka_titration_curves.png
 │   ├── propka_pka_distribution.png
 │   └── ...
-├── user-guide/       # Images for user guide
+├── user-guide/             # Images for user guide
 │   └── ...
-├── installation/     # Images for installation guide
+├── installation/           # Images for installation guide
 │   └── ...
-└── troubleshooting/  # Images for troubleshooting
+└── troubleshooting/        # Images for troubleshooting
     └── ...
 ```
 
