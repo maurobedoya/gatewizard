@@ -47,6 +47,26 @@ def test_engine_resource_profile_gromacs_gpu_md() -> None:
     assert profile["production"]["cpu_cores"] == 6
 
 
+def test_engine_resource_profile_openmm_cpu1_gpu_all_stages() -> None:
+    from gatewizard.utils.equilibration_resources import engine_resource_profile
+
+    profile = engine_resource_profile("openmm")
+    for kind in ("minimization", "equilibration", "production"):
+        assert profile[kind]["cpu_cores"] == 1
+        assert profile[kind]["num_gpus"] == 1
+        assert profile[kind]["use_gpu"] is True
+
+
+def test_resolve_stage_resources_openmm_minimization_keeps_gpu() -> None:
+    resolved = resolve_stage_resources(
+        {"name": "Minimization", "stage_kind": "minimization"},
+        engine="openmm",
+    )
+    assert resolved["use_gpu"] is True
+    assert resolved["num_gpus"] == 1
+    assert resolved["cpu_cores"] == 1
+
+
 def test_aggregate_slurm_resources_amber_engine_defaults() -> None:
     stages = resolve_all_stage_resources(
         [

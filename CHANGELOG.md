@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **README:** GateWizard splash lockup at the top of the repo README
+- **Equilibration (OpenMM):** default per-stage resources are CPU×1 + GPU×1 for minimization, equilibration, and production (OpenMM uses a single host thread)
 
 ### Fixed
 

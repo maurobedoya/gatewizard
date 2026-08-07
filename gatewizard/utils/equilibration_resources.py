@@ -41,6 +41,7 @@ def engine_resource_profile(engine: str) -> Dict[str, Any]:
 
     GROMACS: CPU minimization; equilibration and production use CPU×6 + GPU×1.
     Amber: entire equilibration on CPU×6; production uses CPU×1 + GPU×1 (pmemd.cuda).
+    OpenMM: single host thread (CPU×1) + GPU×1 for minimization, equilibration, and production.
     """
     engine = (engine or "").strip().lower()
     cpu_md = {
@@ -54,6 +55,12 @@ def engine_resource_profile(engine: str) -> Dict[str, Any]:
         "gpu_id": 0,
         "num_gpus": 0,
         "use_gpu": False,
+    }
+    openmm_stage = {
+        "cpu_cores": 1,
+        "gpu_id": 0,
+        "num_gpus": 1,
+        "use_gpu": True,
     }
     mini = dict(DEFAULT_MINIMIZATION_RESOURCES)
     prod_gpu = dict(DEFAULT_PRODUCTION_RESOURCES)
@@ -72,7 +79,14 @@ def engine_resource_profile(engine: str) -> Dict[str, Any]:
             "equilibration": cpu_md,
             "production": dict(cpu_md),
         }
-    # NAMD, OpenMM, and unknown engines: GPU for MD stages, lighter host CPU for prod
+    if engine == "openmm":
+        return {
+            "compute_defaults": {**openmm_stage, "compute_target": "auto"},
+            "minimization": dict(openmm_stage),
+            "equilibration": dict(openmm_stage),
+            "production": dict(openmm_stage),
+        }
+    # NAMD and unknown engines: GPU for MD stages, lighter host CPU for prod
     return {
         "compute_defaults": {**cpu_md, "compute_target": "auto"},
         "minimization": mini,
@@ -191,7 +205,8 @@ def resolve_stage_resources(
             if key in stage and stage[key] is not None:
                 resolved[key] = stage[key]
 
-    if kind == "minimization":
+    # OpenMM can minimize on GPU; other engines keep CPU-only minimization.
+    if kind == "minimization" and (engine or "").strip().lower() != "openmm":
         resolved["use_gpu"] = False
         resolved["num_gpus"] = 0
 
