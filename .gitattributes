@@ -1,0 +1,47 @@
+# Normalize text to LF in the repo. Avoids WSL/Windows CRLF noise in `git status`.
+* text=auto
+
+# Explicit text types (Cursor/WSL + GitHub Desktop stay aligned)
+*.py text eol=lf
+*.md text eol=lf
+*.rst text eol=lf
+*.txt text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+*.cfg text eol=lf
+*.ini text eol=lf
+*.json text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+*.sh text eol=lf
+*.bash text eol=lf
+*.in text eol=lf
+*.conf text eol=lf
+*.gitignore text eol=lf
+*.gitattributes text eol=lf
+
+# Molecular / binary-ish assets — never treat as text
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.gz binary
+*.zip binary
+*.whl binary
+*.pdb binary
+*.dcd binary
+*.xtc binary
+*.trr binary
+*.gro binary
+*.tpr binary
+*.top binary
+*.prmtop binary
+*.inpcrd binary
+*.nc binary
+*.h5 binary
+*.hdf5 binary
+*.pka binary
