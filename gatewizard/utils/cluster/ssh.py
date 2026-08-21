@@ -6,6 +6,7 @@ optional Paramiko and keeps the password only in process memory.
 
 from __future__ import annotations
 
+import contextvars
 import os
 import re
 import shlex
@@ -14,9 +15,10 @@ import tempfile
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, Iterator, List, Optional, Tuple
 
 ProgressCallback = Callable[[Dict[str, object]], None]
 
@@ -152,6 +154,66 @@ class SSHSession:
 
 _SESSIONS: Dict[str, SSHSession] = {}
 _LOCK = threading.Lock()
+# Pull/submit vs Watching: OpenSSH serializes on one ControlMaster socket.
+# A multi-GB Pull would otherwise stall squeue + log rsync for other jobs.
+_SSH_MUX: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "gatewizard_ssh_mux", default="main"
+)
+
+
+@contextmanager
+def ssh_channel(mux: str = "main") -> Iterator[None]:
+    """Bind this thread's SSH/rsync calls to ``main`` or ``watch`` ControlMaster."""
+    token = _SSH_MUX.set(mux)
+    try:
+        yield
+    finally:
+        _SSH_MUX.reset(token)
+
+
+def _control_path_for(session: SSHSession) -> Optional[str]:
+    if not session.control_path:
+        return None
+    if _SSH_MUX.get() == "watch":
+        return f"{session.control_path}-w"
+    return session.control_path
+
+
+def _control_master_opts(session: SSHSession) -> List[str]:
+    path = _control_path_for(session)
+    if not path:
+        return []
+    return [
+        "-o",
+        "ControlMaster=auto",
+        "-o",
+        f"ControlPath={path}",
+        "-o",
+        "ControlPersist=10m",
+    ]
+
+
+def _close_control_master(session: SSHSession, control_path: str) -> None:
+    try:
+        subprocess.run(
+            [
+                "ssh",
+                "-O",
+                "exit",
+                "-o",
+                f"ControlPath={control_path}",
+                f"{session.username}@{session.host}",
+            ],
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+    except Exception:
+        pass
+    try:
+        Path(control_path).unlink(missing_ok=True)
+    except Exception:
+        pass
 
 
 def _expand_identity(path: str) -> str:
@@ -175,17 +237,7 @@ def _ssh_base_args(session: SSHSession) -> List[str]:
     identity = _expand_identity(session.identity_file)
     if identity:
         args.extend(["-i", identity])
-    if session.control_path:
-        args.extend(
-            [
-                "-o",
-                "ControlMaster=auto",
-                "-o",
-                f"ControlPath={session.control_path}",
-                "-o",
-                "ControlPersist=10m",
-            ]
-        )
+    args.extend(_control_master_opts(session))
     args.append(f"{session.username}@{session.host}")
     return args
 
@@ -247,26 +299,8 @@ def close_session(session_id: str) -> None:
         return
     session.password = None
     if session.control_path and not session.use_paramiko:
-        try:
-            subprocess.run(
-                [
-                    "ssh",
-                    "-O",
-                    "exit",
-                    "-o",
-                    f"ControlPath={session.control_path}",
-                    f"{session.username}@{session.host}",
-                ],
-                capture_output=True,
-                timeout=5,
-                check=False,
-            )
-        except Exception:
-            pass
-        try:
-            Path(session.control_path).unlink(missing_ok=True)
-        except Exception:
-            pass
+        _close_control_master(session, session.control_path)
+        _close_control_master(session, f"{session.control_path}-w")
 
 
 def run_remote(
@@ -301,6 +335,8 @@ def rsync_to_remote(
     delete: bool = False,
     excludes: Optional[List[str]] = None,
     timeout: int = 600,
+    on_progress: Optional[ProgressCallback] = None,
+    expected_bytes: Optional[int] = None,
 ) -> Tuple[int, str, str]:
     session = get_session(session_id)
     local = str(Path(local_dir))
@@ -321,26 +357,154 @@ def rsync_to_remote(
     identity = _expand_identity(session.identity_file)
     if identity:
         ssh_opts.extend(["-i", identity])
-    if session.control_path:
-        ssh_opts.extend(
-            [
-                "-o",
-                f"ControlPath={session.control_path}",
-                "-o",
-                "ControlMaster=auto",
-                "-o",
-                "ControlPersist=10m",
-            ]
-        )
+    ssh_opts.extend(_control_master_opts(session))
     remote = f"{session.username}@{session.host}:{remote_dir}/"
-    cmd = ["rsync", "-az", "-e", " ".join([ssh_cmd] + ssh_opts)]
+    # Omit -z when reporting progress so progress2 stays live (same as pull).
+    cmd = ["rsync", "-a", "-e", " ".join([ssh_cmd] + ssh_opts)]
+    if on_progress is not None:
+        cmd.extend(["--info=progress2", "--outbuf=N"])
+    else:
+        cmd.append("-z")
     if delete:
         cmd.append("--delete")
     for ex in excludes or []:
         cmd.extend(["--exclude", ex])
     cmd.extend([local, remote])
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
-    return proc.returncode, proc.stdout or "", proc.stderr or ""
+    if on_progress is None:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
+        return proc.returncode, proc.stdout or "", proc.stderr or ""
+    return _rsync_to_remote_with_progress(
+        cmd,
+        local_dir=local_dir,
+        excludes=excludes,
+        timeout=timeout,
+        on_progress=on_progress,
+        expected_bytes=expected_bytes,
+    )
+
+
+def _rsync_to_remote_with_progress(
+    cmd: List[str],
+    *,
+    local_dir: str,
+    excludes: Optional[List[str]],
+    timeout: int,
+    on_progress: ProgressCallback,
+    expected_bytes: Optional[int] = None,
+) -> Tuple[int, str, str]:
+    """Run upload rsync and emit ``--info=progress2`` events."""
+    total_bytes = int(expected_bytes or 0)
+    if total_bytes <= 0:
+        total_bytes = local_dir_byte_size(local_dir, excludes=excludes)
+    on_progress(
+        {
+            "phase": "upload",
+            "percent": 0,
+            "bytes": 0,
+            "total_bytes": total_bytes or None,
+            "message": (
+                f"Uploading… 0 / {format_byte_size(total_bytes)}"
+                if total_bytes > 0
+                else "Uploading job folder…"
+            ),
+        }
+    )
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=False,
+            bufsize=0,
+        )
+    except FileNotFoundError as exc:
+        raise ClusterSSHError("rsync not found on PATH") from exc
+
+    stderr_chunks: List[str] = []
+    stdout_chunks: List[str] = []
+    last_pct = -1
+    lock = threading.Lock()
+
+    def _emit(evt: Dict[str, object]) -> None:
+        nonlocal last_pct
+        with lock:
+            pct_raw = evt.get("percent")
+            pct = int(pct_raw) if isinstance(pct_raw, (int, float)) else -1
+            if pct == last_pct and pct not in {0, 100}:
+                return
+            if pct >= 0:
+                last_pct = pct
+            on_progress(evt)
+
+    def _consume(line: str) -> None:
+        evt = parse_rsync_progress_line(line)
+        if evt is None:
+            return
+        transferred = evt.get("bytes")
+        pct = evt.get("percent")
+        if not isinstance(pct, int):
+            pct = 0
+        if isinstance(transferred, int) and total_bytes > 0:
+            pct = max(0, min(99, int(100.0 * transferred / total_bytes)))
+        msg = (
+            f"Uploading… {format_byte_size(int(transferred or 0))}"
+            + (f" / {format_byte_size(total_bytes)}" if total_bytes > 0 else "")
+            + f" ({pct}%)"
+        )
+        if evt.get("speed"):
+            msg = f"{msg} · {evt['speed']}"
+        _emit(
+            {
+                "phase": "upload",
+                "percent": pct,
+                "bytes": transferred,
+                "total_bytes": total_bytes or None,
+                "speed": evt.get("speed"),
+                "eta": evt.get("eta"),
+                "message": msg,
+            }
+        )
+
+    def _read(pipe, chunks: List[str]) -> None:
+        if pipe is None:
+            return
+        buf = ""
+        try:
+            while True:
+                raw = pipe.read(1)
+                if not raw:
+                    break
+                ch = raw.decode("utf-8", errors="replace")
+                if ch in {"\r", "\n"}:
+                    if buf:
+                        chunks.append(buf + "\n")
+                        _consume(buf)
+                        buf = ""
+                    continue
+                buf += ch
+            if buf:
+                chunks.append(buf)
+                _consume(buf)
+        except Exception:
+            pass
+
+    t_out = threading.Thread(target=_read, args=(proc.stdout, stdout_chunks), daemon=True)
+    t_err = threading.Thread(target=_read, args=(proc.stderr, stderr_chunks), daemon=True)
+    t_out.start()
+    t_err.start()
+    try:
+        proc.wait(timeout=max(60, int(timeout)))
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=10)
+        raise ClusterSSHError(f"Upload rsync timed out after {timeout}s") from None
+    t_out.join(timeout=2)
+    t_err.join(timeout=2)
+    return (
+        int(proc.returncode or 0),
+        "".join(stdout_chunks),
+        "".join(stderr_chunks),
+    )
 
 
 def rsync_from_remote(
@@ -353,6 +517,8 @@ def rsync_from_remote(
     timeout: int = 600,
     idle_timeout: int = 600,
     ignore_times: bool = False,
+    size_only: bool = False,
+    append: bool = False,
     on_progress: Optional[ProgressCallback] = None,
     expected_bytes: Optional[int] = None,
 ) -> Tuple[int, str, str]:
@@ -381,24 +547,20 @@ def rsync_from_remote(
     identity = _expand_identity(session.identity_file)
     if identity:
         ssh_opts.extend(["-i", identity])
-    if session.control_path:
-        ssh_opts.extend(
-            [
-                "-o",
-                f"ControlPath={session.control_path}",
-                "-o",
-                "ControlMaster=auto",
-                "-o",
-                "ControlPersist=10m",
-            ]
-        )
+    ssh_opts.extend(_control_master_opts(session))
     remote = f"{session.username}@{session.host}:{remote_dir}/"
     # Omit -z during progress pulls: compression delays / mutes progress2 on pipes.
     cmd = ["rsync", "-a", "--info=progress2", "--outbuf=N", "-e", " ".join(ssh_opts)]
-    # WSL/OneDrive mounts often have unreliable mtimes; growing stage logs then
-    # look "up to date" locally while the cluster has advanced several steps.
-    if ignore_times:
+    # Growing stage logs on WSL/OneDrive: mtimes are often stale.
+    # Prefer --size-only (re-sync when size changes) and --append (only new
+    # bytes for monotonically growing mdout/log) over --ignore-times, which
+    # re-downloads every matched file on every Watching poll.
+    if ignore_times and not size_only and not append:
         cmd.append("--ignore-times")
+    if size_only:
+        cmd.append("--size-only")
+    if append:
+        cmd.append("--append")
     # Includes must come before excludes; trailing exclude '*' makes an allow-list.
     for inc in includes or []:
         cmd.extend(["--include", inc])

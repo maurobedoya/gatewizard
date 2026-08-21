@@ -33,23 +33,81 @@ def probe_cluster(
             return ""
         return text
 
-    hostname = _cmd("hostname").strip()
-    home = _cmd("echo $HOME").strip()
-    data_dir = _cmd("echo ${DATA_DIR:-}").strip()
-    scratch_dir = _cmd("echo ${SCRATCH_DIR:-}").strip()
-    if not data_dir:
-        # common fallbacks
-        user = _cmd("echo $USER").strip()
-        candidate = f"/data/{user}" if user else ""
+    # Batch path discovery (one SSH round-trip). Resources (sinfo) come next so
+    # Run-on-cluster can fill partitions/nodes before the slower ``module avail``.
+    env_blob = _cmd(
+        "printf 'HOST=%s\\n' \"$(hostname)\"; "
+        "printf 'HOME=%s\\n' \"$HOME\"; "
+        "printf 'USER=%s\\n' \"$USER\"; "
+        "printf 'DATA_DIR=%s\\n' \"${DATA_DIR:-}\"; "
+        "printf 'SCRATCH_DIR=%s\\n' \"${SCRATCH_DIR:-}\""
+    )
+    env_map: Dict[str, str] = {}
+    for line in (env_blob or "").splitlines():
+        if "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        env_map[key.strip()] = val.strip()
+    hostname = env_map.get("HOST", "").strip()
+    home = env_map.get("HOME", "").strip()
+    user = env_map.get("USER", "").strip()
+    data_dir = env_map.get("DATA_DIR", "").strip()
+    scratch_dir = env_map.get("SCRATCH_DIR", "").strip()
+    if not data_dir and user:
+        candidate = f"/data/{user}"
         check = _cmd(f"test -d {candidate} && echo {candidate} || true").strip()
         data_dir = check
-    if not scratch_dir:
-        user = _cmd("echo $USER").strip()
-        candidate = f"/scratch/{user}" if user else ""
+    if not scratch_dir and user:
+        candidate = f"/scratch/{user}"
         check = _cmd(f"test -d {candidate} && echo {candidate} || true").strip()
         scratch_dir = check
 
-    # Prefer full ``module avail`` first. Some Lmod versions return exit 0 from
+    # Slurm inventory first — this is what the Run-on-cluster Resources UI needs.
+    raw_sinfo = _cmd(
+        "command -v sinfo >/dev/null 2>&1 || echo 'GW_PROBE: sinfo not found'; "
+        "sinfo -o '%P %a %D %c %G %m %l' 2>&1 || sinfo 2>&1 || true"
+    )
+    partitions = parse_sinfo(raw_sinfo)
+    # Deduplicate partition names (sinfo may repeat one name per node feature set).
+    if partitions:
+        seen_names: set = set()
+        deduped = []
+        for part in partitions:
+            key = (part.name or "").rstrip("*")
+            if key in seen_names:
+                for i, existing in enumerate(deduped):
+                    if (existing.name or "").rstrip("*") == key:
+                        if (part.max_gpus or 0) > (existing.max_gpus or 0):
+                            deduped[i] = part
+                        break
+                continue
+            seen_names.add(key)
+            part.name = key
+            deduped.append(part)
+        partitions = deduped
+
+    raw_sinfo_nodes = _cmd(
+        "command -v sinfo >/dev/null 2>&1 || true; "
+        "sinfo -N -h -o '%N|%P|%T|%c|%G|%f' 2>&1 || "
+        "sinfo -N -o '%N %P %T %c %G %f' 2>&1 || true"
+    )
+    nodes = parse_sinfo_nodes(raw_sinfo_nodes)
+
+    if "gw_probe: sinfo not found" in (raw_sinfo or "").lower():
+        errors.append(
+            "sinfo not found on this host (Slurm client missing on the login node?). "
+            "Enter the partition name manually."
+        )
+    elif not partitions and raw_sinfo.strip():
+        errors.append(
+            "Could not parse Slurm partitions from sinfo. Enter the partition name manually."
+        )
+    if partitions and not nodes and raw_sinfo_nodes.strip():
+        errors.append(
+            "Could not parse node names from sinfo -N. You can still type a nodelist manually."
+        )
+
+    # Prefer full ``module avail``. Some Lmod versions return exit 0 from
     # ``module avail -t`` with "No module(s) found" help text, which would
     # short-circuit ``|| module avail`` if -t were tried first.
     raw_modules = _cmd(
@@ -98,50 +156,6 @@ def probe_cluster(
             )
     hints = profile.module_hints if profile else None
     engine_modules = group_engine_modules(modules, hints=hints)
-
-    raw_sinfo = _cmd(
-        "command -v sinfo >/dev/null 2>&1 || echo 'GW_PROBE: sinfo not found'; "
-        "sinfo -o '%P %a %D %c %G %m %l' 2>&1 || sinfo 2>&1 || true"
-    )
-    partitions = parse_sinfo(raw_sinfo)
-    # Deduplicate partition names (sinfo may repeat one name per node feature set).
-    if partitions:
-        seen_names: set = set()
-        deduped = []
-        for part in partitions:
-            key = (part.name or "").rstrip("*")
-            if key in seen_names:
-                for i, existing in enumerate(deduped):
-                    if (existing.name or "").rstrip("*") == key:
-                        if (part.max_gpus or 0) > (existing.max_gpus or 0):
-                            deduped[i] = part
-                        break
-                continue
-            seen_names.add(key)
-            part.name = key
-            deduped.append(part)
-        partitions = deduped
-
-    raw_sinfo_nodes = _cmd(
-        "command -v sinfo >/dev/null 2>&1 || true; "
-        "sinfo -N -h -o '%N|%P|%T|%c|%G|%f' 2>&1 || "
-        "sinfo -N -o '%N %P %T %c %G %f' 2>&1 || true"
-    )
-    nodes = parse_sinfo_nodes(raw_sinfo_nodes)
-
-    if "gw_probe: sinfo not found" in (raw_sinfo or "").lower():
-        errors.append(
-            "sinfo not found on this host (Slurm client missing on the login node?). "
-            "Enter the partition name manually."
-        )
-    elif not partitions and raw_sinfo.strip():
-        errors.append(
-            "Could not parse Slurm partitions from sinfo. Enter the partition name manually."
-        )
-    if partitions and not nodes and raw_sinfo_nodes.strip():
-        errors.append(
-            "Could not parse node names from sinfo -N. You can still type a nodelist manually."
-        )
 
     return ProbeResult(
         hostname=hostname,
@@ -241,7 +255,7 @@ def update_execution_fields(eq_dir: Path, **fields: Any) -> Dict[str, Any]:
 
 
 def read_batch_script_resources(eq_dir: Path) -> Dict[str, Any]:
-    """Parse ``#SBATCH -c`` / ``--gpus`` from the local batch script."""
+    """Parse ``#SBATCH -c`` / ``--gpus`` / typed ``--gres=gpu:TYPE:N`` from the batch script."""
     eq_dir = Path(eq_dir)
     for name in ("run_equilibration.slurm", "run_equilibration.sbatch"):
         path = eq_dir / name
@@ -253,6 +267,7 @@ def read_batch_script_resources(eq_dir: Path) -> Dict[str, Any]:
             continue
         cpus = 0
         gpus = 0
+        gpu_type = ""
         for line in text.splitlines():
             s = line.strip()
             if not s.startswith("#SBATCH"):
@@ -260,16 +275,27 @@ def read_batch_script_resources(eq_dir: Path) -> Dict[str, Any]:
             m = re.search(r"(?:-c|--cpus-per-task=)\s*(\d+)", s)
             if m:
                 cpus = int(m.group(1))
-            m = re.search(r"(?:--gpus(?:-per-node)?|--gres=gpu:)=?\s*(\d+)", s, re.I)
+            # Typed GRES: --gres=gpu:3090:1 (TYPE may be numeric)
+            m = re.search(r"--gres=gpu:([A-Za-z0-9][A-Za-z0-9_+\-.]*):(\d+)\b", s, re.I)
+            if m:
+                gpu_type = m.group(1)
+                gpus = int(m.group(2))
+                continue
+            # Untyped count: --gpus=1 or --gres=gpu:1 (no type token)
+            m = re.search(r"--gpus(?:-per-node)?(?:=|\s+)(\d+)\b", s, re.I)
             if m:
                 gpus = int(m.group(1))
-            else:
-                m = re.search(r"--gres=gpu(?::[^\s:]+)?:(\d+)", s, re.I)
-                if m:
-                    gpus = int(m.group(1))
-                elif re.search(r"--gres=gpu\b", s, re.I) and gpus == 0:
-                    gpus = 1
-        return {"cpus": cpus, "gpus": gpus, "batch_script": name}
+                continue
+            m = re.search(r"--gres=gpu:(\d+)\b", s, re.I)
+            if m:
+                gpus = int(m.group(1))
+                continue
+            if re.search(r"--gres=gpu\b", s, re.I) and gpus == 0:
+                gpus = 1
+        out: Dict[str, Any] = {"cpus": cpus, "gpus": gpus, "batch_script": name}
+        if gpu_type:
+            out["gpu_type"] = gpu_type
+        return out
     return {}
 
 
@@ -289,6 +315,8 @@ def enrich_execution_resources(
         res["cpus"] = int(batch["cpus"])
     if batch.get("gpus") and not res.get("gpus"):
         res["gpus"] = int(batch["gpus"])
+    if batch.get("gpu_type") and not res.get("gpu_type"):
+        res["gpu_type"] = str(batch["gpu_type"])
     if res:
         execution["resources"] = res
     if not execution.get("allocated_cpus") and res.get("cpus"):

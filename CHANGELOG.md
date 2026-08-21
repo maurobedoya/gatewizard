@@ -7,11 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Cluster probe:** collect Slurm partitions/nodes (`sinfo`) before the slower `module avail`, and batch path env queries into one SSH round-trip, so Run-on-cluster Resources can fill sooner.
 - **PlotSpec overlay:** shared y-label when all panels use the same one (structural Pub PNG keeps “RMSD (Å)” instead of “Multiple Properties”). Markers only on short overlay series.
 - **PlotSpec grid:** panels may list `series_keys` to draw multiple sets on one subplot (energetic compare-by-property / by-set Pub PNG).
 - **Publication plot export:** matplotlib uses the headless Agg backend in API/GUI export so Tk/Tcl is not touched from FastAPI worker threads (fixes `main thread is not in main loop` / `Tcl_AsyncDelete` log noise on WSL).
 - **Builder:** `Builder.cancel_preparation` stops a running job via `process.pid` process-group kill and marks `status.json` as `cancelled`.
 - **Tools Fix PBC (GROMACS):** multi-select center/output index groups merge into temporary `GW_CENTER` / `GW_OUTPUT` compound ndx entries; optional `skip_cluster`; smarter lipid multi-group recommendations when `SOLU_MEMB` is absent.
+- **Cluster submit:** optional Slurm **GPU type** (`gpu_type`) for typed GRES — `#SBATCH --gres=gpu:TYPE:N` when set; untyped jobs still use `#SBATCH --gpus=N`. Types are parsed from probed node GRES.
 - **PlotSpec overlay:** shared y-limits span every panel (union), and panel ylim falls back to global — structural APL Pub PNG no longer clips leaflets to the Mean-only window.
 - **PlotSpec / Pub PNG:** keep panel `series_keys` through `normalize_plot_spec`, and use the panel **x** limits (not y) when `sync_x` is on — fixes empty energetic “one panel per set” publication PNGs where lines were missing or crushed into an invisible speck at t≈0.
 ## [1.0.53] - 2026-08-06

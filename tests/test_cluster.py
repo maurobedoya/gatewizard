@@ -94,6 +94,59 @@ def test_batch_script_includes_nodelist():
     assert "#SBATCH --gpus=1" in script
 
 
+def test_parse_gpu_types_from_gres():
+    from gatewizard.utils.cluster.resources import (
+        gpu_types_from_nodes,
+        normalize_gpu_type,
+        parse_gpu_types_from_gres,
+    )
+    from gatewizard.utils.cluster.types import NodeInfo
+
+    assert parse_gpu_types_from_gres("gpu:2080ti:2,gpu:3090:1") == [
+        {"type": "2080ti", "count": 2},
+        {"type": "3090", "count": 1},
+    ]
+    assert parse_gpu_types_from_gres("gpu:2") == []
+    assert parse_gpu_types_from_gres("gpu:l4:2") == [{"type": "l4", "count": 2}]
+    assert normalize_gpu_type("3090") == "3090"
+    assert normalize_gpu_type("Any") == ""
+    assert normalize_gpu_type("bad type!") == ""
+
+    nodes = [
+        NodeInfo(name="vision", partition="normal", gres="gpu:2080ti:2,gpu:3090:1", gpus=3),
+        NodeInfo(name="sina", partition="normal", gres="gpu:l4:2", gpus=2),
+        NodeInfo(name="cpu01", partition="normal", gres="", gpus=0),
+    ]
+    all_types = gpu_types_from_nodes(nodes, partition="normal")
+    assert {t["type"] for t in all_types} == {"2080ti", "3090", "l4"}
+    vision_only = gpu_types_from_nodes(nodes, partition="normal", nodelist="vision")
+    assert {t["type"] for t in vision_only} == {"2080ti", "3090"}
+    assert next(t["count"] for t in vision_only if t["type"] == "3090") == 1
+
+
+def test_batch_script_typed_gpu_gres():
+    script = render_batch_script(
+        BatchScriptRequest(
+            job_name="eq",
+            cpus=6,
+            gpus=1,
+            gpu_type="3090",
+            partition="normal",
+            nodelist="vision",
+            modules=["md/namd/3.0.1+cuda"],
+        )
+    )
+    assert "#SBATCH --gres=gpu:3090:1" in script
+    assert "#SBATCH --gpus=" not in script
+    assert "#SBATCH --nodelist=vision" in script
+
+    untyped = render_batch_script(
+        BatchScriptRequest(job_name="eq", cpus=4, gpus=1, partition="gpu")
+    )
+    assert "#SBATCH --gpus=1" in untyped
+    assert "--gres=gpu:" not in untyped
+
+
 def test_cluster_engine_executable_maps_wsl_paths():
     from gatewizard.utils.equilibration_cluster_script import (
         cluster_engine_executable,
@@ -210,6 +263,28 @@ def test_render_scratch_job_id_template():
     # Mid-run log sync so Watching can show progress while scratch is node-local
     assert "include='step*.log'" in script
     assert "_GW_SYNC_PID" in script
+
+
+def test_render_resume_env_before_stdbuf():
+    """RESUME=1 must not be the stdbuf program name."""
+    from gatewizard.utils.cluster.templates import format_run_command_block, render_batch_script
+
+    block = format_run_command_block("RESUME=1 bash run_equilibration_cluster.sh")
+    assert "RESUME=1 stdbuf -oL -eL bash run_equilibration_cluster.sh" in block
+    assert "stdbuf -oL -eL RESUME=1" not in block
+
+    script = render_batch_script(
+        BatchScriptRequest(
+            job_name="resume_job",
+            cpus=4,
+            gpus=1,
+            workdir_strategy="scratch_job_id",
+            scratch_root="/scratch/u",
+            run_command="RESUME=1 bash run_equilibration_cluster.sh",
+        )
+    )
+    assert "RESUME=1 stdbuf -oL -eL bash run_equilibration_cluster.sh" in script
+    assert "stdbuf -oL -eL RESUME=1" not in script
 
 
 def test_render_run_in_place():
@@ -440,6 +515,11 @@ def test_resolve_compute_node_and_midrun_sync(monkeypatch):
     assert ok
     assert "cn01:/scratch/testuser/4944" in msg
     assert any("tar czf" in c for c in calls)
+    tar_cmds = [c for c in calls if "tar czf" in c]
+    assert tar_cmds
+    assert "step*.mdout" in tar_cmds[0]
+    assert "step*.rst7" not in tar_cmds[0]
+    assert "step*.coor" not in tar_cmds[0]
 
 
 def test_midrun_missing_scratch(monkeypatch):

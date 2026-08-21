@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import shlex
-from typing import List
+from typing import Any, Dict, List, Optional
 
 from gatewizard.utils.cluster.types import NodeInfo, PartitionInfo
 
@@ -157,6 +157,80 @@ def _gpus_from_gres(gres: str) -> int:
     if "gpu" in gres.lower():
         return 1
     return 0
+
+
+def parse_gpu_types_from_gres(gres: str) -> List[Dict[str, Any]]:
+    """Named GPU types from a Slurm GRES string.
+
+    Examples::
+
+        gpu:2080ti:2,gpu:3090:1 → [{"type": "2080ti", "count": 2}, {"type": "3090", "count": 1}]
+        gpu:2                   → []  (untyped; UI shows only Any)
+        gpu:l4:2                → [{"type": "l4", "count": 2}]
+    """
+    if not gres or gres in {"(null)", "N/A", "n/a"}:
+        return []
+    out: List[Dict[str, Any]] = []
+    for chunk in gres.split(","):
+        chunk = chunk.strip()
+        if not chunk.lower().startswith("gpu"):
+            continue
+        bits = [b.strip() for b in chunk.split(":") if b.strip()]
+        # Named types need gpu:TYPE:N (len 3). Untyped gpu:N has len 2 — skip.
+        if len(bits) < 3:
+            continue
+        type_name = bits[1]
+        count_s = bits[2]
+        # TYPE may be numeric (3090) — that is still a named GRES type.
+        if not type_name or not re.fullmatch(r"[A-Za-z0-9_+\-.]+", type_name):
+            continue
+        try:
+            count = int(count_s)
+        except ValueError:
+            continue
+        if count <= 0:
+            continue
+        out.append({"type": type_name, "count": count})
+    return out
+
+
+def gpu_types_from_nodes(
+    nodes: List[NodeInfo],
+    *,
+    partition: str = "",
+    nodelist: str = "",
+) -> List[Dict[str, Any]]:
+    """Union of named GPU types across nodes (optionally filtered).
+
+    When ``nodelist`` is set, only that node’s types are returned.
+    Counts are the max seen for each type across matching nodes.
+    """
+    part = (partition or "").rstrip("*").lower()
+    want_node = (nodelist or "").split(",")[0].strip().lower()
+    merged: Dict[str, int] = {}
+    for node in nodes or []:
+        if want_node and (node.name or "").lower() != want_node:
+            continue
+        if part and (node.partition or "").rstrip("*").lower() != part:
+            continue
+        for item in parse_gpu_types_from_gres(node.gres or ""):
+            t = str(item.get("type") or "")
+            c = int(item.get("count") or 0)
+            if not t or c <= 0:
+                continue
+            merged[t] = max(merged.get(t, 0), c)
+    return [{"type": t, "count": merged[t]} for t in sorted(merged.keys())]
+
+
+def normalize_gpu_type(value: Optional[str]) -> str:
+    """Sanitize a user/Slurm GPU type token (empty → any)."""
+    t = (value or "").strip()
+    if not t or t.lower() in {"any", "auto", "none", "*"}:
+        return ""
+    # Slurm GRES types are typically [A-Za-z0-9_+.-]
+    if not re.fullmatch(r"[A-Za-z0-9_+\-.]+", t):
+        return ""
+    return t
 
 
 def canonicalize_slurm_state(state: str) -> str:

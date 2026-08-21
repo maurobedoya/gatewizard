@@ -154,6 +154,7 @@ class ClusterProfile:
     purge_modules: bool = True
     mail_user: str = ""
     mail_type: str = "NONE"
+    default_time_limit: str = "24:00:00"
     extra_sbatch_lines: List[str] = field(default_factory=list)
     batch_template: Optional[str] = None
     module_hints: Dict[str, List[str]] = field(default_factory=dict)
@@ -184,6 +185,10 @@ class ClusterProfile:
             purge_modules=bool(data.get("purge_modules", True)),
             mail_user=str(data.get("mail_user") or ""),
             mail_type=str(data.get("mail_type") or "NONE"),
+            default_time_limit=str(
+                data.get("default_time_limit") or "24:00:00"
+            ).strip()
+            or "24:00:00",
             extra_sbatch_lines=[
                 str(x) for x in (data.get("extra_sbatch_lines") or []) if str(x).strip()
             ],
@@ -205,6 +210,8 @@ class BatchScriptRequest:
     job_name: str
     cpus: int = 8
     gpus: int = 0
+    # Slurm GRES type when set (e.g. "3090"); empty = any GPU via --gpus=N
+    gpu_type: str = ""
     mem: str = ""
     time_limit: str = "24:00:00"
     partition: str = ""

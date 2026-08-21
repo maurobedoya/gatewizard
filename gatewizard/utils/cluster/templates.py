@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional
 
+from gatewizard.utils.cluster.resources import normalize_gpu_type
 from gatewizard.utils.cluster.types import BatchScriptRequest, WORKDIR_STRATEGIES
 
 # Scratch stage-in/out must not clobber logs written live in $SUBMIT_DIR (tee gw_*.log,
@@ -28,12 +29,55 @@ _gw_log "Submit dir: ${SUBMIT_DIR:-$PWD}"
 
 _SLURM_RUN_COMMAND_BLOCK = """\
 if command -v stdbuf >/dev/null 2>&1; then
-  stdbuf -oL -eL {{run_command}}
+  {{env_exports}}stdbuf -oL -eL {{exec_command}}
 else
-  {{run_command}}
+  {{env_exports}}{{exec_command}}
 fi
 status=$?
 """
+
+
+def _split_run_command_env(run_command: str) -> tuple[str, str]:
+    """Split leading ``VAR=value`` tokens from the real executable command.
+
+    ``stdbuf`` takes the next token as the program name, so
+    ``stdbuf -oL -eL RESUME=1 bash script.sh`` fails with
+    ``failed to run command 'RESUME=1'``. Put env assignments *before* stdbuf.
+    """
+    import shlex
+
+    raw = (run_command or "").strip() or "bash run_equilibration_cluster.sh"
+    try:
+        parts = shlex.split(raw)
+    except ValueError:
+        parts = raw.split()
+    env_parts: List[str] = []
+    i = 0
+    while i < len(parts) and "=" in parts[i] and not parts[i].startswith("-"):
+        key, _, _val = parts[i].partition("=")
+        if key.isidentifier():
+            env_parts.append(parts[i])
+            i += 1
+            continue
+        break
+    exec_parts = parts[i:] if i < len(parts) else ["bash", "run_equilibration_cluster.sh"]
+    env_exports = (" ".join(env_parts) + " ") if env_parts else ""
+    # Prefer the original spacing for the exec portion when possible
+    if not env_parts:
+        exec_command = raw
+    else:
+        exec_command = " ".join(exec_parts)
+    return env_exports, exec_command
+
+
+def format_run_command_block(run_command: str) -> str:
+    """Build the stdbuf-wrapped run block with env vars outside ``stdbuf``."""
+    env_exports, exec_command = _split_run_command_env(run_command)
+    return (
+        _SLURM_RUN_COMMAND_BLOCK.replace("{{env_exports}}", env_exports).replace(
+            "{{exec_command}}", exec_command
+        )
+    )
 
 DEFAULT_SCRATCH_JOB_ID_TEMPLATE = """#!/bin/bash
 #SBATCH -J {{job_name}}
@@ -223,8 +267,14 @@ def render_batch_script(req: BatchScriptRequest) -> str:
     template = req.template or default_template_for_strategy(strategy)
 
     extra_lines = list(req.extra_sbatch_lines or [])
-    if req.gpus and not any("gpu" in ln.lower() for ln in extra_lines):
-        extra_lines.append(f"#SBATCH --gpus={int(req.gpus)}")
+    if req.gpus and not any("gpu" in ln.lower() or "gres" in ln.lower() for ln in extra_lines):
+        gpu_type = normalize_gpu_type(getattr(req, "gpu_type", "") or "")
+        n_gpus = int(req.gpus)
+        if gpu_type:
+            # Typed GRES (e.g. LBQC vision: gpu:3090:1). Portable where types exist.
+            extra_lines.append(f"#SBATCH --gres=gpu:{gpu_type}:{n_gpus}")
+        else:
+            extra_lines.append(f"#SBATCH --gpus={n_gpus}")
     if req.partition and not any(
         "--partition" in ln or ln.strip().startswith("#SBATCH -p") for ln in extra_lines
     ):
@@ -246,7 +296,7 @@ def render_batch_script(req: BatchScriptRequest) -> str:
     purge_block = "ml purge" if req.purge_modules else ""
     module_loads = "\n".join(f"module load {m}" for m in req.modules if m)
     run_cmd = req.run_command or "bash run_equilibration_cluster.sh"
-    run_command_block = _SLURM_RUN_COMMAND_BLOCK.replace("{{run_command}}", run_cmd)
+    run_command_block = format_run_command_block(run_cmd)
 
     values = {
         "job_name": _safe_job_name(req.job_name),

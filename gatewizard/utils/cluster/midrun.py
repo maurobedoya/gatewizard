@@ -10,14 +10,15 @@ from typing import Optional, Tuple
 from gatewizard.utils.cluster.ssh import ClusterSSHError, run_remote
 
 # Lightweight progress artifacts copied during mid-run sync / scratch pull.
+# Watching only needs stage logs for the progress UI — never restarts / coords
+# (those are tens–hundreds of MB and made every poll take minutes).
 _SCRATCH_PROGRESS_INCLUDES = (
-    "step*.log step*.xst step*.mdinfo step*.mdout step*.rst7 step*.rst "
-    "step*.coor step*.gro step*.vel "
+    "step*.log step*.xst step*.mdinfo step*.mdout "
     "step*_minimization.log equilibration_background.log *.out *.err "
     "run_equilibration.sh run_equilibration_cluster.sh openmm_nvt.*.out"
 )
 
-# rsync --include list for Watching (logs only — not trajectories / full Pull).
+# rsync --include list for Watching (logs only — not trajectories / restarts / full Pull).
 PROGRESS_RSYNC_FILTERS = [
     "*/",
     "step*.log",
@@ -25,10 +26,6 @@ PROGRESS_RSYNC_FILTERS = [
     "step*.mdout",
     "step*.mdinfo",
     "step*.xst",
-    "step*.coor",
-    "step*.gro",
-    "step*.rst",
-    "step*.rst7",
     "equilibration_background.log",
     "*.out",
     "*.err",

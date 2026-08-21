@@ -27,6 +27,9 @@ from gatewizard.utils.cluster.midrun import (
 )
 from gatewizard.utils.cluster.resources import (
     canonicalize_slurm_state,
+    gpu_types_from_nodes,
+    normalize_gpu_type,
+    parse_gpu_types_from_gres,
     parse_sbatch_output,
     parse_sinfo,
     parse_sinfo_nodes,
@@ -48,6 +51,7 @@ from gatewizard.utils.cluster.ssh import (
     rsync_from_remote,
     rsync_to_remote,
     run_remote,
+    ssh_channel,
     verify_remote_files,
     parse_rsync_progress_line,
 )
@@ -86,8 +90,11 @@ __all__ = [
     "format_byte_size",
     "local_dir_byte_size",
     "get_scheduler",
+    "gpu_types_from_nodes",
     "group_engine_modules",
     "join_remote",
+    "normalize_gpu_type",
+    "parse_gpu_types_from_gres",
     "parse_module_avail",
     "parse_rsync_progress_line",
     "parse_sbatch_output",
@@ -109,6 +116,7 @@ __all__ = [
     "rsync_from_remote",
     "rsync_to_remote",
     "run_remote",
+    "ssh_channel",
     "suggest_submit_root",
     "summarize_node_gpu_label",
     "sync_scratch_progress_to_submit",
