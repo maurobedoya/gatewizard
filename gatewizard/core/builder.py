@@ -7,15 +7,16 @@ This module handles the preparation of membrane protein systems using
 packmol-memgen and related tools.
 """
 
+import json
 import os
+import shutil
+import signal
+import subprocess
 import sys
 import time
-import subprocess
-import shutil
-import json
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from gatewizard.utils.logger import get_logger
 from gatewizard.utils.helpers import get_clean_env, get_clean_env_shell_snippet, resolve_conda_executable, subprocess_argv_for_script
@@ -316,6 +317,126 @@ class Builder:
         if success:
             return True, "System preparation started successfully"
         return False, "Failed to start system preparation"
+
+    def cancel_preparation(self, job_dir: str | Path) -> Dict[str, Any]:
+        """
+        Cancel a running preparation job from the GUI.
+
+        Kills the detached ``run_preparation.sh`` process group (PID in
+        ``process.pid``) and marks ``status.json`` as ``cancelled``.
+        """
+        job_path = Path(job_dir).expanduser().resolve()
+        if not job_path.is_dir():
+            raise FileNotFoundError(f"Job directory not found: {job_path}")
+        status_file = job_path / "status.json"
+        if not status_file.is_file() and not (job_path / "run_preparation.sh").is_file():
+            raise FileNotFoundError(f"Not a preparation job directory: {job_path}")
+
+        status = "unknown"
+        status_data: Dict[str, Any] = {}
+        if status_file.is_file():
+            try:
+                status_data = json.loads(status_file.read_text(encoding="utf-8"))
+                status = status_data.get("status", "unknown")
+            except (json.JSONDecodeError, OSError):
+                status_data = {}
+
+        if status in {"completed", "error", "cancelled", "not_started"}:
+            return {
+                "success": True,
+                "job_dir": str(job_path),
+                "stopped": False,
+                "status": status,
+                "message": f"Job already finished ({status})",
+            }
+
+        pid = self._read_preparation_pid(job_path)
+        killed = False
+        if pid is not None and self._pid_alive(pid):
+            killed = self._kill_process_group(pid)
+
+        status_data["status"] = "cancelled"
+        status_data["error"] = "Cancelled by user"
+        status_data["end_time"] = datetime.now().isoformat()
+        try:
+            status_file.write_text(
+                json.dumps(status_data, indent=2), encoding="utf-8"
+            )
+        except OSError as exc:
+            logger.warning("Could not update status.json after cancel: %s", exc)
+
+        log_path = job_path / "logs" / "preparation.log"
+        try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(log_path, "a", encoding="utf-8") as fh:
+                fh.write(
+                    f"\n[{datetime.now().isoformat()}] CANCELLED by user"
+                    f"{' (process killed)' if killed else ''}\n"
+                )
+        except OSError:
+            pass
+
+        (job_path / "process.pid").unlink(missing_ok=True)
+        logger.info("Cancelled preparation job %s (killed=%s)", job_path.name, killed)
+        return {
+            "success": True,
+            "job_dir": str(job_path),
+            "stopped": True,
+            "killed_process": killed,
+            "status": "cancelled",
+            "message": "Cancel requested",
+        }
+
+    @staticmethod
+    def _read_preparation_pid(job_dir: Path) -> Optional[int]:
+        pid_path = job_dir / "process.pid"
+        if not pid_path.is_file():
+            return None
+        try:
+            text = pid_path.read_text(encoding="utf-8").strip()
+            return int(text) if text else None
+        except (OSError, ValueError):
+            return None
+
+    @staticmethod
+    def _pid_alive(pid: Optional[int]) -> bool:
+        if pid is None or pid <= 0:
+            return False
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        except OSError:
+            return False
+
+    @staticmethod
+    def _kill_process_group(pid: int) -> bool:
+        """SIGTERM then SIGKILL the detached preparation process group."""
+        killed = False
+        for sig in (signal.SIGTERM, signal.SIGKILL):
+            try:
+                os.killpg(os.getpgid(pid), sig)
+                killed = True
+            except ProcessLookupError:
+                return True
+            except (OSError, AttributeError):
+                try:
+                    os.kill(pid, sig)
+                    killed = True
+                except ProcessLookupError:
+                    return True
+                except OSError:
+                    pass
+            if sig == signal.SIGTERM:
+                deadline = time.time() + 2.0
+                while time.time() < deadline:
+                    if not Builder._pid_alive(pid):
+                        return True
+                    time.sleep(0.1)
+        return killed or not Builder._pid_alive(pid)
 
     def wait_for_completion(
         self,

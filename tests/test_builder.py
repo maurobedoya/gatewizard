@@ -594,6 +594,51 @@ END
         assert not success
         assert "generate input files first" in message.lower()
 
+    def test_cancel_preparation_marks_running_job(self, temp_dir):
+        """Cancel updates status.json even when process.pid is already gone."""
+        import json
+
+        builder = Builder()
+        job_dir = temp_dir / "cancel_job"
+        job_dir.mkdir()
+        (job_dir / "run_preparation.sh").write_text("#!/bin/bash\n", encoding="utf-8")
+        (job_dir / "status.json").write_text(
+            json.dumps(
+                {
+                    "status": "running",
+                    "start_time": "2026-01-01T00:00:00",
+                    "error": None,
+                    "steps_completed": ["Packmol"],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = builder.cancel_preparation(job_dir)
+        assert result["success"] is True
+        assert result["stopped"] is True
+        assert result["status"] == "cancelled"
+        status = json.loads((job_dir / "status.json").read_text(encoding="utf-8"))
+        assert status["status"] == "cancelled"
+        assert status["error"] == "Cancelled by user"
+        assert status.get("end_time")
+
+    def test_cancel_preparation_noop_when_already_done(self, temp_dir):
+        import json
+
+        builder = Builder()
+        job_dir = temp_dir / "done_job"
+        job_dir.mkdir()
+        (job_dir / "run_preparation.sh").write_text("#!/bin/bash\n", encoding="utf-8")
+        (job_dir / "status.json").write_text(
+            json.dumps({"status": "completed", "error": None}),
+            encoding="utf-8",
+        )
+        result = builder.cancel_preparation(job_dir)
+        assert result["success"] is True
+        assert result["stopped"] is False
+        assert result["status"] == "completed"
+
 
 # ============================================================================
 # HELPER FUNCTIONS
