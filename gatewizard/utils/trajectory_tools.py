@@ -29,10 +29,90 @@ from gatewizard.utils.logger import get_logger
 logger = get_logger(__name__)
 
 _VALID_ENGINES = frozenset({"auto", "gromacs", "amber", "namd", "openmm", "mdanalysis"})
+# Amber lipid21/lipid17 split residues (packmol-memgen POPC → PA/PC/OL) plus
+# common CHARMM-style whole-lipid names. Used to default Fix PBC centering to
+# protein + membrane for Amber/cpptraj.
+_AMBER_LIPID_RESNAMES = frozenset(
+    {
+        "PA",
+        "PC",
+        "PE",
+        "PS",
+        "PG",
+        "PI",
+        "OL",
+        "LA",
+        "MY",
+        "ST",
+        "AR",
+        "CHL",
+        "CHOL",
+        "CHL1",
+        "POPC",
+        "POPE",
+        "POPS",
+        "POPG",
+        "POPA",
+        "POPI",
+        "DOPC",
+        "DOPE",
+        "DOPS",
+        "DOPG",
+        "DPPC",
+        "DPPE",
+        "DMPC",
+        "DLPC",
+        "DSPC",
+        "SM",
+        "BSM",
+        "SPM",
+    }
+)
+_AMBER_LIPID_RESNAME_ORDER = (
+    "PA",
+    "PC",
+    "PE",
+    "PS",
+    "PG",
+    "PI",
+    "OL",
+    "LA",
+    "MY",
+    "ST",
+    "AR",
+    "CHL",
+    "CHOL",
+    "CHL1",
+    "POPC",
+    "POPE",
+    "POPS",
+    "POPG",
+    "POPA",
+    "POPI",
+    "DOPC",
+    "DOPE",
+    "DOPS",
+    "DOPG",
+    "DPPC",
+    "DPPE",
+    "DMPC",
+    "DLPC",
+    "DSPC",
+    "SM",
+    "BSM",
+    "SPM",
+)
 _GROMACS_TRAJ = {".xtc", ".trr"}
 _AMBER_TRAJ = {".nc", ".ncdf", ".mdcrd", ".crd"}
 _DCD_TRAJ = {".dcd"}
 _COORD_TRAJ = _GROMACS_TRAJ | _AMBER_TRAJ | _DCD_TRAJ | {".pdb"}
+
+
+_INTERRUPT_ERROR = "Interrupted — worker process exited unexpectedly"
+# Scan can run after status.json exists but before process.pid is written.
+_START_GRACE_S = 120
+# gmx trjconv may be quiet between frame log lines on large files.
+_LOG_ACTIVE_S = 15 * 60
 
 
 class JobCancelled(Exception):
@@ -119,6 +199,55 @@ def _pid_alive(pid: Optional[int]) -> bool:
         return True  # exists but not owned by us
     except OSError:
         return False
+
+
+def _parse_iso(value: Any) -> Optional[datetime]:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+
+
+def _looks_like_false_interrupt(status: dict) -> bool:
+    if str(status.get("status") or "").lower() != "error":
+        return False
+    return _INTERRUPT_ERROR in str(status.get("error") or "")
+
+
+def _job_within_start_grace(status: dict, *, now: Optional[float] = None) -> bool:
+    started = _parse_iso(status.get("start_time"))
+    if started is None:
+        return False
+    age = (now if now is not None else time.time()) - started.timestamp()
+    return 0 <= age < _START_GRACE_S
+
+
+def _job_log_recently_active(job_dir: Path, *, now: Optional[float] = None) -> bool:
+    """True when the worker is still appending logs (even if PID is briefly missing)."""
+    latest = 0.0
+    for rel in ("logs/fix_pbc.log", "logs/worker_stderr.log"):
+        path = Path(job_dir) / rel
+        try:
+            latest = max(latest, path.stat().st_mtime)
+        except OSError:
+            continue
+    if latest <= 0:
+        return False
+    age = (now if now is not None else time.time()) - latest
+    return age < _LOG_ACTIVE_S
+
+
+def _worker_appears_alive(job_dir: Path, status: dict, *, now: Optional[float] = None) -> bool:
+    if _pid_alive(_read_pid_file(job_dir)):
+        return True
+    if _job_log_recently_active(job_dir, now=now):
+        return True
+    if _job_within_start_grace(status, now=now):
+        return True
+    return False
 
 
 def _kill_process_group(pid: int) -> bool:
@@ -287,6 +416,11 @@ def _mark_step(job_dir: Path, step: str, *, completed: bool = False) -> None:
     data["steps"] = steps
     data["steps_completed"] = done
     data["current_step"] = current
+    # A live worker must not stay stuck on a false "Interrupted" scan result.
+    if _looks_like_false_interrupt(data) or str(data.get("status") or "").lower() == "running":
+        data["status"] = "running"
+        data["error"] = None
+        data["end_time"] = None
     _write_json(status_path, data)
     _append_log(job_dir, f"[{'done' if completed else 'step'}] {step}")
 
@@ -393,6 +527,63 @@ def _find_companion_ndx(trajectory: Path, tpr: Optional[Path] = None) -> Optiona
     return None
 
 
+def _prmtop_residue_names(topology: Path) -> list[str]:
+    """Unique residue labels from an Amber ``prmtop``/``parm7`` (``RESIDUE_LABEL``)."""
+    try:
+        text = topology.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    match = re.search(
+        r"%FLAG\s+RESIDUE_LABEL\s*\n%FORMAT\([^)]*\)\s*\n(.*?)(?=\n%FLAG|\Z)",
+        text,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    if not match:
+        return []
+    blob = match.group(1).replace("\r", "").replace("\n", "")
+    names: list[str] = []
+    seen: set[str] = set()
+    for i in range(0, len(blob), 4):
+        name = blob[i : i + 4].strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        names.append(name)
+    return names
+
+
+def ordered_lipid_resnames(residue_names: list[str] | set[str]) -> list[str]:
+    """Lipid residue names from a topology, in a stable display order."""
+    found = {str(n).strip().upper() for n in residue_names if str(n).strip()}
+    lipids = found & _AMBER_LIPID_RESNAMES
+    if not lipids:
+        return []
+    ordered = [n for n in _AMBER_LIPID_RESNAME_ORDER if n in lipids]
+    extra = sorted(lipids - set(ordered))
+    return ordered + extra
+
+
+def recommend_cpptraj_center_selection(
+    topology_file: str | Path | None = None,
+    residue_names: Optional[list[str]] = None,
+) -> tuple[str, list[str]]:
+    """
+    Default cpptraj/MDA center selection for Amber-like membranes.
+
+    Protein-only autoimage splits the bilayer. When lipid residues are present
+    (e.g. lipid21 ``PA``/``PC``/``OL``), return ``protein or resname …``.
+    """
+    names = list(residue_names or [])
+    if not names and topology_file:
+        path = Path(topology_file).expanduser()
+        if path.is_file() and path.suffix.lower() in {".prmtop", ".parm7"}:
+            names = _prmtop_residue_names(path)
+    lipids = ordered_lipid_resnames(names)
+    if not lipids:
+        return "protein", []
+    return f"protein or resname {' '.join(lipids)}", lipids
+
+
 def detect_pbc_engine(
     topology_file: str,
     trajectory_files: list[str],
@@ -402,7 +593,8 @@ def detect_pbc_engine(
     Detect which MD engine / tool should fix PBC for the given inputs.
 
     Returns dict with ``engine``, ``method``, ``reason``, ``tpr``, ``ndx``,
-    ``warnings``.
+    ``warnings``, and for Amber/cpptraj engines ``lipid_resnames`` plus
+    ``recommended_center_selection`` (protein + detected lipids).
     """
     hint = (engine_hint or "auto").strip().lower()
     if hint not in _VALID_ENGINES:
@@ -478,6 +670,7 @@ def detect_pbc_engine(
 
     center_groups: list[dict] = []
     recommended_center = None
+    recommended_center_groups: list[str] = []
     recommended_output = "System"
     if engine == "gromacs":
         group_info = list_gromacs_index_groups(
@@ -486,11 +679,19 @@ def detect_pbc_engine(
         )
         center_groups = group_info.get("groups") or []
         recommended_center = group_info.get("recommended")
+        recommended_center_groups = list(group_info.get("recommended_groups") or [])
         warnings.extend(group_info.get("warnings") or [])
         if any(g.get("name") == "System" for g in center_groups):
             recommended_output = "System"
         elif center_groups:
             recommended_output = center_groups[0]["name"]
+
+    lipid_resnames: list[str] = []
+    recommended_center_selection = "protein"
+    if engine != "gromacs" and top is not None:
+        recommended_center_selection, lipid_resnames = recommend_cpptraj_center_selection(
+            top
+        )
 
     return {
         "engine": engine,
@@ -502,7 +703,10 @@ def detect_pbc_engine(
         "warnings": warnings,
         "center_groups": center_groups,
         "recommended_center": recommended_center,
+        "recommended_center_groups": recommended_center_groups,
         "recommended_output": recommended_output,
+        "lipid_resnames": lipid_resnames,
+        "recommended_center_selection": recommended_center_selection,
         "supported_output_formats": (
             ["xtc", "trr", "same"]
             if engine == "gromacs"
@@ -513,6 +717,39 @@ def detect_pbc_engine(
 
 # ── GROMACS trjconv ───────────────────────────────────────────────────────────
 
+# Common lipid / membrane index names (CHARMM-GUI / GateWizard / custom).
+_LIPID_LIKE_GROUP_NAMES = frozenset(
+    {
+        "PA",
+        "PC",
+        "OL",
+        "PE",
+        "PS",
+        "PG",
+        "PI",
+        "SM",
+        "CHL",
+        "CHOL",
+        "POPC",
+        "POPE",
+        "POPS",
+        "POPG",
+        "DOPC",
+        "DOPE",
+        "DPPC",
+        "DPPE",
+        "MEMB",
+        "Membrane",
+        "membrane",
+        "Lipid",
+        "lipid",
+        "LIPID",
+        "Lipids",
+        "lipids",
+    }
+)
+_PROTEIN_LIKE_GROUP_NAMES = ("SOLU_MEMB", "Protein", "SOLU", "Protein-H")
+
 
 def _ndx_has_group(ndx_path: Path, name: str) -> bool:
     try:
@@ -520,6 +757,49 @@ def _ndx_has_group(ndx_path: Path, name: str) -> bool:
     except OSError:
         return False
     return re.search(rf"\[\s*{re.escape(name)}\s*\]", text) is not None
+
+
+def _is_lipid_like_group(name: str) -> bool:
+    n = (name or "").strip()
+    if not n:
+        return False
+    if n in _LIPID_LIKE_GROUP_NAMES:
+        return True
+    # Heuristic: short all-caps lipid codes (2–4 letters) excluding water/ions
+    if re.fullmatch(r"[A-Z]{2,4}", n) and n not in {
+        "SOL",
+        "WAT",
+        "HOH",
+        "ION",
+        "NA",
+        "CL",
+        "POT",
+        "SOD",
+        "CLA",
+    }:
+        return True
+    return False
+
+
+def _normalize_group_name_list(
+    names: Optional[list[str]] = None,
+    singular: Optional[str] = None,
+) -> list[str]:
+    """Unique non-empty group names; ``names`` wins over singular when non-empty."""
+    raw_list = list(names or [])
+    if any(str(x or "").strip() for x in raw_list):
+        seq = raw_list
+    else:
+        seq = [singular] if singular else []
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in seq:
+        name = str(raw or "").strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        out.append(name)
+    return out
 
 
 def list_ndx_groups(ndx_path: str | Path) -> list[dict]:
@@ -550,6 +830,7 @@ def list_ndx_groups(ndx_path: str | Path) -> list[dict]:
                 "index": len(groups),
                 "n_atoms": n,
                 "recommended": current in {"SOLU_MEMB", "Protein", "SOLU"},
+                "lipid_like": _is_lipid_like_group(current),
             }
         )
         current = None
@@ -568,6 +849,241 @@ def list_ndx_groups(ndx_path: str | Path) -> list[dict]:
     return groups
 
 
+def parse_ndx_group_atoms(ndx_path: str | Path, group_name: str) -> list[int]:
+    """Return atom indices (1-based GROMACS) for ``group_name`` in an ndx file."""
+    path = Path(ndx_path).expanduser().resolve()
+    want = (group_name or "").strip()
+    if not path.is_file() or not want:
+        return []
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    header_re = re.compile(r"\[\s*([^\]]+?)\s*\]")
+    current: Optional[str] = None
+    atoms: list[int] = []
+    for line in text.splitlines():
+        m = header_re.match(line.strip())
+        if m:
+            if current == want:
+                break
+            current = m.group(1).strip()
+            atoms = []
+            continue
+        if current == want:
+            for tok in line.split():
+                try:
+                    atoms.append(int(tok))
+                except ValueError:
+                    continue
+    return atoms
+
+
+def build_compound_ndx(
+    source_ndx: Path,
+    group_names: list[str],
+    compound_name: str,
+    dest_ndx: Path,
+) -> dict:
+    """
+    Copy ``source_ndx`` and append a compound group that is the union of
+    ``group_names`` atom indices.
+
+    Returns ``{compound_name, source_groups, n_atoms, path}``.
+    """
+    src = Path(source_ndx).expanduser().resolve()
+    if not src.is_file():
+        raise FileNotFoundError(f"Index file not found: {src}")
+    names = _normalize_group_name_list(group_names)
+    if not names:
+        raise ValueError("No index groups selected for compound ndx")
+    compound = (compound_name or "GW_COMPOUND").strip() or "GW_COMPOUND"
+
+    union: list[int] = []
+    seen: set[int] = set()
+    resolved: list[str] = []
+    for name in names:
+        atoms = parse_ndx_group_atoms(src, name)
+        if not atoms:
+            raise ValueError(f"Index group {name!r} not found (or empty) in {src.name}")
+        resolved.append(name)
+        for a in atoms:
+            if a not in seen:
+                seen.add(a)
+                union.append(a)
+
+    try:
+        base_text = src.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        raise RuntimeError(f"Could not read index file: {exc}") from exc
+
+    # Drop an existing compound section with the same name, then append fresh.
+    header_re = re.compile(rf"^\[\s*{re.escape(compound)}\s*\]\s*$", re.MULTILINE)
+    if header_re.search(base_text):
+        parts = re.split(r"(?=^\[)", base_text, flags=re.MULTILINE)
+        kept = []
+        for part in parts:
+            if not part.strip():
+                continue
+            if re.match(rf"\[\s*{re.escape(compound)}\s*\]", part.strip()):
+                continue
+            kept.append(part)
+        base_text = "".join(kept)
+    if base_text and not base_text.endswith("\n"):
+        base_text += "\n"
+
+    lines = [f"[ {compound} ]"]
+    row: list[str] = []
+    for i, atom in enumerate(union, start=1):
+        row.append(f"{atom:4d}")
+        if i % 15 == 0:
+            lines.append(" ".join(row))
+            row = []
+    if row:
+        lines.append(" ".join(row))
+    lines.append("")
+
+    dest = Path(dest_ndx).expanduser().resolve()
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(base_text + "\n".join(lines), encoding="utf-8")
+    return {
+        "compound_name": compound,
+        "source_groups": resolved,
+        "n_atoms": len(union),
+        "path": str(dest),
+    }
+
+
+def _ensure_source_ndx(
+    *,
+    ndx: Optional[Path],
+    tpr: Optional[Path],
+    gmx: str,
+    work_dir: Path,
+) -> Path:
+    """Return an ndx path suitable for merging (use existing or make_ndx from TPR)."""
+    if ndx and ndx.is_file():
+        return ndx
+    if tpr is None or not tpr.is_file():
+        raise FileNotFoundError(
+            "Multi-group Fix PBC requires index.ndx or a .tpr to build one."
+        )
+    work_dir.mkdir(parents=True, exist_ok=True)
+    out = work_dir / "gw_base_groups.ndx"
+    proc = subprocess.run(
+        [gmx, "make_ndx", "-f", str(tpr), "-o", str(out)],
+        input="q\n",
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=120,
+    )
+    if not out.is_file():
+        raise RuntimeError(
+            "gmx make_ndx failed to create a temporary index for multi-group merge: "
+            f"{(proc.stderr or proc.stdout or '')[-400:]}"
+        )
+    return out
+
+
+def _prepare_gromacs_fix_groups(
+    *,
+    ndx: Optional[Path],
+    tpr: Optional[Path],
+    gmx: str,
+    work_dir: Path,
+    center_group: Optional[str] = None,
+    center_groups: Optional[list[str]] = None,
+    output_group: Optional[str] = None,
+    output_groups: Optional[list[str]] = None,
+) -> dict:
+    """
+    Resolve center/output names and an ndx path for the trjconv pipeline.
+
+    Multi-select merges selected groups into temporary ``GW_CENTER`` /
+    ``GW_OUTPUT`` entries on a copied index file.
+    """
+    center_sel = _normalize_group_name_list(center_groups, center_group)
+    output_sel = _normalize_group_name_list(output_groups, output_group)
+    ndx_file = ndx if ndx and ndx.is_file() else None
+
+    need_compound = len(center_sel) > 1 or len(output_sel) > 1
+    working_ndx = ndx_file
+    if need_compound:
+        source = _ensure_source_ndx(ndx=ndx_file, tpr=tpr, gmx=gmx, work_dir=work_dir)
+        working_ndx = work_dir / "gw_fix_pbc_groups.ndx"
+        # Start from a fresh copy of the source index
+        shutil.copy2(source, working_ndx)
+
+    if len(center_sel) > 1:
+        assert working_ndx is not None
+        info = build_compound_ndx(working_ndx, center_sel, "GW_CENTER", working_ndx)
+        cg = info["compound_name"]
+        center_sources = list(info["source_groups"])
+        center_label = f"{cg} = {'+'.join(center_sources)}"
+    else:
+        cg = (
+            center_sel[0]
+            if center_sel
+            else _gromacs_center_group(ndx_file, None)
+        )
+        center_sources = [cg] if cg else []
+        center_label = cg
+
+    if len(output_sel) > 1:
+        assert working_ndx is not None
+        info = build_compound_ndx(working_ndx, output_sel, "GW_OUTPUT", working_ndx)
+        og = info["compound_name"]
+        output_sources = list(info["source_groups"])
+        output_label = f"{og} = {'+'.join(output_sources)}"
+    else:
+        og = (
+            output_sel[0]
+            if output_sel
+            else _gromacs_output_group(ndx_file, None)
+        )
+        output_sources = [og] if og else []
+        output_label = og
+
+    return {
+        "center_group": cg,
+        "output_group": og,
+        "center_sources": center_sources,
+        "output_sources": output_sources,
+        "center_label": center_label,
+        "output_label": output_label,
+        "ndx": working_ndx,
+    }
+
+
+def _recommend_center_groups(groups: list[dict]) -> tuple[str, list[str]]:
+    """Pick recommended center name + multi-select list for the GUI."""
+    names = [str(g.get("name") or "") for g in groups if g.get("name")]
+    name_set = set(names)
+    for pref in _PROTEIN_LIKE_GROUP_NAMES:
+        if pref == "SOLU_MEMB" and pref in name_set:
+            return pref, [pref]
+    lipids = [n for n in names if _is_lipid_like_group(n)]
+    # Prefer named MEMB/Membrane as a single pick when no split lipids
+    if "SOLU_MEMB" not in name_set and lipids:
+        protein = next((p for p in ("Protein", "Protein-H", "SOLU") if p in name_set), None)
+        # Split lipid codes (PA/PC/OL) → multi-select; keep order from ndx
+        splitish = [n for n in lipids if n.upper() not in {"MEMB", "MEMBRANE", "LIPID", "LIPIDS"}]
+        if len(splitish) >= 2:
+            rec = ([protein] if protein else []) + splitish
+            return rec[0], rec
+        if protein and lipids:
+            rec = [protein] + lipids
+            return rec[0], rec
+        return lipids[0], lipids
+    for pref in ("Protein", "SOLU", "Protein-H"):
+        if pref in name_set:
+            return pref, [pref]
+    if names:
+        return names[0], [names[0]]
+    return "Protein", ["Protein"]
+
+
 def list_gromacs_index_groups(
     *,
     ndx_path: Optional[str] = None,
@@ -583,7 +1099,6 @@ def list_gromacs_index_groups(
     warnings: list[str] = []
     groups: list[dict] = []
     source = None
-    recommended = "Protein"
 
     ndx = Path(ndx_path).expanduser().resolve() if ndx_path else None
     if ndx and ndx.is_file():
@@ -621,6 +1136,7 @@ def list_gromacs_index_groups(
                             "n_atoms": int(m.group(3)),
                             "recommended": name
                             in {"Protein", "SOLU_MEMB", "SOLU", "Protein-H"},
+                            "lipid_like": _is_lipid_like_group(name),
                         }
                     )
                 source = f"gmx make_ndx:{tpr}"
@@ -643,14 +1159,14 @@ def list_gromacs_index_groups(
         unique.append(g)
     groups = unique
 
-    for pref in ("SOLU_MEMB", "Protein", "SOLU", "Protein-H"):
-        if any(g["name"] == pref for g in groups):
-            recommended = pref
-            break
+    recommended, recommended_groups = _recommend_center_groups(groups)
+    for g in groups:
+        g["recommended"] = g["name"] in set(recommended_groups) or g["name"] == recommended
 
     return {
         "groups": groups,
         "recommended": recommended,
+        "recommended_groups": recommended_groups,
         "source": source,
         "warnings": warnings,
     }
@@ -766,6 +1282,9 @@ def _fix_pbc_gromacs_one(
     gmx: str,
     center_group: Optional[str],
     output_group: Optional[str] = None,
+    center_groups: Optional[list[str]] = None,
+    output_groups: Optional[list[str]] = None,
+    skip_cluster: bool = False,
     stride: int = 1,
     log_fn: Callable[[str], None],
     job_dir: Optional[Path] = None,
@@ -774,8 +1293,32 @@ def _fix_pbc_gromacs_one(
     work = output_path.parent / f".tmp_{trajectory.stem}_pbc"
     work.mkdir(parents=True, exist_ok=True)
     try:
-        cg = _gromacs_center_group(ndx, center_group)
-        out_group = _gromacs_output_group(ndx, output_group)
+        resolved = _prepare_gromacs_fix_groups(
+            ndx=ndx,
+            tpr=tpr,
+            gmx=gmx,
+            work_dir=work,
+            center_group=center_group,
+            center_groups=center_groups,
+            output_group=output_group,
+            output_groups=output_groups,
+        )
+        cg = resolved["center_group"]
+        out_group = resolved["output_group"]
+        use_ndx = resolved["ndx"]
+        log_fn(f"Center group: {resolved['center_label']}")
+        log_fn(f"Output group: {resolved['output_label']}")
+        if len(resolved["center_sources"]) > 1:
+            log_fn(
+                "Merged center sources: "
+                + "+".join(resolved["center_sources"])
+            )
+        if len(resolved["output_sources"]) > 1:
+            log_fn(
+                "Merged output sources: "
+                + "+".join(resolved["output_sources"])
+            )
+
         skip = _normalize_stride(stride)
         whole = work / "01_whole.xtc"
         nojump = work / "02_nojump.xtc"
@@ -787,7 +1330,7 @@ def _fix_pbc_gromacs_one(
             tpr=tpr,
             traj_in=trajectory,
             traj_out=whole,
-            ndx=ndx,
+            ndx=use_ndx,
             pbc="whole",
             center=False,
             center_group=cg,
@@ -802,7 +1345,7 @@ def _fix_pbc_gromacs_one(
             tpr=tpr,
             traj_in=whole,
             traj_out=nojump,
-            ndx=ndx,
+            ndx=use_ndx,
             pbc="nojump",
             center=False,
             center_group=cg,
@@ -813,26 +1356,29 @@ def _fix_pbc_gromacs_one(
         )
         # cluster can fail for some systems; fall back to mol+center on nojump
         clustered_ok = False
-        try:
-            _run_trjconv(
-                gmx,
-                tpr=tpr,
-                traj_in=nojump,
-                traj_out=cluster,
-                ndx=ndx,
-                pbc="cluster",
-                center=False,
-                center_group=cg,
-                output_group=out_group,
-                ur=None,
-                log_fn=log_fn,
-                job_dir=job_dir,
-            )
-            clustered_ok = True
-        except JobCancelled:
-            raise
-        except RuntimeError as exc:
-            log_fn(f"cluster step skipped: {exc}")
+        if skip_cluster:
+            log_fn("cluster step skipped (user option)")
+        else:
+            try:
+                _run_trjconv(
+                    gmx,
+                    tpr=tpr,
+                    traj_in=nojump,
+                    traj_out=cluster,
+                    ndx=use_ndx,
+                    pbc="cluster",
+                    center=False,
+                    center_group=cg,
+                    output_group=out_group,
+                    ur=None,
+                    log_fn=log_fn,
+                    job_dir=job_dir,
+                )
+                clustered_ok = True
+            except JobCancelled:
+                raise
+            except RuntimeError as exc:
+                log_fn(f"cluster step skipped: {exc}")
 
         src = cluster if clustered_ok else nojump
         _run_trjconv(
@@ -840,7 +1386,7 @@ def _fix_pbc_gromacs_one(
             tpr=tpr,
             traj_in=src,
             traj_out=output_path,
-            ndx=ndx,
+            ndx=use_ndx,
             pbc="mol",
             center=True,
             center_group=cg,
@@ -861,6 +1407,11 @@ def _fix_pbc_gromacs_one(
             "method": "gmx trjconv",
             "center_group": cg,
             "output_group": out_group,
+            "center_groups": resolved["center_sources"],
+            "output_groups": resolved["output_sources"],
+            "center_label": resolved["center_label"],
+            "output_label": resolved["output_label"],
+            "skip_cluster": bool(skip_cluster),
             "stride": skip,
         }
     finally:
@@ -880,6 +1431,116 @@ _PROTEIN_CPPTRAJ_MASK = (
     ":ALA,ARG,ASN,ASP,CYS,GLN,GLU,GLY,HIS,HID,HIE,HIP,ILE,LEU,LYS,"
     "MET,PHE,PRO,SER,THR,TRP,TYR,VAL,ACE,NME"
 )
+
+_LIPID_HINT_RE = re.compile(
+    r"(?i)\b(membrane|lipid|lipids|popc|pope|pops|popg|dppc|dppe|chol|cholesterol|"
+    r"dlpc|dlpe|dopc|dope|dspc|palmitoyl|oleoyl)\b|@?p31\b|"
+    r":(?:[A-Za-z0-9_]*,)*(?:PA|PC|OL|PHOS|OLEO|PALM)(?:,[A-Za-z0-9_]*)*"
+)
+
+
+def _mask_looks_like_membrane(text: str) -> bool:
+    """Heuristic: selection targets bilayer lipids / phosphates."""
+    return bool(_LIPID_HINT_RE.search(text or ""))
+
+
+def _split_cpptraj_or_masks(mask: str) -> list[str]:
+    """Split ``(A)|(B)`` / ``A|B`` style cpptraj OR masks into parts."""
+    raw = (mask or "").strip()
+    if not raw:
+        return []
+    if re.search(r"\)\s*\|\s*\(", raw):
+        # "(A)|(B)" — do not strip outer parens; each side already has them.
+        return [
+            p.strip().strip("()")
+            for p in re.split(r"\)\s*\|\s*\(", raw)
+            if p.strip()
+        ]
+    if "|" in raw and not raw.lstrip().startswith(":"):
+        return [p.strip().strip("()") for p in raw.split("|") if p.strip()]
+    return [raw]
+
+
+def _is_protein_cpptraj_mask(mask: str) -> bool:
+    u = (mask or "").upper()
+    return "ALA" in u and ("ARG" in u or "LYS" in u or "GLY" in u)
+
+
+def compact_autoimage_anchor(amber_mask: str) -> Optional[str]:
+    """
+    Choose a cpptraj ``autoimage`` anchor that is preferably one molecule.
+
+    Multi-molecule anchors (all lipids, phosphate atoms, protein|membrane) make
+    ``autoimage`` fail and fall back to the first molecule — often wrong for
+    bilayers. Prefer the protein half of an OR mask; omit lipid-only multi-res
+    anchors so the caller can use ``mode byvec moveanchor`` instead.
+    """
+    mask = (amber_mask or "").strip()
+    if not mask:
+        return None
+    parts = _split_cpptraj_or_masks(mask)
+    if len(parts) > 1:
+        for part in parts:
+            if _is_protein_cpptraj_mask(part):
+                return part
+        # Ambiguous multi-region — omit custom anchor
+        return None
+    # Atom selections spanning many lipids (e.g. @P31)
+    if mask.startswith("@"):
+        return None
+    # Many short lipid residue names → many molecules
+    if re.fullmatch(r":[A-Za-z0-9_,]+", mask):
+        names = [n for n in mask[1:].split(",") if n]
+        if names and not _is_protein_cpptraj_mask(mask):
+            if len(names) >= 1 and all(1 <= len(n) <= 4 for n in names):
+                return None
+    return mask
+
+
+def build_cpptraj_autoimage_attempts(
+    amber_mask: str, *, membrane_like: Optional[bool] = None
+) -> list[str]:
+    """
+    Ordered cpptraj action blocks (no parm/trajin/trajout/run).
+
+    Never uses ``origin`` (that parks the system on the box corner). For
+    membranes prefer ``mode byvec moveanchor``, then ``center`` + ``image``.
+    """
+    mask = (amber_mask or "").strip() or _PROTEIN_CPPTRAJ_MASK
+    is_memb = (
+        bool(membrane_like)
+        if membrane_like is not None
+        else _mask_looks_like_membrane(mask)
+    )
+    anchor = compact_autoimage_anchor(mask)
+    attempts: list[str] = []
+
+    def _add(block: str) -> None:
+        text = "\n".join(line for line in block.strip().splitlines() if line.strip())
+        if text and text not in attempts:
+            attempts.append(text)
+
+    if is_memb:
+        if anchor:
+            _add(
+                f"autoimage anchor {anchor} mode byvec moveanchor\n"
+                f"center {mask} mass\n"
+                f"image center"
+            )
+            _add(f"autoimage anchor {anchor} mode byvec moveanchor")
+        _add(
+            f"autoimage mode byvec moveanchor\n"
+            f"center {mask} mass\n"
+            f"image center"
+        )
+        _add("autoimage mode byvec moveanchor")
+        _add("autoimage")
+    else:
+        if anchor:
+            _add(f"autoimage anchor {anchor}")
+        _add(f"autoimage anchor {mask}")
+        _add("autoimage")
+    return attempts
 
 
 def mda_selection_to_cpptraj_mask(selection: str) -> str:
@@ -970,64 +1631,71 @@ def _fix_pbc_cpptraj_one(
         log_fn(
             f"Converted center selection {center_mask!r} → cpptraj mask {amber_mask!r}"
         )
-    # Prefer autoimage with explicit membrane/protein anchor.
-    script = f"""parm {topology}
-{trajin_line}
-autoimage anchor {amber_mask} origin
-trajout {output_path}
-run
-"""
-    log_fn(f"$ {cpptraj} <<EOF\n{script}EOF")
-    proc = _run_cancellable(
-        [cpptraj], stdin_text=script, log_fn=log_fn, job_dir=job_dir
-    )
-    if proc.stdout:
-        log_fn(proc.stdout[-2000:])
-    if proc.stderr:
-        log_fn(proc.stderr[-2000:])
 
-    if proc.returncode != 0 or not output_path.is_file():
-        _check_cancel(job_dir)
-        # Fallback without anchor syntax
-        script2 = f"""parm {topology}
-{trajin_line}
-autoimage
-trajout {output_path}
-run
-"""
+    membrane_like = _mask_looks_like_membrane(center_mask) or _mask_looks_like_membrane(
+        amber_mask
+    )
+    anchor = compact_autoimage_anchor(amber_mask)
+    if membrane_like:
         log_fn(
-            "WARNING: autoimage with anchor failed; retrying plain autoimage "
-            "(anchors on the first molecule — often wrong for membranes). "
-            f"Failed mask was {amber_mask!r}."
+            "Membrane-like center selection: using autoimage mode byvec moveanchor "
+            "(no 'origin' — that centers on the box corner)."
         )
-        log_fn(f"$ {cpptraj} <<EOF\n{script2}EOF")
-        proc2 = _run_cancellable(
-            [cpptraj], stdin_text=script2, log_fn=log_fn, job_dir=job_dir
-        )
-        if proc2.stdout:
-            log_fn(proc2.stdout[-2000:])
-        if proc2.stderr:
-            log_fn(proc2.stderr[-2000:])
-        if proc2.returncode != 0 or not output_path.is_file():
-            _check_cancel(job_dir)
-            raise RuntimeError(
-                f"cpptraj autoimage failed (exit {proc2.returncode}): "
-                f"{(proc2.stderr or proc2.stdout or '')[-500:]}"
+        if anchor:
+            log_fn(f"Compact autoimage anchor: {anchor}")
+        else:
+            log_fn(
+                "No single-molecule anchor derived from the selection "
+                "(lipid masks span many molecules); relying on byvec/moveanchor."
             )
 
-    n_frames = _count_frames_mda(str(topology), str(output_path))
-    return {
-        "input": str(trajectory),
-        "output": str(output_path),
-        "n_frames": n_frames,
-        "format": output_path.suffix.lstrip(".").lower(),
-        "ok": True,
-        "error": None,
-        "method": "cpptraj autoimage",
-        "center_mask": amber_mask,
-        "center_selection_input": center_mask,
-        "stride": skip,
-    }
+    attempts = build_cpptraj_autoimage_attempts(
+        amber_mask, membrane_like=membrane_like
+    )
+    last_err = ""
+    for i, actions in enumerate(attempts):
+        if output_path.is_file():
+            try:
+                output_path.unlink()
+            except OSError:
+                pass
+        script = f"""parm {topology}
+{trajin_line}
+{actions}
+trajout {output_path}
+run
+"""
+        label = f"attempt {i + 1}/{len(attempts)}"
+        log_fn(f"$ cpptraj ({label}) <<EOF\n{script}EOF")
+        proc = _run_cancellable(
+            [cpptraj], stdin_text=script, log_fn=log_fn, job_dir=job_dir
+        )
+        if proc.stdout:
+            log_fn(proc.stdout[-2000:])
+        if proc.stderr:
+            log_fn(proc.stderr[-2000:])
+        if proc.returncode == 0 and output_path.is_file():
+            n_frames = _count_frames_mda(str(topology), str(output_path))
+            return {
+                "input": str(trajectory),
+                "output": str(output_path),
+                "n_frames": n_frames,
+                "format": output_path.suffix.lstrip(".").lower(),
+                "ok": True,
+                "error": None,
+                "method": "cpptraj autoimage",
+                "center_mask": amber_mask,
+                "center_selection_input": center_mask,
+                "autoimage_actions": actions,
+                "stride": skip,
+            }
+        _check_cancel(job_dir)
+        last_err = (proc.stderr or proc.stdout or f"exit {proc.returncode}")[-500:]
+        log_fn(f"WARNING: {label} failed — trying next autoimage strategy.")
+
+    raise RuntimeError(
+        f"cpptraj autoimage failed after {len(attempts)} strategies: {last_err}"
+    )
 
 
 # ── MDAnalysis fallback (molecule-aware) ──────────────────────────────────────
@@ -1191,6 +1859,9 @@ def fix_pbc_trajectories(
     center_selection: str = "protein",
     center_group: Optional[str] = None,
     output_group: Optional[str] = None,
+    center_groups: Optional[list[str]] = None,
+    output_groups: Optional[list[str]] = None,
+    skip_cluster: bool = False,
     tpr_path: Optional[str] = None,
     ndx_path: Optional[str] = None,
     gmx_executable: Optional[str] = None,
@@ -1231,6 +1902,16 @@ def fix_pbc_trajectories(
     detected = detect_pbc_engine(topology_file, trajectory_files, engine_hint=engine)
     eng = detected["engine"]
     _log(f"Engine: {eng} ({detected['method']}) — {detected['reason']}")
+    sel = (center_selection or "protein").strip() or "protein"
+    rec_sel = str(detected.get("recommended_center_selection") or "").strip()
+    if (
+        eng != "gromacs"
+        and rec_sel
+        and rec_sel != "protein"
+        and sel.lower() in {"protein", ""}
+    ):
+        _log(f"Default center selection (protein + detected lipids): {rec_sel}")
+        center_selection = rec_sel
     if any(n > 1 for n in stride_map.values()):
         for p, n in stride_map.items():
             if n > 1:
@@ -1267,9 +1948,25 @@ def fix_pbc_trajectories(
                 "gmx not found. Install GROMACS or set the executable path."
             )
         _log(f"Using gmx: {gmx}")
+        center_sel = _normalize_group_name_list(center_groups, center_group)
+        output_sel = _normalize_group_name_list(output_groups, output_group)
         ndx_for_groups = ndx if ndx and ndx.is_file() else None
-        _log(f"Center group: {_gromacs_center_group(ndx_for_groups, center_group)}")
-        _log(f"Output group: {_gromacs_output_group(ndx_for_groups, output_group)}")
+        if center_sel:
+            _log(
+                "Center group(s): "
+                + ("+".join(center_sel) if len(center_sel) > 1 else center_sel[0])
+            )
+        else:
+            _log(f"Center group: {_gromacs_center_group(ndx_for_groups, None)}")
+        if output_sel:
+            _log(
+                "Output group(s): "
+                + ("+".join(output_sel) if len(output_sel) > 1 else output_sel[0])
+            )
+        else:
+            _log(f"Output group: {_gromacs_output_group(ndx_for_groups, None)}")
+        if skip_cluster:
+            _log("trjconv cluster step: disabled")
         if tpr is None or not tpr.is_file():
             raise FileNotFoundError(
                 "GROMACS Fix PBC requires a .tpr (structure/topology). "
@@ -1306,6 +2003,9 @@ def fix_pbc_trajectories(
                     gmx=gmx,
                     center_group=center_group,
                     output_group=output_group,
+                    center_groups=center_groups,
+                    output_groups=output_groups,
+                    skip_cluster=skip_cluster,
                     stride=traj_stride,
                     log_fn=_log,
                     job_dir=job_path,
@@ -1424,6 +2124,11 @@ def fix_pbc_trajectories(
         "engine": eng if eng != "mdanalysis" or detected["engine"] == "mdanalysis" else "mdanalysis",
         "method": detected["method"] if eng != "mdanalysis" else "MDAnalysis make_whole + wrap",
         "center_selection": center_selection,
+        "center_group": center_group,
+        "output_group": output_group,
+        "center_groups": _normalize_group_name_list(center_groups, center_group),
+        "output_groups": _normalize_group_name_list(output_groups, output_group),
+        "skip_cluster": bool(skip_cluster),
         "stride": _normalize_stride(stride),
         "file_strides": stride_map,
         "tpr": str(tpr) if tpr else None,
@@ -1487,6 +2192,9 @@ def execute_fix_pbc_job(job_dir: Path | str) -> int:
             center_selection=meta.get("center_selection") or "protein",
             center_group=meta.get("center_group"),
             output_group=meta.get("output_group"),
+            center_groups=meta.get("center_groups"),
+            output_groups=meta.get("output_groups"),
+            skip_cluster=bool(meta.get("skip_cluster")),
             tpr_path=meta.get("tpr"),
             ndx_path=meta.get("ndx"),
             gmx_executable=meta.get("gmx_executable"),
@@ -1574,6 +2282,9 @@ def start_fix_pbc_job(
     center_selection: str = "protein",
     center_group: Optional[str] = None,
     output_group: Optional[str] = None,
+    center_groups: Optional[list[str]] = None,
+    output_groups: Optional[list[str]] = None,
+    skip_cluster: bool = False,
     tpr_path: Optional[str] = None,
     ndx_path: Optional[str] = None,
     gmx_executable: Optional[str] = None,
@@ -1620,6 +2331,8 @@ def start_fix_pbc_job(
         "Finalize"
     ]
 
+    center_sel = _normalize_group_name_list(center_groups, center_group)
+    output_sel = _normalize_group_name_list(output_groups, output_group)
     meta = {
         "type": "fix_pbc",
         "engine": detected["engine"],
@@ -1628,8 +2341,11 @@ def start_fix_pbc_job(
         "topology": str(Path(topology_file).expanduser().resolve()),
         "trajectories": [str(Path(p).expanduser().resolve()) for p in trajectory_files],
         "center_selection": center_selection,
-        "center_group": center_group,
-        "output_group": output_group,
+        "center_group": center_sel[0] if len(center_sel) == 1 else center_group,
+        "output_group": output_sel[0] if len(output_sel) == 1 else output_group,
+        "center_groups": center_sel,
+        "output_groups": output_sel,
+        "skip_cluster": bool(skip_cluster),
         "tpr": tpr_path or detected.get("tpr"),
         "ndx": ndx_path or detected.get("ndx"),
         "gmx_executable": gmx_executable,
@@ -1639,24 +2355,37 @@ def start_fix_pbc_job(
         "file_strides": stride_map,
     }
     _write_json(job_dir / "tools_job.json", meta)
-    _write_json(
-        job_dir / "status.json",
-        {
-            "status": "running",
-            "current_step": 0,
-            "steps": steps,
-            "steps_completed": [],
-            "error": None,
-            "start_time": _now_iso(),
-            "end_time": None,
-            "outputs": [],
-            "engine": detected["engine"],
-            "method": detected["method"],
-            "config": meta,
-        },
-    )
+    status_payload = {
+        "status": "running",
+        "current_step": 0,
+        "steps": steps,
+        "steps_completed": [],
+        "error": None,
+        "start_time": _now_iso(),
+        "end_time": None,
+        "outputs": [],
+        "engine": detected["engine"],
+        "method": detected["method"],
+        "config": meta,
+    }
     _append_log(job_dir, f"Job started: {job_dir.name}")
     _append_log(job_dir, f"Engine detect: {detected}")
+    if center_sel:
+        label = "+".join(center_sel) if len(center_sel) > 1 else center_sel[0]
+        _append_log(
+            job_dir,
+            f"Center group(s): {label}"
+            + (f" → GW_CENTER" if len(center_sel) > 1 else ""),
+        )
+    if output_sel:
+        label = "+".join(output_sel) if len(output_sel) > 1 else output_sel[0]
+        _append_log(
+            job_dir,
+            f"Output group(s): {label}"
+            + (f" → GW_OUTPUT" if len(output_sel) > 1 else ""),
+        )
+    if skip_cluster:
+        _append_log(job_dir, "trjconv cluster step: disabled")
     if any(n > 1 for n in stride_map.values()):
         for p, n in stride_map.items():
             if n > 1:
@@ -1686,6 +2415,7 @@ def start_fix_pbc_job(
                 pass
 
     (job_dir / "process.pid").write_text(str(proc.pid), encoding="utf-8")
+    _write_json(job_dir / "status.json", status_payload)
     _append_log(job_dir, f"Detached worker pid={proc.pid}")
 
     return {
@@ -1700,35 +2430,46 @@ def start_fix_pbc_job(
 
 
 def _reconcile_stale_running_job(job_dir: Path, status: dict) -> dict:
+    """Keep running jobs alive unless the worker is gone and logs have gone quiet.
+
+    A scan often races the PID file (nested output folders under the working
+    directory are found immediately). Do not mark interrupted in that window,
+    and revive a false interrupt if the log is still growing.
     """
-    If status says running, keep it when the detached worker PID is alive;
-    otherwise mark interrupted (worker died without updating status).
-    """
-    if (status.get("status") or "").lower() != "running":
+    status = dict(status)
+    state = str(status.get("status") or "").lower()
+    alive = _worker_appears_alive(job_dir, status)
+
+    if _looks_like_false_interrupt(status) and alive:
+        status["status"] = "running"
+        status["error"] = None
+        status["end_time"] = None
+        try:
+            _write_json(job_dir / "status.json", status)
+            _append_log(job_dir, "Restored running (worker still active)")
+        except OSError:
+            pass
         return status
 
-    pid = _read_pid_file(job_dir)
-    if _pid_alive(pid):
-        return status  # still running out-of-process
+    if state != "running":
+        return status
 
-    # Worker gone — mark interrupted so the GUI does not poll forever.
-    status = dict(status)
+    if alive:
+        return status
+
     if _is_cancel_requested(job_dir):
         status["status"] = "cancelled"
         status["error"] = status.get("error") or "Cancelled by user"
     else:
         status["status"] = "error"
-        status["error"] = status.get("error") or (
-            "Interrupted — worker process exited unexpectedly"
-        )
+        status["error"] = status.get("error") or _INTERRUPT_ERROR
     status["end_time"] = status.get("end_time") or _now_iso()
     try:
         _write_json(job_dir / "status.json", status)
         _append_log(
             job_dir,
-            f"Marked {status['status']} (worker pid={pid} not running)",
+            f"Marked {status['status']} (worker pid={_read_pid_file(job_dir)} not running)",
         )
-        (job_dir / "process.pid").unlink(missing_ok=True)
     except OSError:
         pass
     return status
@@ -1771,6 +2512,25 @@ def scan_tools_jobs(directory: str) -> list[dict]:
         except Exception:
             continue
         status = _reconcile_stale_running_job(job_dir, status)
+        center_sel = _normalize_group_name_list(
+            meta.get("center_groups"), meta.get("center_group")
+        )
+        output_sel = _normalize_group_name_list(
+            meta.get("output_groups"), meta.get("output_group")
+        )
+        center_label = (
+            (f"GW_CENTER = {'+'.join(center_sel)}" if len(center_sel) > 1 else (center_sel[0] if center_sel else None))
+        )
+        output_label = (
+            (f"GW_OUTPUT = {'+'.join(output_sel)}" if len(output_sel) > 1 else (output_sel[0] if output_sel else None))
+        )
+        # Prefer labels from completed traj outputs when present
+        for out in status.get("outputs") or []:
+            if out.get("center_label"):
+                center_label = out["center_label"]
+            if out.get("output_label"):
+                output_label = out["output_label"]
+            break
         found.append(
             {
                 "job_dir": str(job_dir),
@@ -1786,6 +2546,11 @@ def scan_tools_jobs(directory: str) -> list[dict]:
                 "start_time": status.get("start_time"),
                 "end_time": status.get("end_time"),
                 "outputs": status.get("outputs", []),
+                "center_groups": center_sel,
+                "output_groups": output_sel,
+                "center_label": center_label,
+                "output_label": output_label,
+                "skip_cluster": bool(meta.get("skip_cluster")),
             }
         )
     found.sort(key=lambda j: j.get("start_time") or "", reverse=True)
