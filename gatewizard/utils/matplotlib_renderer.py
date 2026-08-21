@@ -14,9 +14,25 @@ from gatewizard.utils.plot_spec import (
     normalize_plot_spec,
     panel_effective_limits,
     panel_show_grid,
+    union_axis_limits,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _configure_matplotlib_for_headless() -> None:
+    """Use Agg so FastAPI/CLI export never touches Tk (no main loop in worker threads)."""
+    import matplotlib
+
+    if matplotlib.get_backend().lower() != "agg":
+        matplotlib.use("Agg", force=True)
+
+
+def _pyplot():
+    _configure_matplotlib_for_headless()
+    import matplotlib.pyplot as plt
+
+    return plt
 
 
 def _auto_text_color(bg_color: str, text_color: str) -> str:
@@ -73,13 +89,46 @@ def _panel_series(panel: Dict[str, Any], lookup: Dict[str, Dict[str, Any]]) -> O
     return None
 
 
+def _panel_series_list(
+    panel: Dict[str, Any], lookup: Dict[str, Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """All series for a grid panel (multi-set compare on one property or one set)."""
+    keys = panel.get("series_keys")
+    if isinstance(keys, list) and keys:
+        out: List[Dict[str, Any]] = []
+        for raw_key in keys:
+            key = str(raw_key or "")
+            for candidate in (key, key.lower()):
+                if candidate and candidate in lookup:
+                    out.append(lookup[candidate])
+                    break
+        if out:
+            return out
+    single = _panel_series(panel, lookup)
+    return [single] if single else []
+
+
+def _series_line_color(
+    series: Dict[str, Any],
+    panel: Dict[str, Any],
+    index: int,
+) -> str:
+    color = series.get("color") or series.get("line_color")
+    if color:
+        return str(color)
+    panel_color = panel.get("line_color")
+    if panel_color:
+        return str(panel_color)
+    return DEFAULT_LINE_COLORS[index % len(DEFAULT_LINE_COLORS)]
+
+
 def render_energetic(
     data: Dict[str, Any],
     spec: Dict[str, Any],
 ):
     """Render energetic data with PlotSpec. Returns matplotlib Figure."""
     try:
-        import matplotlib.pyplot as plt
+        plt = _pyplot()
         import numpy as np
     except ImportError as exc:
         raise ImportError("matplotlib and numpy are required for plotting") from exc
@@ -114,16 +163,17 @@ def render_energetic(
             n = min(len(xs), len(ys))
             if n == 0:
                 continue
-            color = panel.get("line_color") or DEFAULT_LINE_COLORS[i % len(DEFAULT_LINE_COLORS)]
+            color = _series_line_color(series, panel, i)
             name = str(series.get("name") or panel.get("name") or panel.get("key"))
             unit = series.get("unit") or ""
             label = f"{name} ({unit})" if unit else name
+            use_marker = len(panels) > 1 and n <= 80
             line = ax.plot(
                 xs[:n],
                 ys[:n],
                 color=color,
                 linewidth=1.5,
-                marker="o" if len(panels) > 1 else None,
+                marker="o" if use_marker else None,
                 markersize=2,
                 label=label,
             )
@@ -137,14 +187,27 @@ def render_energetic(
             bg_color=bg_color,
         )
         ax.set_xlabel(g.get("xlabel") or f"Time ({g.get('time_units', 'ns')})", color=text_color)
-        ylabel = panels[0].get("ylabel") if len(panels) == 1 else "Multiple Properties"
+        ylabels = {
+            str(p.get("ylabel") or "").strip()
+            for p in panels
+            if str(p.get("ylabel") or "").strip()
+        }
+        if len(ylabels) == 1:
+            ylabel = next(iter(ylabels))
+        elif len(panels) == 1:
+            ylabel = panels[0].get("ylabel")
+        else:
+            ylabel = g.get("ylabel") or "Value"
         ax.set_ylabel(ylabel or "Value", color=text_color)
-        ax.set_title(g.get("title") or "Energetic Analysis", color=text_color, fontweight="bold")
+        ax.set_title(g.get("title") or "", color=text_color, fontweight="bold")
         if len(labels) > 1:
             legend = ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
             if legend:
                 plt.setp(legend.get_texts(), color=text_color)
-        xlim, ylim = panel_effective_limits(spec, panels[0])
+        # Overlay shares one axis — span all panel windows so secondary series
+        # (e.g. APL upper/lower leaflets) are not clipped to the first series.
+        xlim = union_axis_limits(panel_effective_limits(spec, p)[0] for p in panels)
+        ylim = union_axis_limits(panel_effective_limits(spec, p)[1] for p in panels)
         if xlim:
             ax.set_xlim(xlim)
         if ylim:
@@ -162,21 +225,27 @@ def render_energetic(
 
     shared_xlim = None
     if spec.get("sync_x"):
-        _, shared_xlim = panel_effective_limits(spec, panels[0])
+        shared_xlim, _ = panel_effective_limits(spec, panels[0])
         if shared_xlim is None:
             shared_xlim = tuple(g.get("xlim") or ()) if g.get("xlim") else None
 
     for i, panel in enumerate(panels):
         r, c = divmod(i, cols)
         ax = axes_arr[r][c]
-        series = _panel_series(panel, lookup)
-        if series:
+        series_list = _panel_series_list(panel, lookup)
+        legend_labels: List[str] = []
+        for j, series in enumerate(series_list):
             xs = np.asarray(series.get("x") or data.get("x") or [], dtype=float)
             ys = np.asarray(series.get("y") or [], dtype=float)
             npts = min(len(xs), len(ys))
-            if npts:
-                color = panel.get("line_color") or DEFAULT_LINE_COLORS[i % len(DEFAULT_LINE_COLORS)]
-                ax.plot(xs[:npts], ys[:npts], color=color, linewidth=1.5)
+            if not npts:
+                continue
+            color = _series_line_color(series, panel, j)
+            name = str(series.get("name") or panel.get("name") or panel.get("key"))
+            unit = series.get("unit") or ""
+            label = f"{name} ({unit})" if unit else name
+            ax.plot(xs[:npts], ys[:npts], color=color, linewidth=1.5, label=label)
+            legend_labels.append(label)
         _style_axes(
             ax,
             text_color=text_color,
@@ -185,10 +254,14 @@ def render_energetic(
             bg_color=bg_color,
         )
         name = str(panel.get("title") or panel.get("name") or panel.get("key"))
-        unit = (series or {}).get("unit") or ""
+        unit = (series_list[0] if series_list else {}).get("unit") or ""
         ax.set_xlabel(g.get("xlabel") or f"Time ({g.get('time_units', 'ns')})", color=text_color)
         ax.set_ylabel(panel.get("ylabel") or (f"{name} ({unit})" if unit else name), color=text_color)
         ax.set_title(name, color=text_color, fontweight="bold")
+        if len(legend_labels) > 1:
+            legend = ax.legend(fontsize=8, loc="best")
+            if legend:
+                plt.setp(legend.get_texts(), color=text_color)
         xlim, ylim = panel_effective_limits(spec, panel)
         if spec.get("sync_x") and shared_xlim:
             ax.set_xlim(shared_xlim)
@@ -215,7 +288,7 @@ def render_energetic_to_bytes(
     dpi: Optional[int] = None,
 ) -> bytes:
     """Render PlotSpec to PNG/SVG bytes."""
-    import matplotlib.pyplot as plt
+    plt = _pyplot()
 
     spec = normalize_plot_spec(spec)
     fig = render_energetic(data, spec)
@@ -241,7 +314,7 @@ def render_energetic_to_path(
     fmt: Optional[str] = None,
 ) -> Path:
     """Save rendered figure to disk. Grid + separate_plots saves one file per panel when path is prefix."""
-    import matplotlib.pyplot as plt
+    plt = _pyplot()
 
     spec = normalize_plot_spec(spec)
     path = Path(path)

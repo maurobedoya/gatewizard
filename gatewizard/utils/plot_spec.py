@@ -24,8 +24,10 @@ DEFAULT_GLOBAL_STYLE: Dict[str, Any] = {
     "dpi": 300,
     "font_family": "sans-serif",
     "xlabel": None,
+    "ylabel": None,
     "title": None,
     "xlim": None,
+    "ylim": None,
 }
 
 DEFAULT_LINE_COLORS = [
@@ -77,6 +79,11 @@ def normalize_plot_spec(spec: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         }
         if panel.get("name"):
             p["name"] = panel["name"]
+        # Multi-set compare panels list every series drawn on the subplot
+        # (one property across sets, or one set across properties).
+        series_keys = panel.get("series_keys")
+        if isinstance(series_keys, list) and series_keys:
+            p["series_keys"] = [str(k) for k in series_keys if k is not None and str(k)]
         panels.append(p)
 
     layout = str(src.get("layout") or "overlay").lower()
@@ -210,8 +217,18 @@ def panel_effective_limits(
     spec = normalize_plot_spec(spec)
     g = spec["global"]
     xlim = _as_pair(panel.get("xlim")) or _as_pair(g.get("xlim"))
-    ylim = _as_pair(panel.get("ylim"))
+    ylim = _as_pair(panel.get("ylim")) or _as_pair(g.get("ylim"))
     return xlim, ylim
+
+
+def union_axis_limits(
+    pairs: Sequence[Optional[Tuple[float, float]]],
+) -> Optional[Tuple[float, float]]:
+    """Combine several (min, max) windows into one spanning window."""
+    vals = [p for p in pairs if p is not None]
+    if not vals:
+        return None
+    return (min(p[0] for p in vals), max(p[1] for p in vals))
 
 
 def panel_show_grid(spec: Dict[str, Any], panel: Dict[str, Any]) -> bool:
