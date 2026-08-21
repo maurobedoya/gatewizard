@@ -312,7 +312,7 @@ class TestSetupAmberEquilibration:
             stage_params={
                 "temperature": 303.15,
                 "timestep": 2.0,
-                "time_ns": 17.625,
+                "time_ns": 47.625,
                 "dcd_freq": 50000,
                 "ensemble": "NPgT",
                 "constraints": {"protein_backbone": 0.1},
@@ -321,7 +321,7 @@ class TestSetupAmberEquilibration:
             scheme_type="NPT",
         )
         assert "ntwx=50000" in content
-        assert "nstlim=8812500" in content
+        assert "nstlim=23812500" in content
 
     @pytest.mark.skipif(not MDA_AVAILABLE, reason="MDAnalysis not installed")
     def test_group_restraints_with_and_without_custom(self, tmp_path):

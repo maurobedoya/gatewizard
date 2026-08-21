@@ -66,7 +66,7 @@ def _build_universal_membrane_stages(
 ) -> List["EquilibrationStage"]:
     """Default universal packmol-memgen membrane protocol (all engines).
 
-    Heat (NVT) → NVT scaffold → pack under NPgT (γ=0) with restraint release
+    Thermalize (NVT) → NVT scaffold → pack under NPgT (γ=0) with restraint release
     through Equilibration 6, then switch to ``scheme_type`` for production.
     Same schedule for all engines (barostat starts at Equilibration 3).
     """
@@ -136,7 +136,7 @@ def _build_universal_membrane_stages(
             )
         )
 
-    # 1 Heat NVT
+    # 1 Thermalize NVT (velocities at target T; not a temperature ramp)
     stages.append(
         _stage(
             "Equilibration 1",
@@ -204,7 +204,7 @@ def _build_universal_membrane_stages(
         _stage(
             "Equilibration 6",
             _PACKING_ENSEMBLE,
-            17.625,
+            47.625,
             2.0,
             dcd_freq=50000,
             protein_backbone=0.1,
@@ -2056,7 +2056,7 @@ class NAMDEquilibrationManager:
     ) -> List[Dict[str, Any]]:
         """Return universal membrane packing stages for NAMD.
 
-        Heat under NVT, scaffold under NVT, pack under NPgT (γ=0) from
+        Thermalize under NVT, scaffold under NVT, pack under NPgT (γ=0) from
         Equilibration 3 through Equilibration 6, then switch to
         ``scheme_type`` for production. Minimization is folded into
         Equilibration 1 via ``minimize_steps``.
@@ -5329,7 +5329,7 @@ class OpenMMEquilibrationManager:
     ) -> List[Dict[str, Any]]:
         """Return universal membrane packing stages for OpenMM.
 
-        Heat/scaffold under NVT, pack under NPgT (γ=0) from Equilibration 3
+        Thermalize/scaffold under NVT, pack under NPgT (γ=0) from Equilibration 3
         through Equilibration 6, then ``scheme_type`` for production.
         Minimization is folded into Equilibration 1 via ``minimize_steps``.
         """
@@ -6640,7 +6640,7 @@ class GROMACSEquilibrationManager:
     ) -> List["EquilibrationStage"]:
         """Return universal membrane packing stages for GROMACS.
 
-        Separate minimization, heat/scaffold under NVT, pack under NPgT (γ=0)
+        Separate minimization, thermalize/scaffold under NVT, pack under NPgT (γ=0)
         from Equilibration 3 through Equilibration 6, then ``scheme_type``
         for production.
         """
@@ -8096,7 +8096,7 @@ class AmberEquilibrationManager:
     ) -> List["EquilibrationStage"]:
         """Return universal membrane packing stages for Amber.
 
-        Separate minimization, heat/scaffold under NVT, pack under NPgT (γ=0)
+        Separate minimization, thermalize/scaffold under NVT, pack under NPgT (γ=0)
         from Equilibration 3 through Equilibration 6 with a soft first-barostat
         stage (CPU ``pmemd`` by default), then ``scheme_type`` for production.
         Later MD stages use GPU.

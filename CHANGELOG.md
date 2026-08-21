@@ -9,8 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Equilibration default protocol:** Eq6 packing extended from 17.625 ns to **47.625 ns** so Eq1–6 total **50 ns** of MD (was 20 ns). Same for GUI `base.json` and API `_build_universal_membrane_stages()` for all engines/ensembles.
+- **Equilibration Eq1 label:** renamed from “heat/heating” to **thermalization** (velocities at target T; no temperature ramp).
 - **Cluster probe:** collect Slurm partitions/nodes (`sinfo`) before the slower `module avail`, and batch path env queries into one SSH round-trip, so Run-on-cluster Resources can fill sooner.
-- **Equilibration (testing):** experimental membrane schedule — heat/scaffold NVT, pack NPgT (γ=0), then production in the selected ensemble. Templates are `equilibration/{engine}/eq/` plus `production/{NVT,NPT,NPAT,NPgT}/`. Details in `equilibration/PROTOCOL.md`.
+- **Equilibration (testing):** experimental membrane schedule — thermalize/scaffold NVT, pack NPgT (γ=0), then production in the selected ensemble. Templates are `equilibration/{engine}/eq/` plus `production/{NVT,NPT,NPAT,NPgT}/`. Details in `equilibration/PROTOCOL.md`.
 - **Equilibration defaults:** `get_default_stage_params` for Amber/NAMD/GROMACS/OpenMM now return the universal schedule; generators load `eq/` for mini+Eq1–6 and `production/{ensemble}` for production. Headers stamp the **stage** ensemble.
 - **Equilibration pressure / surface tension:** OpenMM (`p_ref` / `p_tens`) and GROMACS (`ref_p`) now take stage `pressure` and `surface_tension` (dyn/cm; GROMACS NPgT converts γ→bar·nm ×10). Defaults remain 1 bar / 0 dyn/cm for packing.
 - **Equilibration (Amber):** `ntwx` is substituted from stage `dcd_freq` (Eq6 / production 50000); `ioutfm=1` (NetCDF).
