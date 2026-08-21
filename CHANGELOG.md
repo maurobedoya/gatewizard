@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **PlotSpec overlay:** shared y-limits span every panel (union), and panel ylim falls back to global — structural APL Pub PNG no longer clips leaflets to the Mean-only window.
 - **PlotSpec / Pub PNG:** keep panel `series_keys` through `normalize_plot_spec`, and use the panel **x** limits (not y) when `sync_x` is on — fixes empty energetic “one panel per set” publication PNGs where lines were missing or crushed into an invisible speck at t≈0.
+- **Update manifest:** `releases/gui-versions.json` refreshed to GUI **1.0.13** / API **1.0.53** (was stuck at 1.0.11 / 1.0.49, so in-app update banners never appeared).
 - **Equilibration (NAMD COM restraint):** insert `colvars on` / `colvarsConfig` **before** the first `minimize`/`run`. Appending them at the end of the conf caused `FATAL ERROR: Setting parameter colvars from script failed!` after step1 finished.
 - **Equilibration Use in form / job metadata:** OpenMM (and other engines) recover **per-stage** ensembles from inputs — packing stays **NPgT**, and later NVT/NPT/NPAT stages no longer stick as NPT after the first barostat. Sticky recovered protocols in `equilibration_job.json` are healed on read so **Use in form** shows the real schedule.
 - **Equilibration (NAMD):** `firsttimestep` now skips a folded Minimization stage and attributes its `minimize_steps` to Equilibration 1 (was writing `10000` on step2 instead of `135000` when the GUI protocol still listed Minimization).

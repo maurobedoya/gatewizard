@@ -127,6 +127,13 @@ dmypy.json
 ehthumbs.db
 Thumbs.db
 
+# Local protocol archives
+/equilibration.bak/
+/equilibration.*.bak/
+
+# Personal notes
+/local/
+
 # Project specific
 gatewizard_logging.log
 *.pdb

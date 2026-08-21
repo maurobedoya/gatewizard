@@ -103,6 +103,8 @@ python -c "import gatewizard; print(gatewizard.__version__)"
 
 For the desktop app on Windows, use the [gatewizard-gui Windows installer](https://github.com/franciscoadasme/gatewizard-gui/releases) or the Linux/WSL build for the full MD workflow.
 
+If Windows Task Manager shows `VmmemWSL` using several GB after you close the app, cap the VM — see [Troubleshooting: VmmemWSL RAM](troubleshooting.md#issue-vmmemwsl-keeps-using-a-lot-of-ram-after-gatewizard-closes).
+
 ## Dependencies
 
 ### Core Python Dependencies

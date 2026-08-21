@@ -382,7 +382,33 @@ export DISPLAY=$(cat /etc/resolv.conf | grep nameserver | awk '{print $2}'):0
 ```
 
 **Issue**: File path issues (Windows vs WSL paths)
-**Solution**: Use WSL paths (/mnt/c/...) inside WSL
+**Solution**: Use WSL paths (`/mnt/c/...`) inside WSL
+
+#### Issue: VmmemWSL keeps using a lot of RAM after GateWizard closes
+
+WSL2 is a virtual machine. Linux keeps file cache (MD logs, Python, Electron) and does **not** give that RAM back to Windows right away. Other Apps and extra Ubuntu terminals also count toward `VmmemWSL`. On a 16 GB PC this can push Windows to 80–90% and cause other apps to crash.
+
+This is normal WSL behavior, not a leftover GateWizard process (the backend log should already show a clean shutdown).
+
+**Solution**: Cap the VM from Windows. Create `%UserProfile%\.wslconfig` (for example `C:\Users\YourName\.wslconfig`) with:
+
+```ini
+[wsl2]
+memory=4GB
+swap=2GB
+```
+
+On a 16 GB machine, `4GB` leaves headroom for Windows. Use `6GB` if WSL feels tight while GateWizard is open.
+
+Then in **PowerShell** (Windows, not Ubuntu):
+
+```powershell
+wsl --shutdown
+```
+
+Reopen Ubuntu / GateWizard. Task Manager should keep `VmmemWSL` near that cap instead of growing for minutes after you quit.
+
+A local equilibration started from the GUI is detached on purpose and can keep using RAM until that job finishes. Remote cluster jobs do not run inside WSL.
 
 **Issue**: App window not visible (icon appears in taskbar but window is off-screen or invisible)
 

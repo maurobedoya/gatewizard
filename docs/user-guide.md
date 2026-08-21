@@ -606,7 +606,7 @@ Resource choices after probe:
 - **Node (optional)** — from `sinfo -N`; pick a host that reports GPU GRES when using CUDA engines. Leaving this empty lets Slurm choose any node in the partition (CPU-only hosts often show `CUDA driver: 0.0` / stub library and fail)
 - **CPUs / GPUs / time** — seeded from the generated job / left panel; editable in the dialog
 
-**Watching** a remote job card polls Slurm status and runs a **light log sync** (`pull_logs`: stage logs and Slurm outs, not trajectories), then re-reads **local** stage logs for the progress bar. Use **Connect** in the Progress toolbar (or an SSH key on the profile) so polls can reach the cluster; otherwise an amber banner warns that status sync is limited. For a full snapshot including trajectories, click **Pull** on the card. Under **scratch** workdir strategies, MD writes on the compute node; the batch script also rsyncs `step*.log` every 60s into the submit directory on new jobs, and Watch/Pull can copy logs from node scratch before download.
+**Watching** a remote job card polls Slurm status and runs a **light log sync** (`pull_logs`: `step*.log` / `step*.mdout` / `step*.mdinfo` / Slurm outs — not trajectories, restarts, or coordinates), then re-reads **local** stage logs for the progress bar. Use **Connect** in the Progress toolbar (or an SSH key on the profile) so polls can reach the cluster; otherwise an amber banner warns that status sync is limited. For a full snapshot including trajectories, click **Pull** on the card. Under **scratch** workdir strategies, MD writes on the compute node; the batch script also rsyncs `step*.log` every 60s into the submit directory on new jobs, and Watch/Pull can copy logs from node scratch before download.
 
 Generate writes two runners:
 
