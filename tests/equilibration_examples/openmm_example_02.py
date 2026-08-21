@@ -102,10 +102,10 @@ stages = [
 ]
 
 # Setup with automatic file detection
-# scheme_type is auto-detected from 'ensemble' field of first stage (NVT -> 01_NVT)
-# Note: Mixed ensembles (NVT stages 1-2, NPT stages 3-7) are handled automatically.
-#       The scheme_type controls which pressure coupling templates are used for
-#       stages 3+ — pass scheme_type="NPT" explicitly if needed.
+# Mini + Eq1–6 always load equilibration/openmm/eq/; production uses
+# equilibration/openmm/production/{NVT|NPT|NPAT|NPgT}/ from scheme_type.
+# Mixed ensembles (NVT heat/scaffold, NPgT packing, NPT production) are
+# handled automatically — pass scheme_type="NPT" for the production folder.
 manager = OpenMMEquilibrationManager(work_dir)
 result = manager.setup_openmm_equilibration(
     stage_params_list=stages,

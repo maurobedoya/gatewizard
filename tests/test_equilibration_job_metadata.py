@@ -272,6 +272,90 @@ def test_infer_protocol_from_openmm_inps(tmp_path: Path) -> None:
     assert prod["steps"] == 100000000
 
 
+def test_infer_openmm_per_stage_ensembles_npgt_packing_nvt_final(tmp_path: Path) -> None:
+    """OpenMM packing uses membrane barostat; NVT finals must not stick as NPT."""
+    eq = tmp_path / "o_nvt"
+    eq.mkdir()
+    (eq / JOB_METADATA_FILE).write_text(
+        json.dumps({"execution": {"mode": "remote"}}), encoding="utf-8"
+    )
+    (eq / "run_equilibration.sh").write_text(
+        "#!/bin/bash\npython openmm_run.py\n", encoding="utf-8"
+    )
+    (eq / "step1_equilibration.inp").write_text(
+        "# NVT SCHEME for OpenMM\nnstep = 125000\ndt = 0.001\npcouple = no\n",
+        encoding="utf-8",
+    )
+    (eq / "step3_equilibration.inp").write_text(
+        "# NPgT SCHEME for OpenMM\n"
+        "nstep = 250000\ndt = 0.001\npcouple = yes\n"
+        "p_type = membrane\np_tens = 0.0000\n",
+        encoding="utf-8",
+    )
+    (eq / "step6_equilibration.inp").write_text(
+        "# NVT SCHEME for OpenMM\nnstep = 250000\ndt = 0.002\npcouple = no\n",
+        encoding="utf-8",
+    )
+    (eq / "step7_production.inp").write_text(
+        "# NVT SCHEME for OpenMM\nnstep = 100000000\ndt = 0.002\npcouple = no\n",
+        encoding="utf-8",
+    )
+    meta = infer_equilibration_job_metadata(eq, heal=False)
+    by_name = {s["name"]: s["ensemble"] for s in meta["protocol"]["stages"]}
+    assert by_name["Equilibration 1"] == "NVT"
+    assert by_name["Equilibration 3"] == "NPgT"
+    assert by_name["Equilibration 6"] == "NVT"
+    assert by_name["Production"] == "NVT"
+
+
+def test_heal_patches_sticky_npt_ensembles_from_openmm_inps(tmp_path: Path) -> None:
+    """Use in form must fix job JSON that stuck packing stages as NPT."""
+    eq = tmp_path / "o_nvt_sticky"
+    eq.mkdir()
+    sticky = {
+        "ensemble": "NVT",
+        "engine": "openmm",
+        "protocol": {
+            "name": "NPT Equilibration Protocol",
+            "description": "NPT protocol recovered from OpenMM inp files",
+            "stages": [
+                {"name": "Equilibration 1", "ensemble": "NVT", "time_ns": 0.125, "steps": 125000},
+                {"name": "Equilibration 3", "ensemble": "NPT", "time_ns": 0.25, "steps": 250000},
+                {"name": "Equilibration 6", "ensemble": "NPT", "time_ns": 0.5, "steps": 250000},
+                {"name": "Production", "ensemble": "NPT", "time_ns": 200.0, "steps": 100000000},
+            ],
+        },
+    }
+    (eq / JOB_METADATA_FILE).write_text(json.dumps(sticky), encoding="utf-8")
+    (eq / "step1_equilibration.inp").write_text(
+        "# NVT SCHEME for OpenMM\nnstep = 125000\ndt = 0.001\npcouple = no\n",
+        encoding="utf-8",
+    )
+    (eq / "step3_equilibration.inp").write_text(
+        "# NPgT SCHEME for OpenMM\n"
+        "nstep = 250000\ndt = 0.001\npcouple = yes\n"
+        "p_type = membrane\np_tens = 0.0000\n",
+        encoding="utf-8",
+    )
+    (eq / "step6_equilibration.inp").write_text(
+        "# NVT SCHEME for OpenMM\nnstep = 250000\ndt = 0.002\npcouple = no\n",
+        encoding="utf-8",
+    )
+    (eq / "step7_production.inp").write_text(
+        "# NVT SCHEME for OpenMM\nnstep = 100000000\ndt = 0.002\npcouple = no\n",
+        encoding="utf-8",
+    )
+    meta = infer_equilibration_job_metadata(eq, heal=True)
+    by_name = {s["name"]: s["ensemble"] for s in meta["protocol"]["stages"]}
+    assert by_name["Equilibration 3"] == "NPgT"
+    assert by_name["Equilibration 6"] == "NVT"
+    assert by_name["Production"] == "NVT"
+    healed = json.loads((eq / JOB_METADATA_FILE).read_text(encoding="utf-8"))
+    healed_by_name = {s["name"]: s["ensemble"] for s in healed["protocol"]["stages"]}
+    assert healed_by_name["Equilibration 3"] == "NPgT"
+    assert healed_by_name["Production"] == "NVT"
+
+
 def test_infer_fills_protocol_when_job_json_is_execution_only(tmp_path: Path) -> None:
     """Cluster Watching may leave equilibration_job.json with only execution."""
     eq = tmp_path / "gromacs_nvt"

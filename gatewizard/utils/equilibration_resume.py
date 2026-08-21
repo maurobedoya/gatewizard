@@ -57,7 +57,10 @@ RESUME="${RESUME:-0}"
 
 _gw_namd_stage_done() {
   local stem="$1"
-  [ -f "${stem}.coor" ] && [ -f "${stem}.log" ] && ! grep -qi "Error in Stage" "${stem}.log" 2>/dev/null
+  # Require a finished stage footer — mid-run restart writes also create .coor/.log.
+  [ -f "${stem}.coor" ] && [ -f "${stem}.log" ] \\
+    && grep -q "End of program" "${stem}.log" 2>/dev/null \\
+    && ! grep -qiE "Error in Stage|FATAL ERROR" "${stem}.log" 2>/dev/null
 }
 """.strip()
 
@@ -128,7 +131,8 @@ def _namd_stage_complete(eq_dir: Path, stem: str) -> bool:
         timing = namd_analysis.parse_namd_log(log)
         if timing.total_steps > 0 and timing.steps_completed >= timing.total_steps:
             return True
-        return "WRITING" in text or "End of program" in text
+        # Mid-run "WRITING … RESTART" must not count as stage complete.
+        return "End of program" in text
     except Exception:
         return False
 

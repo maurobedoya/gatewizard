@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any, NamedTuple, TYPE_CHECKING, Union
 from dataclasses import dataclass
 from .logger import get_logger
+from .log_io import read_text_head_tail
 from gatewizard.utils.lipid_bilayer_analysis import (
     BilayerTrajectoryAnalyzer,
     run_bilayer_analysis,
@@ -120,6 +121,11 @@ def _namd_benchmark_ns_per_day(content: str) -> float:
     return sum(vals) / len(vals)
 
 
+def _read_namd_log_text(log_file_path: Path) -> str:
+    """Read a NAMD log; sample head+tail when the file is large."""
+    return read_text_head_tail(log_file_path)
+
+
 def parse_namd_log(log_file_path: Path) -> NAMDTiming:
     """
     Parse a NAMD log file to extract timing and performance information.
@@ -133,8 +139,7 @@ def parse_namd_log(log_file_path: Path) -> NAMDTiming:
         return timing
 
     try:
-        with open(log_file_path, "r", encoding="utf-8", errors="ignore") as f:
-            content = f.read()
+        content = _read_namd_log_text(log_file_path)
 
         logger.debug(
             f"Parsing log file {log_file_path.name}, size: {len(content)} chars"
@@ -425,32 +430,35 @@ def get_equilibration_progress(equilibration_dir: Path) -> Dict[str, NAMDProgres
             timing = parse_namd_log(log_file)
             stage_progress.timing = timing
 
+            log_text = ""
             try:
                 from gatewizard.utils.equilibration_failure import failure_line_from_text
 
-                log_text = log_file.read_text(encoding="utf-8", errors="replace")
+                log_text = _read_namd_log_text(log_file)
                 fatal = failure_line_from_text(log_text)
             except Exception:
                 fatal = None
 
             # Determine status and progress
+            has_end = "End of program" in log_text
             if fatal:
                 stage_progress.status = "error"
                 if timing.total_steps > 0 and timing.steps_completed > 0:
                     stage_progress.progress_percent = (
                         timing.steps_completed / timing.total_steps
                     ) * 100.0
+            elif has_end:
+                # Mid-run restart writes ("WRITING … RESTART/DCD") are not completion.
+                stage_progress.status = "completed"
+                stage_progress.progress_percent = 100.0
             elif timing.steps_completed > 0:
                 stage_progress.status = "running"
                 if timing.total_steps > 0:
                     stage_progress.progress_percent = (
                         timing.steps_completed / timing.total_steps
                     ) * 100.0
-                    if timing.steps_completed >= timing.total_steps:
-                        stage_progress.status = "completed"
                 else:
-                    # If we can't determine total steps, consider it running
-                    stage_progress.progress_percent = 50.0  # Unknown progress
+                    stage_progress.progress_percent = 50.0
             else:
                 stage_progress.status = "not_started"
         else:

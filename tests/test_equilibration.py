@@ -156,7 +156,7 @@ class TestNAMDEquilibrationManager:
     def test_opc_water_model_block_in_template(self, manager, tmp_path):
         """OPC systems get waterModel tip4 in generated NAMD configs."""
         template_path = (
-            manager.namd_templates_dir / "02_NPT" / "step6.1_equilibration.inp"
+            manager.namd_templates_dir / "eq" / "step6.1_equilibration.inp"
         )
         template_content = template_path.read_text(encoding="utf-8")
         manager.water_model = "opc"
@@ -173,7 +173,7 @@ class TestNAMDEquilibrationManager:
 
     def test_tip3p_water_model_block_empty(self, manager):
         template_path = (
-            manager.namd_templates_dir / "02_NPT" / "step6.1_equilibration.inp"
+            manager.namd_templates_dir / "eq" / "step6.1_equilibration.inp"
         )
         template_content = template_path.read_text(encoding="utf-8")
         manager.water_model = "tip3p"
@@ -367,6 +367,24 @@ END
         assert "colvars on" in result
         assert "colvarsConfig com_restraint.col" in result
 
+    def test_insert_namd_colvars_before_minimize_and_run(self):
+        from gatewizard.tools.equilibration import _insert_namd_colvars_activation
+
+        conf = (
+            "constraints on\n"
+            "constraintScaling 1.0\n"
+            "\n"
+            "minimize 10000\n"
+            "run 5000\n"
+        )
+        block = _build_com_colvars_activation_block("namd", "restraints/com_restraint.col")
+        out = _insert_namd_colvars_activation(conf, block)
+        assert "colvars on" in out
+        assert out.index("colvars on") < out.index("minimize")
+        assert out.index("colvarsConfig") < out.index("run")
+        # Idempotent
+        assert _insert_namd_colvars_activation(out, block) == out
+
     def test_generate_com_colvars_config(
         self, manager, sample_pdb, tmp_path, monkeypatch
     ):
@@ -470,6 +488,10 @@ END
 
         cfg_text = result["config_files"][0].read_text()
         assert "colvarsConfig restraints/com_restraint.col" in cfg_text
+        assert "colvars on" in cfg_text
+        sim_hits = [i for i in (cfg_text.find("minimize"), cfg_text.find("\nrun")) if i >= 0]
+        if sim_hits:
+            assert cfg_text.index("colvars on") < min(sim_hits)
 
 
 # ============================================================================

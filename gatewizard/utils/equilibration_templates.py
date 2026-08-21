@@ -11,7 +11,11 @@ from gatewizard import __version__ as GATEWIZARD_VERSION
 # Bump when any file under equilibration/{namd,gromacs,openmm,amber}/ changes.
 # Use "testing" until protocols are finalized for production.
 EQUILIBRATION_TEMPLATES_VERSION = "testing"
-EQUILIBRATION_TEMPLATES_DATE = "27 Jul 2026"
+EQUILIBRATION_TEMPLATES_DATE = "20 Aug 2026"
+
+EQ_TEMPLATE_DIR = "eq"
+PRODUCTION_TEMPLATE_DIR = "production"
+VALID_ENSEMBLES = ("NVT", "NPT", "NPAT", "NPgT")
 
 _ENGINE_LABEL = {
     "namd": "NAMD",
@@ -83,6 +87,58 @@ def normalize_scheme_label(scheme: str) -> str:
     if key in {"NVT", "NPT", "NPAT"}:
         return key
     return scheme.strip()
+
+
+def resolve_stage_scheme(
+    stage_params: Optional[dict],
+    scheme_type: str,
+) -> str:
+    """Pick the template ensemble for a stage (per-stage overrides protocol default).
+
+    Universal membrane protocol: Equilibration 2 is NVT scaffold; packing
+    stages (Eq3–6) set ``ensemble=\"NPgT\"``; production inherits
+    the user-selected ``scheme_type``.
+    """
+    ens = None
+    if stage_params:
+        ens = stage_params.get("ensemble")
+    if ens:
+        return normalize_scheme_label(str(ens))
+    return normalize_scheme_label(scheme_type)
+
+
+def template_subdir_for_stage(
+    stage_params: Optional[dict],
+    scheme_type: str,
+    *,
+    stage_index: Optional[int] = None,
+    template_key: Optional[str] = None,
+    template_filename: Optional[str] = None,
+) -> str:
+    """Return template folder: ``eq`` or ``production/{NVT|NPT|NPAT|NPgT}``.
+
+    Equilibration 1–6 (and minimization) always load the shared ``eq`` tree.
+    Production is ``step7_production``, ``stage_index`` 7 / 13, or a stage
+    whose name/kind is production. NAMD uses 0-based eq indices (production=6).
+    """
+    kind = ""
+    name = ""
+    if stage_params:
+        kind = str(stage_params.get("stage_kind") or "").lower()
+        name = str(stage_params.get("name") or "").lower()
+    fname = f"{template_key or ''} {template_filename or ''}".lower()
+    is_prod = (
+        kind == "production"
+        or name == "production"
+        or template_key == "step7_production"
+        or stage_index in (7, 13)
+        or "production" in fname
+        or "step7_production" in fname
+    )
+    if is_prod:
+        ens = resolve_stage_scheme(stage_params, scheme_type)
+        return f"{PRODUCTION_TEMPLATE_DIR}/{ens}"
+    return EQ_TEMPLATE_DIR
 
 
 def stamp_equilibration_header(

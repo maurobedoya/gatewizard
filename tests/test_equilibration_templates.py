@@ -7,6 +7,7 @@ from gatewizard.utils.equilibration_templates import (
     format_generated_on,
     normalize_scheme_label,
     stamp_equilibration_header,
+    template_subdir_for_stage,
 )
 
 
@@ -77,3 +78,23 @@ def test_npgt_header_keeps_lowercase_g():
     )
     assert "NPgT SCHEME for NAMD" in out
     assert "NPGT SCHEME" not in out
+
+
+def test_template_subdir_eq_vs_production():
+    assert template_subdir_for_stage({"name": "Equilibration 1", "ensemble": "NVT"}, "NPT") == "eq"
+    assert template_subdir_for_stage({"name": "Equilibration 6", "ensemble": "NPgT"}, "NVT") == "eq"
+    assert (
+        template_subdir_for_stage(
+            {"name": "Production", "stage_kind": "production", "ensemble": None},
+            "NPT",
+        )
+        == "production/NPT"
+    )
+    assert (
+        template_subdir_for_stage(
+            {"time_ns": 1.0},
+            "NPT",
+            stage_index=7,
+        )
+        == "production/NPT"
+    )

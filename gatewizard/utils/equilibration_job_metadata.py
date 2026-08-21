@@ -596,7 +596,6 @@ def _infer_protocol_from_gromacs_mdps(eq_dir: Path) -> Optional[Dict[str, Any]]:
     if not mdps:
         return None
     stages: List[Dict[str, Any]] = []
-    scheme = "NVT"
     for mdp in mdps:
         try:
             text = mdp.read_text(encoding="utf-8", errors="replace")
@@ -605,7 +604,6 @@ def _infer_protocol_from_gromacs_mdps(eq_dir: Path) -> Optional[Dict[str, Any]]:
         nsteps_s = _mdp_get(text, "nsteps")
         dt_s = _mdp_get(text, "dt")  # ps
         temp_s = _mdp_get(text, "ref_t") or _mdp_get(text, "ref-t")
-        pcoupl = (_mdp_get(text, "pcoupl") or "no").lower()
         try:
             nsteps = int(float(nsteps_s)) if nsteps_s else 0
         except ValueError:
@@ -620,18 +618,17 @@ def _infer_protocol_from_gromacs_mdps(eq_dir: Path) -> Optional[Dict[str, Any]]:
             temperature = float(temp_s.split()[0]) if temp_s else 303.15
         except ValueError:
             temperature = 303.15
-        if pcoupl not in {"", "no", "none"}:
-            scheme = "NPT"
         is_min = "minimiz" in mdp.stem.lower() or _mdp_get(text, "integrator") in {
             "steep",
             "cg",
             "l-bfgs",
         }
         name = _stage_name_from_mdp(mdp)
+        ensemble = "minimization" if is_min else _ensemble_from_gromacs_mdp(text)
         stages.append(
             _stage_dict(
                 name=name,
-                ensemble="minimization" if is_min else scheme,
+                ensemble=ensemble,
                 time_ns=0.0 if is_min else time_ns,
                 steps=nsteps,
                 timestep_fs=timestep_fs,
@@ -641,6 +638,7 @@ def _infer_protocol_from_gromacs_mdps(eq_dir: Path) -> Optional[Dict[str, Any]]:
         )
     if not stages:
         return None
+    scheme = _protocol_scheme_label(stages)
     return {
         "name": f"{scheme} Equilibration Protocol",
         "description": f"{scheme} protocol recovered from GROMACS MDP files",
@@ -655,7 +653,6 @@ def _infer_protocol_from_namd_confs(eq_dir: Path) -> Optional[Dict[str, Any]]:
     if not confs:
         return None
     stages: List[Dict[str, Any]] = []
-    scheme = "NVT"
     for conf in confs:
         try:
             text = conf.read_text(encoding="utf-8", errors="replace")
@@ -674,15 +671,12 @@ def _infer_protocol_from_namd_confs(eq_dir: Path) -> Optional[Dict[str, Any]]:
         except ValueError:
             timestep_fs = 2.0
         steps = int(round(time_ns * 1_000_000 / timestep_fs)) if time_ns > 0 and timestep_fs > 0 else 0
-        if re.search(r"langevinPiston\s+on", text, flags=re.I) or re.search(
-            r"useFlexibleCell\s+yes", text, flags=re.I
-        ):
-            scheme = "NPT"
         name = _stage_name_from_mdp(conf)
+        ensemble = "minimization" if is_min else _ensemble_from_namd_conf(text)
         stages.append(
             _stage_dict(
                 name=name,
-                ensemble="minimization" if is_min else scheme,
+                ensemble=ensemble,
                 time_ns=0.0 if is_min else time_ns,
                 steps=0 if is_min else steps,
                 timestep_fs=timestep_fs,
@@ -690,6 +684,7 @@ def _infer_protocol_from_namd_confs(eq_dir: Path) -> Optional[Dict[str, Any]]:
         )
     if not stages:
         return None
+    scheme = _protocol_scheme_label(stages)
     return {
         "name": f"{scheme} Equilibration Protocol",
         "description": f"{scheme} protocol recovered from NAMD conf files",
@@ -708,7 +703,6 @@ def _infer_protocol_from_amber_mdins(eq_dir: Path) -> Optional[Dict[str, Any]]:
     if not mdins:
         return None
     stages: List[Dict[str, Any]] = []
-    scheme = "NVT"
     for mdin in mdins:
         try:
             text = mdin.read_text(encoding="utf-8", errors="replace")
@@ -733,13 +727,12 @@ def _infer_protocol_from_amber_mdins(eq_dir: Path) -> Optional[Dict[str, Any]]:
             temperature = float(temp_s) if temp_s else 303.15
         except ValueError:
             temperature = 303.15
-        if re.search(r"\bntp\s*=\s*[1-9]", text, flags=re.I):
-            scheme = "NPT"
         name = _stage_name_from_mdp(mdin)
+        ensemble = "minimization" if is_min else _ensemble_from_amber_mdin(text)
         stages.append(
             _stage_dict(
                 name=name,
-                ensemble="minimization" if is_min else scheme,
+                ensemble=ensemble,
                 time_ns=0.0 if is_min else time_ns,
                 steps=nsteps,
                 timestep_fs=timestep_fs or 2.0,
@@ -749,6 +742,7 @@ def _infer_protocol_from_amber_mdins(eq_dir: Path) -> Optional[Dict[str, Any]]:
         )
     if not stages:
         return None
+    scheme = _protocol_scheme_label(stages)
     return {
         "name": f"{scheme} Equilibration Protocol",
         "description": f"{scheme} protocol recovered from Amber mdin files",
@@ -762,13 +756,91 @@ def _openmm_inp_get(text: str, key: str) -> Optional[str]:
     return match.group(1) if match else None
 
 
+def _scheme_from_input_header(text: str) -> Optional[str]:
+    """Parse ``# NPgT SCHEME for …`` comments written by gatewizard templates."""
+    for line in text.splitlines()[:20]:
+        match = re.search(r"\b(NPgT|NPAT|NPT|NVT)\s+SCHEME\b", line, flags=re.I)
+        if not match:
+            continue
+        label = match.group(1).upper()
+        if label == "NPGT":
+            return "NPgT"
+        if label == "NPAT":
+            return "NPAT"
+        if label == "NPT":
+            return "NPT"
+        return "NVT"
+    return None
+
+
+def _ensemble_from_openmm_inp(text: str) -> str:
+    """Per-stage OpenMM ensemble (never sticky across files).
+
+    Prefer the template ``SCHEME`` comment — OpenMM NPT finals may still use a
+    membrane barostat, so ``p_type`` alone cannot distinguish NPT vs NPgT.
+    """
+    header = _scheme_from_input_header(text)
+    if header:
+        return header
+    pcouple = (_openmm_inp_get(text, "pcouple") or "no").lower()
+    p_type = (_openmm_inp_get(text, "p_type") or "").lower()
+    if p_type == "membrane":
+        return "NPgT"
+    if p_type == "anisotropic":
+        return "NPAT"
+    if pcouple not in {"", "no", "none"} or p_type in {"isotropic"}:
+        return "NPT"
+    return "NVT"
+
+
+def _ensemble_from_gromacs_mdp(text: str) -> str:
+    header = _scheme_from_input_header(text)
+    if header:
+        return header
+    pcoupl = (_mdp_get(text, "pcoupl") or "no").lower().replace("_", "-")
+    if pcoupl in {"", "no", "none"}:
+        return "NVT"
+    if "surface-tension" in pcoupl or "surface_tension" in pcoupl:
+        return "NPgT"
+    # semiisotropic + no surface tension ≈ NPAT / NPT packing; prefer NPAT when
+    # compressibility suggests membrane (ref_p has two values) — keep NPT default.
+    return "NPT"
+
+
+def _ensemble_from_namd_conf(text: str) -> str:
+    header = _scheme_from_input_header(text)
+    if header:
+        return header
+    if re.search(r"surfaceTensionTarget\b", text, flags=re.I):
+        return "NPgT"
+    if re.search(r"useConstantArea\s+yes", text, flags=re.I):
+        return "NPAT"
+    if re.search(r"langevinPiston\s+on", text, flags=re.I) or re.search(
+        r"useFlexibleCell\s+yes", text, flags=re.I
+    ):
+        return "NPT"
+    return "NVT"
+
+
+def _ensemble_from_amber_mdin(text: str) -> str:
+    header = _scheme_from_input_header(text)
+    if header:
+        return header
+    if re.search(r"\bcsurften\s*=\s*[1-9]", text, flags=re.I):
+        return "NPgT"
+    ntp = (_amber_mdin_get(text, "ntp") or "0").strip()
+    if ntp not in {"", "0"}:
+        # ntp=2 is often anisotropic / membrane; still report NPT unless csurften.
+        return "NPT"
+    return "NVT"
+
+
 def _infer_protocol_from_openmm_inps(eq_dir: Path) -> Optional[Dict[str, Any]]:
     """Rebuild protocol times from ``step*.inp`` (``nstep`` / ``dt``)."""
     inps = sorted(eq_dir.glob("step*.inp"))
     if not inps:
         return None
     stages: List[Dict[str, Any]] = []
-    scheme = "NVT"
     for inp in inps:
         try:
             text = inp.read_text(encoding="utf-8", errors="replace")
@@ -793,14 +865,12 @@ def _infer_protocol_from_openmm_inps(eq_dir: Path) -> Optional[Dict[str, Any]]:
             temperature = float(temp_s) if temp_s else 303.15
         except ValueError:
             temperature = 303.15
-        pcouple = (_openmm_inp_get(text, "pcouple") or "no").lower()
-        if pcouple not in {"", "no", "none"}:
-            scheme = "NPT"
+        ensemble = "minimization" if is_min else _ensemble_from_openmm_inp(text)
         name = _stage_name_from_mdp(inp)
         stages.append(
             _stage_dict(
                 name=name,
-                ensemble="minimization" if is_min else scheme,
+                ensemble=ensemble,
                 time_ns=0.0 if is_min else time_ns,
                 steps=nsteps,
                 timestep_fs=timestep_fs or 2.0,
@@ -810,12 +880,22 @@ def _infer_protocol_from_openmm_inps(eq_dir: Path) -> Optional[Dict[str, Any]]:
         )
     if not stages:
         return None
+    scheme = _protocol_scheme_label(stages)
     return {
         "name": f"{scheme} Equilibration Protocol",
         "description": f"{scheme} protocol recovered from OpenMM inp files",
         "selections": _standard_gui_selections(),
         "stages": stages,
     }
+
+
+def _protocol_scheme_label(stages: List[Dict[str, Any]]) -> str:
+    """Label recovered protocols from the final non-minimization stage ensemble."""
+    for stage in reversed(stages):
+        ens = str(stage.get("ensemble") or "").strip()
+        if ens and ens.lower() != "minimization":
+            return ens
+    return "NVT"
 
 
 def _infer_protocol_from_engine_inputs(eq_dir: Path) -> Optional[Dict[str, Any]]:
@@ -1040,6 +1120,84 @@ def _sync_production_stage_from_disk(
     return True
 
 
+def _normalize_stage_ensemble_label(value: Any) -> str:
+    ens = str(value or "").strip()
+    if not ens:
+        return ""
+    upper = ens.upper()
+    if upper == "NPGT":
+        return "NPgT"
+    if upper in {"NVT", "NPT", "NPAT"}:
+        return upper
+    if ens.lower() == "minimization":
+        return "minimization"
+    return ens
+
+
+def _protocol_needs_ensemble_patch(protocol: Dict[str, Any]) -> bool:
+    """True when stored stage ensembles likely disagree with on-disk inputs."""
+    desc = str(protocol.get("description") or "").lower()
+    if "recovered from" in desc:
+        return True
+    for stage in protocol.get("stages") or []:
+        if not isinstance(stage, dict):
+            continue
+        name = str(stage.get("name") or "").lower()
+        ens = _normalize_stage_ensemble_label(stage.get("ensemble"))
+        # Sticky-NPT recovery bug: packing / final-hold stages marked NPT forever.
+        if ens == "NPT" and re.search(r"equilibration\s*[3-6]\b", name):
+            return True
+    return False
+
+
+def _patch_protocol_ensembles_from_inputs(
+    eq_dir: Path, protocol: Dict[str, Any]
+) -> tuple[Dict[str, Any], bool]:
+    """Correct per-stage ensembles from engine inputs (fixes sticky NPT recovery)."""
+    if not isinstance(protocol.get("stages"), list):
+        return protocol, False
+    if not _protocol_needs_ensemble_patch(protocol):
+        return protocol, False
+    inferred = _infer_protocol_from_engine_inputs(eq_dir)
+    if not inferred:
+        return protocol, False
+    by_name = {
+        str(s.get("name") or "").strip().lower(): s
+        for s in inferred.get("stages") or []
+        if isinstance(s, dict)
+    }
+    changed = False
+    for stage in protocol["stages"]:
+        if not isinstance(stage, dict):
+            continue
+        key = str(stage.get("name") or "").strip().lower()
+        src = by_name.get(key)
+        if src is None and "production" in key:
+            src = next(
+                (
+                    s
+                    for s in by_name.values()
+                    if "production" in str(s.get("name") or "").lower()
+                ),
+                None,
+            )
+        if src is None:
+            continue
+        new_ens = _normalize_stage_ensemble_label(src.get("ensemble"))
+        if not new_ens or new_ens == "minimization":
+            continue
+        old_ens = _normalize_stage_ensemble_label(stage.get("ensemble"))
+        if old_ens != new_ens:
+            stage["ensemble"] = new_ens
+            changed = True
+    if changed and "recovered from" in str(protocol.get("description") or "").lower():
+        scheme = _protocol_scheme_label(
+            [s for s in protocol["stages"] if isinstance(s, dict)]
+        )
+        protocol["name"] = f"{scheme} Equilibration Protocol"
+    return protocol, changed
+
+
 def _patch_protocol_times_from_inputs(
     eq_dir: Path, protocol: Dict[str, Any]
 ) -> Dict[str, Any]:
@@ -1165,12 +1323,17 @@ def infer_equilibration_job_metadata(
         resolved_input = _infer_input_dir(eq_dir, work)
     if not ensemble:
         ensemble = _infer_ensemble(eq_dir)
+    ensembles_changed = False
     if not protocol:
         protocol = _infer_protocol(eq_dir)
     elif isinstance(protocol, dict):
         # Job JSON / summary may omit production time_ns — recover from inputs.
         protocol = _patch_protocol_times_from_inputs(eq_dir, protocol)
         protocol = _patch_protocol_constraints_from_inputs(eq_dir, protocol)
+        # Fix sticky-NPT recovered protocols (e.g. OpenMM packing was NPgT on disk).
+        protocol, ensembles_changed = _patch_protocol_ensembles_from_inputs(
+            eq_dir, protocol
+        )
     if not engine:
         engine = _infer_engine_from_dir(eq_dir)
     if not ensemble and protocol and isinstance(protocol.get("stages"), list):
@@ -1180,6 +1343,8 @@ def infer_equilibration_job_metadata(
             ens = stage.get("ensemble")
             if isinstance(ens, str) and ens.strip() and ens.strip().lower() != "minimization":
                 ensemble = ens.strip().upper()
+                if ensemble == "NPGT":
+                    ensemble = "NPgT"
                 break
         if not ensemble and isinstance(protocol.get("name"), str):
             for scheme in ("NPGT", "NPAT", "NPT", "NVT"):
@@ -1187,7 +1352,8 @@ def infer_equilibration_job_metadata(
                     ensemble = "NPgT" if scheme == "NPGT" else scheme
                     break
 
-    # Persist recovered GUI fields when the job JSON was thinned to execution-only.
+    # Persist recovered GUI fields when the job JSON was thinned to execution-only,
+    # or when stage ensembles were corrected from on-disk inputs.
     if heal and metadata_file.is_file() and (protocol or ensemble or resolved_input or engine):
         missing_protocol = not _normalize_gui_protocol(existing.get("protocol"))
         missing_ensemble = not (
@@ -1199,9 +1365,15 @@ def infer_equilibration_job_metadata(
         missing_engine = not (
             isinstance(existing.get("engine"), str) and existing["engine"].strip()
         )
-        if missing_protocol or missing_ensemble or missing_input or missing_engine:
+        if (
+            missing_protocol
+            or missing_ensemble
+            or missing_input
+            or missing_engine
+            or ensembles_changed
+        ):
             payload = dict(existing)
-            if protocol and missing_protocol:
+            if protocol and (missing_protocol or ensembles_changed):
                 payload["protocol"] = protocol
             if ensemble and missing_ensemble:
                 payload["ensemble"] = ensemble

@@ -41,7 +41,7 @@ class TestClassConstants:
             "NPAT",
             "NPgT",
         }
-        assert AmberEquilibrationManager.SCHEME_MAPPING["NPT"] == "02_NPT"
+        assert AmberEquilibrationManager.SCHEME_MAPPING["NPT"] == "NPT"
 
     def test_stage_index_to_key(self):
         m = AmberEquilibrationManager.STAGE_INDEX_TO_KEY
@@ -50,8 +50,7 @@ class TestClassConstants:
 
 
 class TestTemplateExistence:
-    ENSEMBLES = ["01_NVT", "02_NPT", "03_NPAT", "04_NPgT"]
-    FILENAMES = [
+    EQ_FILES = [
         "step0_minimization.mdin",
         "step1_equilibration.mdin",
         "step2_equilibration.mdin",
@@ -59,57 +58,66 @@ class TestTemplateExistence:
         "step4_equilibration.mdin",
         "step5_equilibration.mdin",
         "step6_equilibration.mdin",
-        "step7_production.mdin",
     ]
+    PROD_ENSEMBLES = ["NVT", "NPT", "NPAT", "NPgT"]
 
-    @pytest.mark.parametrize("ensemble", ENSEMBLES)
-    @pytest.mark.parametrize("filename", FILENAMES)
-    def test_template_exists(self, ensemble, filename):
-        p = TEMPLATES_DIR / ensemble / filename
+    @pytest.mark.parametrize("filename", EQ_FILES)
+    def test_eq_template_exists(self, filename):
+        p = TEMPLATES_DIR / "eq" / filename
+        assert p.exists(), f"Missing template: {p}"
+
+    @pytest.mark.parametrize("ensemble", PROD_ENSEMBLES)
+    def test_production_template_exists(self, ensemble):
+        p = TEMPLATES_DIR / "production" / ensemble / "step7_production.mdin"
         assert p.exists(), f"Missing template: {p}"
 
     def test_placeholders_present(self):
-        text = (TEMPLATES_DIR / "02_NPT" / "step1_equilibration.mdin").read_text()
+        text = (TEMPLATES_DIR / "eq" / "step1_equilibration.mdin").read_text()
         for token in ("{TEMPERATURE}", "{NSTLIM}", "{DT}", "{NTR}", "{RESTRAINT_BLOCK}"):
             assert token in text
 
     def test_nvt_early_stages_have_no_barostat(self):
         """True NVT: heating stages have no pressure coupling."""
         for fname in ("step1_equilibration.mdin", "step2_equilibration.mdin"):
-            text = (TEMPLATES_DIR / "01_NVT" / fname).read_text()
+            text = (TEMPLATES_DIR / "eq" / fname).read_text()
             assert "ntp=" not in text
-            assert "barostat" not in text
-            assert "csurften" not in text
+            assert "barostat=" not in text
+            assert "csurften=" not in text
 
-    def test_nvt_all_stages_are_true_nvt(self):
-        """GateWizard NVT pack keeps constant volume through production."""
-        for fname in self.FILENAMES:
-            if fname == "step0_minimization.mdin":
-                continue
-            text = (TEMPLATES_DIR / "01_NVT" / fname).read_text()
-            assert "ntp=" not in text, fname
-            assert "barostat=" not in text, fname
-            assert "csurften=" not in text, fname
+    def test_nvt_production_is_true_nvt(self):
+        text = (TEMPLATES_DIR / "production" / "NVT" / "step7_production.mdin").read_text()
+        assert "ntp=" not in text
+        assert "barostat=" not in text
+        assert "csurften=" not in text
 
-    def test_npat_flags(self):
-        text = (TEMPLATES_DIR / "03_NPAT" / "step3_equilibration.mdin").read_text()
+    def test_packing_eq6_is_npgt(self):
+        text = (TEMPLATES_DIR / "eq" / "step6_equilibration.mdin").read_text()
+        assert "ntp=3" in text
+        assert "csurften=3" in text
+
+    def test_npat_production_flags(self):
+        text = (TEMPLATES_DIR / "production" / "NPAT" / "step7_production.mdin").read_text()
         assert "ntp=2" in text
         assert "baroscalingdir=3" in text
 
-    def test_npgt_flags(self):
-        text = (TEMPLATES_DIR / "04_NPgT" / "step3_equilibration.mdin").read_text()
+    def test_npgt_packing_flags(self):
+        text = (TEMPLATES_DIR / "eq" / "step3_equilibration.mdin").read_text()
         assert "ntp=3" in text
         assert "{GAMMA_TEN}" in text
         assert "csurften=3" in text
 
     def test_no_dihedral_nmropt(self):
         """Templates must not enable nmropt/DISANG (comments may mention them)."""
-        for ens in self.ENSEMBLES:
-            for fname in self.FILENAMES:
-                text = (TEMPLATES_DIR / ens / fname).read_text()
-                assert "nmropt=" not in text.lower()
-                assert "DISANG=" not in text
-                assert "dihe.restraint" not in text
+        for fname in self.EQ_FILES:
+            text = (TEMPLATES_DIR / "eq" / fname).read_text()
+            assert "nmropt=" not in text.lower()
+            assert "DISANG=" not in text
+            assert "dihe.restraint" not in text
+        for ens in self.PROD_ENSEMBLES:
+            text = (TEMPLATES_DIR / "production" / ens / "step7_production.mdin").read_text()
+            assert "nmropt=" not in text.lower()
+            assert "DISANG=" not in text
+            assert "dihe.restraint" not in text
 
 
 class TestGetDefaultStageParams:
@@ -117,7 +125,7 @@ class TestGetDefaultStageParams:
         stages = AmberEquilibrationManager.get_default_stage_params()
         assert len(stages) == 7
         assert stages[0].name == "Minimization"
-        assert stages[0].minimize_steps == 5000
+        assert stages[0].minimize_steps == 10000
         # 1 fs through eq4, then 2 fs
         for s in stages[1:5]:
             assert s.timestep == 1.0
@@ -183,6 +191,7 @@ class TestSetupAmberEquilibration:
         result = mgr.setup_amber_equilibration(
             stage_params_list=stages,
             output_name="eq_box",
+            scheme_type="NPT",
             system_files={
                 "prmtop": str(work / "system.prmtop"),
                 "inpcrd": str(work / "system.inpcrd"),
@@ -230,7 +239,7 @@ class TestSetupAmberEquilibration:
         result = mgr.setup_amber_equilibration(
             stage_params_list=stages, output_name="eq_nvt"
         )
-        for stem in ("step1_equilibration", "step3_equilibration", "step7_production"):
+        for stem in ("step1_equilibration", "step7_production"):
             text = (result["amber_dir"] / f"{stem}.mdin").read_text()
             assert "ntp=" not in text
             assert "barostat=" not in text
@@ -238,6 +247,9 @@ class TestSetupAmberEquilibration:
             assert "Templates version: testing" in text
             assert "{GW_VERSION}" not in text
             assert "{GW_GENERATED_ON}" not in text
+        packing = (result["amber_dir"] / "step3_equilibration.mdin").read_text()
+        assert "ntp=3" in packing
+        assert "NPgT SCHEME" in packing
 
     def test_setup_npgt_scheme_type(self, tmp_path):
         """NPgT must stay NPgT — not NPGT from .upper()."""
@@ -246,15 +258,18 @@ class TestSetupAmberEquilibration:
         for src in (PRMTOP, INPCRD):
             (work / src.name).write_bytes(src.read_bytes())
         mgr = _make_manager(work)
-        stages = AmberEquilibrationManager.get_default_stage_params("NPgT")[:2]
+        stages = AmberEquilibrationManager.get_default_stage_params("NPgT")[:4]
         result = mgr.setup_amber_equilibration(
             stage_params_list=stages,
             output_name="eq_npgt",
             scheme_type="NPgT",
         )
-        mdin = (result["amber_dir"] / "step1_equilibration.mdin").read_text()
-        assert "NPgT SCHEME" in mdin
-        assert "NPGT SCHEME" not in mdin
+        eq1 = (result["amber_dir"] / "step1_equilibration.mdin").read_text()
+        assert "NVT SCHEME" in eq1
+        assert "NPGT SCHEME" not in eq1
+        eq3 = (result["amber_dir"] / "step3_equilibration.mdin").read_text()
+        assert "NPgT SCHEME" in eq3
+        assert "NPGT SCHEME" not in eq3
 
     def test_setup_npgt_from_npgt_alias(self, tmp_path):
         """All-caps NPGT from legacy callers maps to NPgT."""
@@ -288,6 +303,25 @@ class TestSetupAmberEquilibration:
         assert "dt=0.001" in content
         assert "nstlim=125000" in content
         assert "ntr=0" in content
+        assert "ntwx=5000" in content
+
+    def test_generate_mdin_eq6_ntwx_from_dcd_freq(self, tmp_path):
+        mgr = _make_manager(tmp_path)
+        content = mgr.generate_mdin_file(
+            stage_name="Equilibration 6",
+            stage_params={
+                "temperature": 303.15,
+                "timestep": 2.0,
+                "time_ns": 17.625,
+                "dcd_freq": 50000,
+                "ensemble": "NPgT",
+                "constraints": {"protein_backbone": 0.1},
+            },
+            stage_index=6,
+            scheme_type="NPT",
+        )
+        assert "ntwx=50000" in content
+        assert "nstlim=8812500" in content
 
     @pytest.mark.skipif(not MDA_AVAILABLE, reason="MDAnalysis not installed")
     def test_group_restraints_with_and_without_custom(self, tmp_path):
@@ -652,3 +686,83 @@ class TestAmberAnalysis:
         assert info.completed is False
         sim_ns = info.steps_completed * info.timestep_fs * 1e-6
         assert sim_ns == pytest.approx(93.0)
+
+    def test_completed_stage_prefers_wall_derived_ns_per_day(self, tmp_path):
+        """Long CPU stages: last-window ns/day must not override total wall rate."""
+        mdout = tmp_path / "step3_equilibration.mdout"
+        mdin = tmp_path / "step3_equilibration.mdin"
+        # 0.25 ns = 125000 steps * 2 fs
+        mdin.write_text(" &cntrl\n nstlim=125000,\n dt=0.002,\n /\n")
+        wall_s = 38 * 3600 + 59 * 60 + 14  # ~39 h
+        mdout.write_text(
+            "  NSTEP =    125000   TIME(PS) =     250.000  TEMP(K) =   300.00\n"
+            " Etot   = -1000.0000  EPtot      =     -1500.0000\n"
+            "\n"
+            "| Average timings for last    5000 steps:\n"
+            "|     Elapsed(s) =     200.0 Per Step(ms) =      40.0\n"
+            "|         ns/day =     210.2   seconds/ns =    411.0\n"
+            "\n"
+            "|  Final Results\n"
+            "|  TIMINGS\n"
+            f"|     Elapsed(wallclock) = {wall_s:.1f} seconds\n"
+            "|     ns/day =     210.2\n"  # bogus leftover / window rate in TIMINGS
+        )
+        info = amber_analysis.parse_amber_mdout(mdout, mdin_file=mdin)
+        assert info.completed is True
+        assert info.wall_elapsed_seconds == pytest.approx(wall_s)
+        # 0.25 ns / (wall_s/86400) ≈ 0.154 ns/day — not 210.2
+        expected = 0.25 / (wall_s / 86400.0)
+        assert info.ns_per_day == pytest.approx(expected, rel=1e-3)
+        assert info.ns_per_day < 1.0
+
+    def test_mdinfo_last_window_does_not_set_wall(self, tmp_path):
+        """Last-window Elapsed(s) is not stage wall time."""
+        mdout = tmp_path / "step7_production.mdout"
+        mdinfo = tmp_path / "step7_production.mdinfo"
+        mdin = tmp_path / "step7_production.mdin"
+        mdin.write_text(" &cntrl\n nstlim=1000000,\n dt=0.002,\n /\n")
+        mdout.write_text(
+            "  NSTEP =   500000   TIME(PS) =    1000.000  TEMP(K) =   300.00\n"
+        )
+        mdinfo.write_text(
+            "| Current Timing Info\n"
+            "| Total steps : 1000000 | Completed : 500000 | Remaining : 500000\n"
+            "|\n"
+            "| Average timings for last    5000 steps:\n"
+            "|     Elapsed(s) =      64.4 Per Step(ms) =      12.9\n"
+            "|         ns/day =     130.0   seconds/ns =    663.5\n"
+        )
+        info = amber_analysis.parse_amber_mdout(
+            mdout, mdin_file=mdin, mdinfo_file=mdinfo
+        )
+        assert info.ns_per_day == pytest.approx(130.0)
+        # No cumulative Elapsed — wall is estimated from live rate × simulated ns.
+        assert info.wall_elapsed_seconds == pytest.approx((1.0 / 130.0) * 86400.0, rel=1e-3)
+        assert info.completed is False
+
+    def test_parse_large_mdout_uses_head_and_tail(self, tmp_path):
+        """Multi-MB ENERGY dumps must not hide nstlim in the head or TIMINGS in the tail."""
+        mdout = tmp_path / "step7_production.mdout"
+        mdin = tmp_path / "step7_production.mdin"
+        mdin.write_text(" &cntrl\n nstlim=1000,\n dt=0.001,\n /\n")
+        header = "  nstlim = 1000\n  dt     = 0.001\n"
+        footer = (
+            "  NSTEP =     1000   TIME(PS) =       1.000  TEMP(K) =   301.00\n"
+            "|  Final Results\n"
+            "|  TIMINGS\n"
+            "|     Elapsed(wallclock) = 100.0 seconds\n"
+            "|     ns/day =  12.5\n"
+        )
+        junk = b"  NSTEP =      123   TIME(PS) =       0.123  TEMP(K) =   300.00\n"
+        with mdout.open("wb") as handle:
+            handle.write(header.encode("utf-8"))
+            target = 6 * 1024 * 1024
+            while handle.tell() < target:
+                handle.write(junk)
+            handle.write(b"\n")
+            handle.write(footer.encode("utf-8"))
+        info = amber_analysis.parse_amber_mdout(mdout, mdin_file=mdin)
+        assert info.steps_completed == 1000
+        assert info.total_steps == 1000
+        assert info.completed is True
+        assert info.ns_per_day > 0

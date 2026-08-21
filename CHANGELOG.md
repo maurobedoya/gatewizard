@@ -7,15 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
 - **Cluster probe:** collect Slurm partitions/nodes (`sinfo`) before the slower `module avail`, and batch path env queries into one SSH round-trip, so Run-on-cluster Resources can fill sooner.
+- **Equilibration (testing):** experimental membrane schedule — heat/scaffold NVT, pack NPgT (γ=0), then production in the selected ensemble. Templates are `equilibration/{engine}/eq/` plus `production/{NVT,NPT,NPAT,NPgT}/`. Details in `equilibration/PROTOCOL.md`.
+- **Equilibration defaults:** `get_default_stage_params` for Amber/NAMD/GROMACS/OpenMM now return the universal schedule; generators load `eq/` for mini+Eq1–6 and `production/{ensemble}` for production. Headers stamp the **stage** ensemble.
+- **Equilibration pressure / surface tension:** OpenMM (`p_ref` / `p_tens`) and GROMACS (`ref_p`) now take stage `pressure` and `surface_tension` (dyn/cm; GROMACS NPgT converts γ→bar·nm ×10). Defaults remain 1 bar / 0 dyn/cm for packing.
+- **Equilibration (Amber):** `ntwx` is substituted from stage `dcd_freq` (Eq6 / production 50000); `ioutfm=1` (NetCDF).
 - **PlotSpec overlay:** shared y-label when all panels use the same one (structural Pub PNG keeps “RMSD (Å)” instead of “Multiple Properties”). Markers only on short overlay series.
 - **PlotSpec grid:** panels may list `series_keys` to draw multiple sets on one subplot (energetic compare-by-property / by-set Pub PNG).
 - **Publication plot export:** matplotlib uses the headless Agg backend in API/GUI export so Tk/Tcl is not touched from FastAPI worker threads (fixes `main thread is not in main loop` / `Tcl_AsyncDelete` log noise on WSL).
+
+### Added
+
 - **Builder:** `Builder.cancel_preparation` stops a running job via `process.pid` process-group kill and marks `status.json` as `cancelled`.
 - **Tools Fix PBC (GROMACS):** multi-select center/output index groups merge into temporary `GW_CENTER` / `GW_OUTPUT` compound ndx entries; optional `skip_cluster`; smarter lipid multi-group recommendations when `SOLU_MEMB` is absent.
 - **Cluster submit:** optional Slurm **GPU type** (`gpu_type`) for typed GRES — `#SBATCH --gres=gpu:TYPE:N` when set; untyped jobs still use `#SBATCH --gpus=N`. Types are parsed from probed node GRES.
+
+### Fixed
+
 - **PlotSpec overlay:** shared y-limits span every panel (union), and panel ylim falls back to global — structural APL Pub PNG no longer clips leaflets to the Mean-only window.
 - **PlotSpec / Pub PNG:** keep panel `series_keys` through `normalize_plot_spec`, and use the panel **x** limits (not y) when `sync_x` is on — fixes empty energetic “one panel per set” publication PNGs where lines were missing or crushed into an invisible speck at t≈0.
+- **Equilibration (NAMD COM restraint):** insert `colvars on` / `colvarsConfig` **before** the first `minimize`/`run`. Appending them at the end of the conf caused `FATAL ERROR: Setting parameter colvars from script failed!` after step1 finished.
+- **Equilibration Use in form / job metadata:** OpenMM (and other engines) recover **per-stage** ensembles from inputs — packing stays **NPgT**, and later NVT/NPT/NPAT stages no longer stick as NPT after the first barostat. Sticky recovered protocols in `equilibration_job.json` are healed on read so **Use in form** shows the real schedule.
+- **Equilibration (NAMD):** `firsttimestep` now skips a folded Minimization stage and attributes its `minimize_steps` to Equilibration 1 (was writing `10000` on step2 instead of `135000` when the GUI protocol still listed Minimization).
+- **Equilibration (all engines):** step6.2 / Amber step2 are NVT scaffold again; barostat onset is step6.3 / Amber step3 (classic CHARMM-GUI / original NPgT), not engine-specific.
+- **Equilibration (Amber):** soft first-barostat (`taup=5.0`, `ntwr=5000`) and restraint `REF` refresh moved to `step3` (first packing barostat).
+- **Equilibration resources (Amber):** Equilibration / production default to CPU×1 + GPU×1 (`pmemd.cuda`); minimization stays CPU-only. The **first packing barostat** stage (typically Eq3 / NPgT) defaults to CPU×6 `pmemd` to avoid GPU “box dimensions changed too much” aborts; later stages stay on GPU.
+- **Equilibration (Amber):** `ensure_prmtop_box` runs whenever any stage uses NPT/NPAT/NPgT — including NVT-final protocols that still pack under NPgT — so `ifbox == 0` no longer blocks the first barostat.
+
 ## [1.0.53] - 2026-08-06
 
 ### Added

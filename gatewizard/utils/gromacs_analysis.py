@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from .energy_stride import lookup_file_map
+from .log_io import find_first_line_containing, read_text_head_tail
 from .logger import get_logger
 
 logger = get_logger(__name__)
@@ -121,8 +122,21 @@ def parse_gromacs_log(
         return info
 
     try:
-        with open(log_file, "r", encoding="utf-8", errors="ignore") as fh:
-            content = fh.read()
+        content = read_text_head_tail(log_file)
+        # ``Started mdrun`` sits after the topology dump, which can be tens of
+        # MB — neither head nor tail. Scan for that one line so live ns/day
+        # still has a wall-clock start time.
+        if content and _parse_started_timestamp(content) is None:
+            started_line = find_first_line_containing(
+                log_file,
+                (
+                    b"Started mdrun",
+                    b"Started Steepest Descents",
+                    b"Started Conjugate Gradients",
+                ),
+            )
+            if started_line:
+                content = started_line + "\n" + content
 
         integrator_m = re.search(r"integrator\s*=\s*(\S+)", content)
         if integrator_m:

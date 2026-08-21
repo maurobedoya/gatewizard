@@ -220,6 +220,22 @@ def test_prepare_cluster_resubmit_namd(tmp_path: Path) -> None:
     assert point.stage_stem == "step2_equilibration"
 
 
+def test_namd_midrun_restart_not_stage_complete(tmp_path: Path) -> None:
+    """Restart WRITING lines must not mark production complete for Continue."""
+    from gatewizard.utils.equilibration_resume import _namd_stage_complete
+
+    eq = tmp_path / "job"
+    eq.mkdir()
+    stem = "step7_production"
+    (eq / f"{stem}.coor").write_text("coor")
+    (eq / f"{stem}.log").write_text(
+        "TCL: Running for 10000000 steps\n"
+        "WRITING COORDINATES TO RESTART FILE AT STEP 4580000\n"
+        "FINISHED WRITING RESTART COORDINATES\n"
+    )
+    assert _namd_stage_complete(eq, stem) is False
+
+
 def test_resume_checkpoint_paths_namd(tmp_path: Path) -> None:
     from gatewizard.utils.equilibration_resume import resume_checkpoint_paths
 

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from .energy_stride import lookup_file_map
+from .log_io import read_text_head_tail
 from .logger import get_logger
 
 logger = get_logger(__name__)
@@ -88,14 +89,76 @@ _MDINFO_COMPLETED_STEPS_RE = re.compile(
 
 
 def _parse_mdinfo_timings(mdinfo_content: str) -> tuple[float, float]:
-    """Return (elapsed_wall_s, ns_per_day) from Amber mdinfo timing blocks."""
+    """Return (elapsed_wall_s, ns_per_day) from Amber mdinfo timing blocks.
+
+    Prefer cumulative "all steps" over the last-window sample. When only the
+    last-window block exists, return its ns/day but *not* its Elapsed(s) as
+    total wall time (that Elapsed is only the short window).
+    """
     if not mdinfo_content:
         return 0.0, 0.0
-    for pattern in (_MDINFO_ALL_STEPS_TIMING_RE, _MDINFO_LAST_STEPS_TIMING_RE):
-        match = pattern.search(mdinfo_content)
-        if match:
-            return float(match.group(1)), float(match.group(2))
+    all_m = _MDINFO_ALL_STEPS_TIMING_RE.search(mdinfo_content)
+    if all_m:
+        return float(all_m.group(1)), float(all_m.group(2))
+    last_m = _MDINFO_LAST_STEPS_TIMING_RE.search(mdinfo_content)
+    if last_m:
+        # Live rate only — do not treat window Elapsed as stage wall time.
+        return 0.0, float(last_m.group(2))
     return 0.0, 0.0
+
+
+_NS_PER_DAY_RE = re.compile(
+    r"(?:ns/day|ns per day)\s*[:=]\s*([\d.Ee+-]+)",
+    re.I,
+)
+
+
+def _ns_per_day_from_mdout(content: str) -> float:
+    """Return the most trustworthy ns/day printed in an mdout.
+
+    Prefer the last value inside a Final Results / TIMINGS block; otherwise the
+    last match in the file (early estimates and last-window samples are often
+    wrong for long CPU stages).
+    """
+    if not content:
+        return 0.0
+    timings_m = re.search(
+        r"(?:Final Results|TIMINGS|Final Performance)", content, re.I
+    )
+    search_in = content[timings_m.start() :] if timings_m else content
+    matches = list(_NS_PER_DAY_RE.finditer(search_in))
+    if not matches and timings_m:
+        matches = list(_NS_PER_DAY_RE.finditer(content))
+    if not matches:
+        return 0.0
+    return float(matches[-1].group(1))
+
+
+def _reconcile_throughput(info: AmberTimingInfo) -> None:
+    """Align ns/day with wall elapsed when both are known.
+
+    Amber often prints a high last-window ns/day while Elapsed(wallclock) covers
+    the whole stage (e.g. CPU packing for tens of hours). Prefer wall-derived
+    throughput when they disagree.
+    """
+    if info.steps_completed <= 0 or info.timestep_fs <= 0:
+        return
+    sim_ns = info.steps_completed * info.timestep_fs * 1e-6
+    if info.wall_elapsed_seconds > 1.0:
+        days = info.wall_elapsed_seconds / 86400.0
+        if days <= 0:
+            return
+        wall_nsday = sim_ns / days
+        if info.ns_per_day <= 0.0:
+            info.ns_per_day = wall_nsday
+            return
+        # Relative error; also catch absurd overestimates (window rate vs wall).
+        denom = max(wall_nsday, 1e-12)
+        rel = abs(info.ns_per_day - wall_nsday) / denom
+        if rel > 0.25 and info.wall_elapsed_seconds >= 60.0:
+            info.ns_per_day = wall_nsday
+    elif info.ns_per_day > 0.0:
+        info.wall_elapsed_seconds = (sim_ns / info.ns_per_day) * 86400.0
 
 
 def _parse_mdin_totals(mdin_path: Optional[Path]) -> tuple[int, float, bool]:
@@ -175,10 +238,7 @@ def parse_amber_mdout(
 
     content = ""
     if mdout_file.is_file():
-        try:
-            content = mdout_file.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
-            content = ""
+        content = read_text_head_tail(mdout_file)
 
     mdinfo_content = ""
     if mdinfo_file.is_file():
@@ -220,11 +280,9 @@ def parse_amber_mdout(
         info.wall_elapsed_seconds = mdinfo_elapsed
 
     # Wall time / ns/day from mdout TIMINGS when present (usually at stage end).
-    nsday_m = re.search(
-        r"(?:ns/day|ns per day)\s*[:=]\s*([\d.Ee+-]+)", content, re.I
-    )
-    if nsday_m:
-        info.ns_per_day = float(nsday_m.group(1))
+    mdout_nsday = _ns_per_day_from_mdout(content)
+    if mdout_nsday > 0:
+        info.ns_per_day = mdout_nsday
 
     wall_m = re.search(
         r"(?:Elapsed\(wallclock\)|Elapsed time|Total wall time)\s*[:=]?\s*"
@@ -234,6 +292,18 @@ def parse_amber_mdout(
     )
     if wall_m:
         info.wall_elapsed_seconds = float(wall_m.group(1))
+    else:
+        # Amber TIMINGS block often uses "Elapsed(s) = ..." for the whole run.
+        timings_section_m = re.search(
+            r"(?:Final Results|TIMINGS|Final Performance)", content, re.I
+        )
+        if timings_section_m:
+            section = content[timings_section_m.start() :]
+            elapsed_s_matches = list(
+                re.finditer(r"Elapsed\(s\)\s*=\s*([\d.Ee+-]+)", section, re.I)
+            )
+            if elapsed_s_matches:
+                info.wall_elapsed_seconds = float(elapsed_s_matches[-1].group(1))
 
     has_final = bool(
         re.search(r"Final Results|TIMINGS|Final Performance", content, re.I)
@@ -259,25 +329,7 @@ def parse_amber_mdout(
     elif has_final and info.total_steps > 0 and info.steps_completed < info.total_steps:
         info.interrupted = True
 
-    # ns/day from wall when neither mdinfo nor TIMINGS reported it.
-    if (
-        info.ns_per_day == 0.0
-        and info.steps_completed > 0
-        and info.timestep_fs > 0
-        and info.wall_elapsed_seconds > 1.0
-    ):
-        sim_ns = info.steps_completed * info.timestep_fs * 1e-6
-        days = info.wall_elapsed_seconds / 86400.0
-        if days > 0:
-            info.ns_per_day = sim_ns / days
-    elif (
-        info.wall_elapsed_seconds == 0.0
-        and info.ns_per_day > 0
-        and info.steps_completed > 0
-        and info.timestep_fs > 0
-    ):
-        sim_ns = info.steps_completed * info.timestep_fs * 1e-6
-        info.wall_elapsed_seconds = (sim_ns / info.ns_per_day) * 86400.0
+    _reconcile_throughput(info)
 
     return info
 

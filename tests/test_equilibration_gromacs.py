@@ -72,8 +72,8 @@ class TestClassConstants:
         }
 
     def test_scheme_mapping_values(self):
-        assert GROMACSEquilibrationManager.SCHEME_MAPPING["NPT"] == "02_NPT"
-        assert GROMACSEquilibrationManager.SCHEME_MAPPING["NPAT"] == "03_NPAT"
+        assert GROMACSEquilibrationManager.SCHEME_MAPPING["NPT"] == "NPT"
+        assert GROMACSEquilibrationManager.SCHEME_MAPPING["NPAT"] == "NPAT"
 
     def test_template_mapping_keys(self):
         expected = {
@@ -105,8 +105,7 @@ class TestClassConstants:
 
 
 class TestTemplateExistence:
-    ENSEMBLES = ["01_NVT", "02_NPT", "03_NPAT", "04_NPgT"]
-    FILENAMES = [
+    EQ_FILES = [
         "step6.0_minimization.mdp",
         "step6.1_equilibration.mdp",
         "step6.2_equilibration.mdp",
@@ -114,13 +113,17 @@ class TestTemplateExistence:
         "step6.4_equilibration.mdp",
         "step6.5_equilibration.mdp",
         "step6.6_equilibration.mdp",
-        "step7_production.mdp",
     ]
+    PROD_ENSEMBLES = ["NVT", "NPT", "NPAT", "NPgT"]
 
-    @pytest.mark.parametrize("ensemble", ENSEMBLES)
-    @pytest.mark.parametrize("filename", FILENAMES)
-    def test_template_exists(self, ensemble, filename):
-        p = TEMPLATES_DIR / ensemble / filename
+    @pytest.mark.parametrize("filename", EQ_FILES)
+    def test_eq_template_exists(self, filename):
+        p = TEMPLATES_DIR / "eq" / filename
+        assert p.exists(), f"Missing template: {p}"
+
+    @pytest.mark.parametrize("ensemble", PROD_ENSEMBLES)
+    def test_production_template_exists(self, ensemble):
+        p = TEMPLATES_DIR / "production" / ensemble / "step7_production.mdp"
         assert p.exists(), f"Missing template: {p}"
 
 
@@ -160,11 +163,19 @@ class TestGetDefaultStageParams:
                 f"{fc_bb[i]} → {fc_bb[i+1]}"
             )
 
-    def test_ensemble_propagated(self):
+    def test_packing_ensembles_independent_of_scheme(self):
         for scheme in ("NVT", "NPT", "NPAT", "NPgT"):
             stages = GROMACSEquilibrationManager.get_default_stage_params(scheme)
-            for s in stages:
-                assert s.ensemble == scheme
+            by = {s.name: s.ensemble for s in stages}
+            assert by["Minimization"] == "NVT"
+            assert by["Equilibration 1"] == "NVT"
+            assert by["Equilibration 2"] == "NVT"
+            for i in range(3, 7):
+                assert by[f"Equilibration {i}"] == "NPgT"
+        prod = GROMACSEquilibrationManager.get_default_stage_params(
+            "NVT", include_production=True
+        )
+        assert prod[-1].ensemble == "NVT"
 
     def test_invalid_scheme_raises(self):
         with pytest.raises(ValueError):

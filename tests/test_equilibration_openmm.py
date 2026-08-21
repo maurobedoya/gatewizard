@@ -38,10 +38,10 @@ class TestOpenMMEquilibrationManager:
         assert set(manager.SCHEME_MAPPING.keys()) == {"NVT", "NPT", "NPAT", "NPgT"}
 
     def test_scheme_mapping_values(self, manager):
-        assert manager.SCHEME_MAPPING["NVT"] == "01_NVT"
-        assert manager.SCHEME_MAPPING["NPT"] == "02_NPT"
-        assert manager.SCHEME_MAPPING["NPAT"] == "03_NPAT"
-        assert manager.SCHEME_MAPPING["NPgT"] == "04_NPgT"
+        assert manager.SCHEME_MAPPING["NVT"] == "NVT"
+        assert manager.SCHEME_MAPPING["NPT"] == "NPT"
+        assert manager.SCHEME_MAPPING["NPAT"] == "NPAT"
+        assert manager.SCHEME_MAPPING["NPgT"] == "NPgT"
 
     def test_template_mapping_count(self, manager):
         assert len(manager.TEMPLATE_MAPPING) == 7
@@ -68,18 +68,20 @@ class TestOpenMMEquilibrationManager:
         ), f"Scripts dir missing: {manager.scripts_dir}"
 
     def test_all_templates_present(self, manager):
-        for ensemble in ("01_NVT", "02_NPT", "03_NPAT", "04_NPgT"):
-            for step in (
-                "step6.1_equilibration.inp",
-                "step6.2_equilibration.inp",
-                "step6.3_equilibration.inp",
-                "step6.4_equilibration.inp",
-                "step6.5_equilibration.inp",
-                "step6.6_equilibration.inp",
-                "step7_production.inp",
-            ):
-                p = manager.templates_dir / ensemble / step
-                assert p.exists(), f"Template missing: {p}"
+        eq_steps = (
+            "step6.1_equilibration.inp",
+            "step6.2_equilibration.inp",
+            "step6.3_equilibration.inp",
+            "step6.4_equilibration.inp",
+            "step6.5_equilibration.inp",
+            "step6.6_equilibration.inp",
+        )
+        for step in eq_steps:
+            p = manager.templates_dir / "eq" / step
+            assert p.exists(), f"Template missing: {p}"
+        for ensemble in ("NVT", "NPT", "NPAT", "NPgT"):
+            p = manager.templates_dir / "production" / ensemble / "step7_production.inp"
+            assert p.exists(), f"Template missing: {p}"
 
     def test_all_scripts_present(self, manager):
         for script in (
@@ -287,12 +289,16 @@ class TestOpenMMConfigGeneration:
         assert "gen_vel" not in content
 
     def test_nvt_no_pressure_coupling(self, manager, basic_stage_params):
-        for stage_idx in range(1, 8):
-            content = manager.generate_openmm_config(
-                "s", basic_stage_params, stage_idx, "NVT"
-            )
+        nvt = {**basic_stage_params, "ensemble": "NVT"}
+        for stage_idx in (1, 2):
+            content = manager.generate_openmm_config("s", nvt, stage_idx, "NVT")
             assert "pcouple     = no" in content
-            assert "pcouple     = yes" not in content
+        for stage_idx in (3, 4, 5, 6):
+            content = manager.generate_openmm_config("s", nvt, stage_idx, "NVT")
+            assert "pcouple     = yes" in content
+        prod = {**nvt, "name": "Production", "stage_kind": "production"}
+        content = manager.generate_openmm_config("s", prod, 7, "NVT")
+        assert "pcouple     = no" in content
 
     def test_npt_pressure_from_step3(self, manager, basic_stage_params):
         # Steps 1 and 2: no pressure
@@ -302,7 +308,7 @@ class TestOpenMMConfigGeneration:
             )
             assert "pcouple     = no" in content
 
-        # Steps 3+: membrane barostat
+        # Packing (3–6) and NPT production (7): membrane barostat
         for stage_idx in (3, 4, 5, 6, 7):
             content = manager.generate_openmm_config(
                 "s", basic_stage_params, stage_idx, "NPT"
@@ -311,12 +317,14 @@ class TestOpenMMConfigGeneration:
             assert "p_type      = membrane" in content
 
     def test_npat_anisotropic_barostat(self, manager, basic_stage_params):
-        for stage_idx in (3, 4, 5, 6, 7):
-            content = manager.generate_openmm_config(
-                "s", basic_stage_params, stage_idx, "NPAT"
-            )
-            assert "p_type      = anisotropic" in content
-            assert "p_scale     = Z" in content
+        npat = {**basic_stage_params, "ensemble": "NPAT"}
+        for stage_idx in (3, 4, 5, 6):
+            content = manager.generate_openmm_config("s", npat, stage_idx, "NPAT")
+            assert "p_type      = membrane" in content
+        prod = {**npat, "name": "Production", "stage_kind": "production"}
+        content = manager.generate_openmm_config("s", prod, 7, "NPAT")
+        assert "p_type      = anisotropic" in content
+        assert "p_scale     = Z" in content
 
     def test_npgt_membrane_barostat_with_ptens(self, manager, basic_stage_params):
         for stage_idx in (3, 4, 5, 6, 7):

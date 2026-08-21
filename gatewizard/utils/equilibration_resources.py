@@ -40,8 +40,11 @@ def engine_resource_profile(engine: str) -> Dict[str, Any]:
     """Per-engine default compute settings for minimization, MD, and production.
 
     GROMACS: CPU minimization; equilibration and production use CPU×6 + GPU×1.
-    Amber: entire equilibration on CPU×6; production uses CPU×1 + GPU×1 (pmemd.cuda).
+    Amber: CPU minimization; MD/production use CPU×1 + GPU×1 (pmemd.cuda), except the
+    first packing barostat stage which defaults to CPU×6 (see
+    :func:`resolve_all_stage_resources`).
     OpenMM: single host thread (CPU×1) + GPU×1 for minimization, equilibration, and production.
+    NAMD: CPU minimization; equilibration and production use CPU×6 + GPU×1.
     """
     engine = (engine or "").strip().lower()
     cpu_md = {
@@ -50,11 +53,11 @@ def engine_resource_profile(engine: str) -> Dict[str, Any]:
         "num_gpus": 1,
         "use_gpu": True,
     }
-    cpu_only_md = {
-        "cpu_cores": 6,
+    amber_md = {
+        "cpu_cores": 1,
         "gpu_id": 0,
-        "num_gpus": 0,
-        "use_gpu": False,
+        "num_gpus": 1,
+        "use_gpu": True,
     }
     openmm_stage = {
         "cpu_cores": 1,
@@ -67,10 +70,10 @@ def engine_resource_profile(engine: str) -> Dict[str, Any]:
 
     if engine == "amber":
         return {
-            "compute_defaults": {**cpu_only_md, "compute_target": "auto"},
+            "compute_defaults": {**amber_md, "compute_target": "auto"},
             "minimization": mini,
-            "equilibration": cpu_only_md,
-            "production": prod_gpu,
+            "equilibration": amber_md,
+            "production": dict(amber_md),
         }
     if engine == "gromacs":
         return {
@@ -86,12 +89,12 @@ def engine_resource_profile(engine: str) -> Dict[str, Any]:
             "equilibration": dict(openmm_stage),
             "production": dict(openmm_stage),
         }
-    # NAMD and unknown engines: GPU for MD stages, lighter host CPU for prod
+    # NAMD and unknown engines: GPU for MD + production with CPU×6 host threads
     return {
         "compute_defaults": {**cpu_md, "compute_target": "auto"},
         "minimization": mini,
         "equilibration": cpu_md,
-        "production": prod_gpu,
+        "production": dict(cpu_md),
     }
 
 
@@ -222,6 +225,42 @@ def resolve_stage_resources(
     return resolved
 
 
+def _is_barostat_ensemble(ensemble: Any) -> bool:
+    """True for NPT / NPAT / NPgT (any capitalization)."""
+    ens = str(ensemble or "").strip().lower()
+    return ens in {"npt", "npat", "npgt"}
+
+
+def _apply_amber_first_barostat_cpu_default(
+    stages: List[Dict[str, Any]],
+    resolved: List[Dict[str, Any]],
+) -> None:
+    """Force the first packing barostat stage onto CPU ``pmemd`` by default.
+
+    ``pmemd.cuda`` aborts when packmol membranes shrink the box too quickly
+    ("Periodic box dimensions have changed too much"). Running only that first
+    NPT/NPAT/NPgT packing stage on CPU (with several OpenMP threads) avoids the
+    GPU grid rebuild limit; later stages stay on GPU.
+
+    Explicit override: if that stage has ``resources_inherit=False`` and
+    ``use_gpu=True``, the GPU request is kept.
+    """
+    for stage, item in zip(stages, resolved):
+        if not isinstance(stage, dict) or not isinstance(item, dict):
+            continue
+        if infer_stage_kind(stage) == "minimization":
+            continue
+        if not _is_barostat_ensemble(stage.get("ensemble")):
+            continue
+        inherit = stage.get("resources_inherit")
+        if inherit is False and stage.get("use_gpu") is True:
+            break
+        item["use_gpu"] = False
+        item["num_gpus"] = 0
+        item["cpu_cores"] = max(int(item.get("cpu_cores") or 1), 6)
+        break
+
+
 def resolve_all_stage_resources(
     stages: List[Dict[str, Any]],
     compute_defaults: Optional[Dict[str, Any]] = None,
@@ -240,6 +279,8 @@ def resolve_all_stage_resources(
         if idx < len(stems):
             item["stem"] = stems[idx]
         resolved.append(item)
+    if (engine or "").strip().lower() == "amber":
+        _apply_amber_first_barostat_cpu_default(stages, resolved)
     return resolved
 
 

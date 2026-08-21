@@ -136,3 +136,38 @@ def test_parse_gromacs_md_killed_before_nsteps(tmp_path: Path) -> None:
     assert info.steps_completed == 5671650
     assert info.total_steps == 50000000
     assert info.ns_per_day == 64.001
+
+
+def test_parse_gromacs_large_log_finds_started_after_topology(tmp_path: Path) -> None:
+    """Topology dump sits between MDP echo and Started mdrun; progress uses head+tail."""
+    log = tmp_path / "step7_production.log"
+    header = (
+        "integrator              = md\n"
+        "nsteps                  = 125000\n"
+        "dt                      = 0.001\n"
+    )
+    started = "Started mdrun on rank 0 Wed Jul 22 12:01:00 2026\n"
+    footer = (
+        "           Step           Time\n"
+        "          125000     125.00000\n"
+        "\n"
+        "Performance:            6.100\n"
+        "Finished mdrun on rank 0 Wed Jul 22 12:01:30 2026\n"
+    )
+    with log.open("wb") as handle:
+        handle.write(header.encode("utf-8"))
+        handle.write(b"x" * (200 * 1024))
+        handle.write(b"\n")
+        handle.write(started.encode("utf-8"))
+        row = b"           Step           Time\n          1000       1.00000\n"
+        while handle.tell() < 6 * 1024 * 1024:
+            handle.write(row)
+        handle.write(footer.encode("utf-8"))
+
+    info = parse_gromacs_log(log)
+
+    assert info.total_steps == 125000
+    assert info.steps_completed == 125000
+    assert info.ns_per_day == 6.1
+    assert info.completed is True
+    assert abs(info.wall_elapsed_seconds - 30.0) < 0.01

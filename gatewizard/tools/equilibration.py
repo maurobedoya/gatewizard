@@ -23,7 +23,9 @@ import tempfile
 from gatewizard.utils.logger import get_logger
 from gatewizard.utils.equilibration_templates import (
     normalize_scheme_label,
+    resolve_stage_scheme,
     stamp_equilibration_header,
+    template_subdir_for_stage,
 )
 from gatewizard.utils.equilibration_resume import (
     AMBER_RESUME_SHELL,
@@ -35,6 +37,196 @@ from gatewizard.utils.equilibration_resources import resolve_compute_resources_f
 from gatewizard.tools.namd_water import namd_water_model_config_block
 
 logger = get_logger(__name__)
+
+# Universal membrane packing ensemble (γ=0 / semi-isotropic area-free barostat).
+_PACKING_ENSEMBLE = "NPgT"
+
+
+def _is_minimization_stage(stage_params: Dict[str, Any]) -> bool:
+    kind = str(stage_params.get("stage_kind") or "").lower()
+    name = str(stage_params.get("name") or "").lower()
+    return kind == "minimization" or "minimization" in name
+
+
+def _is_production_stage(stage_params: Dict[str, Any]) -> bool:
+    kind = str(stage_params.get("stage_kind") or "").lower()
+    name = str(stage_params.get("name") or "").lower()
+    return kind == "production" or name == "production"
+
+
+def _build_universal_membrane_stages(
+    scheme_type: str,
+    temperature: float,
+    *,
+    include_minimization: bool,
+    include_production: bool,
+    mini_steps: int = 10000,
+    production_ns: float = 50.0,
+    production_dcd_freq: Optional[int] = None,
+) -> List["EquilibrationStage"]:
+    """Default universal packmol-memgen membrane protocol (all engines).
+
+    Heat (NVT) → NVT scaffold → pack under NPgT (γ=0) with restraint release
+    through Equilibration 6, then switch to ``scheme_type`` for production.
+    Same schedule for all engines (barostat starts at Equilibration 3).
+    """
+    valid = {"NVT", "NPT", "NPAT", "NPgT"}
+    scheme_type = normalize_scheme_label(scheme_type)
+    if scheme_type not in valid:
+        raise ValueError(
+            f"scheme_type must be one of {sorted(valid)}, got '{scheme_type}'"
+        )
+
+    def _steps(time_ns: float, timestep_fs: float) -> int:
+        return int(round(time_ns * 1_000_000 / timestep_fs))
+
+    def _stage(
+        name: str,
+        ensemble: str,
+        time_ns: float,
+        timestep: float,
+        *,
+        stage_kind: str = "equilibration",
+        minimize_steps: int = 0,
+        dcd_freq: int = 5000,
+        **constraints_overrides: float,
+    ) -> "EquilibrationStage":
+        base_constraints = {
+            "protein_backbone": 0.0,
+            "protein_sidechain": 0.0,
+            "lipid_head": 0.0,
+            "lipid_tail": 0.0,
+            "water": 0.0,
+            "ions": 0.0,
+            "other": 0.0,
+        }
+        base_constraints.update(constraints_overrides)
+        pressure = 1.0 if ensemble in {"NPT", "NPAT", "NPgT"} else None
+        surface_tension = 0.0 if ensemble in {"NPAT", "NPgT"} else None
+        return EquilibrationStage(
+            name=name,
+            ensemble=ensemble,
+            time_ns=time_ns,
+            steps=_steps(time_ns, timestep) if time_ns > 0 else 0,
+            timestep=timestep,
+            temperature=temperature,
+            minimize_steps=minimize_steps,
+            dcd_freq=dcd_freq,
+            stage_kind=stage_kind,
+            pressure=pressure,
+            surface_tension=surface_tension,
+            constraints=base_constraints,
+        )
+
+    stages: List[EquilibrationStage] = []
+    if include_minimization:
+        stages.append(
+            _stage(
+                "Minimization",
+                "NVT",
+                0.0,
+                1.0,
+                stage_kind="minimization",
+                minimize_steps=mini_steps,
+                protein_backbone=10.0,
+                protein_sidechain=5.0,
+                lipid_head=2.5,
+                lipid_tail=2.5,
+                ions=5.0,
+            )
+        )
+
+    # 1 Heat NVT
+    stages.append(
+        _stage(
+            "Equilibration 1",
+            "NVT",
+            0.125,
+            1.0,
+            minimize_steps=0 if include_minimization else mini_steps,
+            protein_backbone=10.0,
+            protein_sidechain=5.0,
+            lipid_head=2.5,
+            lipid_tail=2.5,
+        )
+    )
+    # 2 Scaffold NVT (all engines; classic CHARMM-GUI / original NPgT)
+    stages.append(
+        _stage(
+            "Equilibration 2",
+            "NVT",
+            0.5,
+            1.0,
+            protein_backbone=10.0,
+            protein_sidechain=5.0,
+            lipid_head=5.0,
+            lipid_tail=5.0,
+        )
+    )
+    # 3 First packing barostat (NPgT γ=0); soft lipids
+    stages.append(
+        _stage(
+            "Equilibration 3",
+            _PACKING_ENSEMBLE,
+            0.25,
+            1.0,
+            protein_backbone=5.0,
+            protein_sidechain=2.5,
+            lipid_head=2.5,
+            lipid_tail=0.0,
+        )
+    )
+    # 4 Pack release heads
+    stages.append(
+        _stage(
+            "Equilibration 4",
+            _PACKING_ENSEMBLE,
+            0.5,
+            1.0,
+            protein_backbone=2.5,
+            protein_sidechain=1.0,
+            lipid_head=0.0,
+            lipid_tail=0.0,
+        )
+    )
+    # 5 Pack with stronger backbone hold
+    stages.append(
+        _stage(
+            "Equilibration 5",
+            _PACKING_ENSEMBLE,
+            1.0,
+            2.0,
+            protein_backbone=1.0,
+        )
+    )
+    # 6 Long NPgT pack (γ=0); production is the first sidebar-ensemble stage
+    stages.append(
+        _stage(
+            "Equilibration 6",
+            _PACKING_ENSEMBLE,
+            17.625,
+            2.0,
+            dcd_freq=50000,
+            protein_backbone=0.1,
+        )
+    )
+
+    if include_production:
+        stages.append(
+            _stage(
+                "Production",
+                scheme_type,
+                production_ns,
+                2.0,
+                stage_kind="production",
+                dcd_freq=(
+                    production_dcd_freq
+                    if production_dcd_freq is not None
+                    else 50000
+                ),
+            )
+        )
+    return stages
 
 
 def _gromacs_mdrun_resource_flags(
@@ -274,6 +466,29 @@ def _build_com_colvars_activation_block(engine: str, config_filename: str) -> st
     )
 
 
+def _insert_namd_colvars_activation(config_text: str, activation_block: str) -> str:
+    """
+    Insert NAMD colvars activation before the first ``minimize`` / ``run``.
+
+    NAMD switches to Tcl-only mode after the first minimize/run, so appending
+    ``colvars on`` at the end of the conf causes::
+
+        FATAL ERROR: Setting parameter colvars from script failed!
+    """
+    if "colvars on" in config_text:
+        return config_text
+    block = activation_block if activation_block.startswith("\n") else f"\n{activation_block}"
+    if not block.endswith("\n"):
+        block += "\n"
+    # Match the first simulation command (not comments).
+    pattern = re.compile(r"(?m)^(?!\s*#)(\s*(?:minimize|run)\b.*)$")
+    match = pattern.search(config_text)
+    if not match:
+        return config_text.rstrip() + block
+    insert_at = match.start()
+    return config_text[:insert_at].rstrip() + block + "\n" + config_text[insert_at:]
+
+
 @dataclass
 class EquilibrationStage:
     """
@@ -296,8 +511,9 @@ class EquilibrationStage:
         dcd_freq: Trajectory write frequency in steps (OpenMM).
         steps: Explicit step count override (NAMD); computed from
             ``time_ns / timestep`` if None.
-        pressure: Target pressure in bar (NAMD, NPT/NPAT/NPgT ensembles).
-        surface_tension: Surface tension in dyn/cm (NAMD, NPAT/NPgT ensembles).
+        pressure: Target pressure in bar (all engines, NPT/NPAT/NPgT).
+        surface_tension: Surface tension in dyn/cm (NAMD/Amber/OpenMM/GROMACS
+            membrane barostats; GROMACS converts to bar·nm via ×10).
 
     Example::
 
@@ -1838,111 +2054,22 @@ class NAMDEquilibrationManager:
         temperature: float = 310.15,
         include_production: bool = False,
     ) -> List[Dict[str, Any]]:
+        """Return universal membrane packing stages for NAMD.
+
+        Heat under NVT, scaffold under NVT, pack under NPgT (γ=0) from
+        Equilibration 3 through Equilibration 6, then switch to
+        ``scheme_type`` for production. Minimization is folded into
+        Equilibration 1 via ``minimize_steps``.
         """
-        Return default CHARMM-GUI-style equilibration stages for a membrane protein system.
+        return _build_universal_membrane_stages(
+            scheme_type,
+            temperature,
+            include_minimization=False,
+            include_production=include_production,
+            mini_steps=10000,
+            production_ns=50.0,
+        )
 
-        Six stages with gradually decreasing positional restraints, following the
-        standard CHARMM-GUI membrane equilibration schedule. Suitable as a starting
-        point that can be further customised before passing to setup_namd_equilibration.
-
-        Args:
-            scheme_type: Ensemble for all stages (NVT | NPT | NPAT | NPgT).
-            temperature: Simulation temperature in Kelvin (default 310.15).
-            include_production: When True, append a 50 ns unrestrained production
-                stage (default False).
-
-        Returns:
-            List of :class:`EquilibrationStage` objects ready to pass to
-            setup_namd_equilibration.  Fields can be edited via attribute
-            assignment or the :meth:`~EquilibrationStage.replace` method.
-
-        Example::
-
-            >>> from dataclasses import replace
-            >>> stages = NAMDEquilibrationManager.get_default_stage_params("NPT",
-            ...                                                              include_production=True)
-            >>> stages[-1].time_ns = 100.0          # mutable attribute set
-            >>> stages[0] = stages[0].replace(temperature=303.15)  # immutable copy
-            >>> manager = NAMDEquilibrationManager(Path("/work/dir"))
-            >>> result = manager.setup_namd_equilibration(stage_params_list=stages)
-        """
-        valid = {"NVT", "NPT", "NPAT", "NPgT"}
-        if scheme_type not in valid:
-            raise ValueError(
-                f"scheme_type must be one of {sorted(valid)}, got '{scheme_type}'"
-            )
-
-        def _steps(time_ns: float, timestep_fs: float) -> int:
-            return int(round(time_ns * 1_000_000 / timestep_fs))
-
-        pressure = 1.0 if scheme_type in {"NPT", "NPAT", "NPgT"} else None
-        surface_tension = 0.0 if scheme_type in {"NPAT", "NPgT"} else None
-
-        def _stage(name, time_ns, timestep, minimize_steps=0, **constraints_overrides):
-            base_constraints = {
-                "protein_backbone": 0.0,
-                "protein_sidechain": 0.0,
-                "lipid_head": 0.0,
-                "lipid_tail": 0.0,
-                "water": 0.0,
-                "ions": 0.0,
-                "other": 0.0,
-            }
-            base_constraints.update(constraints_overrides)
-            return EquilibrationStage(
-                name=name,
-                ensemble=scheme_type,
-                time_ns=time_ns,
-                steps=_steps(time_ns, timestep),
-                timestep=timestep,
-                temperature=temperature,
-                minimize_steps=minimize_steps,
-                pressure=pressure,
-                surface_tension=surface_tension,
-                constraints=base_constraints,
-            )
-
-        stages: List[EquilibrationStage] = [
-            _stage(
-                "Equilibration 1",
-                0.125,
-                1.0,
-                minimize_steps=10000,
-                protein_backbone=10.0,
-                protein_sidechain=5.0,
-                lipid_head=2.5,
-            ),
-            _stage(
-                "Equilibration 2",
-                0.125,
-                1.0,
-                protein_backbone=5.0,
-                protein_sidechain=2.5,
-                lipid_head=1.0,
-            ),
-            _stage(
-                "Equilibration 3",
-                0.125,
-                1.0,
-                protein_backbone=2.5,
-                protein_sidechain=1.0,
-                lipid_head=0.5,
-            ),
-            _stage(
-                "Equilibration 4",
-                0.25,
-                1.0,
-                protein_backbone=1.0,
-                protein_sidechain=0.5,
-            ),
-            _stage("Equilibration 5", 0.25, 2.0, protein_backbone=0.5),
-            _stage("Equilibration 6", 0.5, 2.0, protein_backbone=0.1),
-        ]
-
-        if include_production:
-            stages.append(_stage("Production", 50.0, 2.0))
-
-        return stages
 
     def setup_namd_equilibration(
         self,
@@ -2165,20 +2292,38 @@ class NAMDEquilibrationManager:
             protocols_dict[stage_name] = stage_params
 
         previous_stage_name = None
+        pending_mini_steps = 0
+        eq_write_index = 0
         for i, (stage_name, stage_params) in enumerate(protocols_dict.items()):
+            if _is_minimization_stage(stage_params):
+                pending_mini_steps = int(
+                    stage_params.get("minimize_steps", 10000) or 10000
+                )
+                self.logger.info(
+                    f"Folding minimization ({pending_mini_steps} steps) into first NAMD equilibration stage"
+                )
+                continue
+
+            stage_params_eff = dict(stage_params)
+            if pending_mini_steps and eq_write_index == 0:
+                stage_params_eff["minimize_steps"] = pending_mini_steps
+                pending_mini_steps = 0
+
             # Generate config using CHARMM-GUI template system
             config_content = self.generate_charmm_gui_config_file(
                 stage_name=stage_name,
-                stage_params=stage_params,
-                stage_index=i,
+                stage_params=stage_params_eff,
+                stage_index=eq_write_index,
                 system_files=copied_files,  # Use relative names
                 scheme_type=scheme_type,
                 previous_stage_name=previous_stage_name,
                 all_stage_settings=protocols_dict,
             )
+            if not config_content.strip():
+                continue
 
             # Write configuration file
-            config_name = self._get_config_name(stage_name, i)
+            config_name = self._get_config_name(stage_name, eq_write_index)
             if config_name == "step7_production":
                 config_file = namd_dir / f"{config_name}.conf"
             else:
@@ -2189,18 +2334,22 @@ class NAMDEquilibrationManager:
             self.logger.info(f"  Generated: {config_file.name}")
 
             previous_stage_name = stage_name
+            eq_write_index += 1
 
         # Step 3: Generate restraint files for each stage
         self.logger.info("Generating restraint files...")
         system_pdb = namd_dir / copied_files.get("pdb", "system.pdb")
 
         if system_pdb.exists():
-            for i, (stage_name, stage_params) in enumerate(protocols_dict.items()):
+            eq_idx = 0
+            for stage_name, stage_params in protocols_dict.items():
+                if _is_minimization_stage(stage_params):
+                    continue
                 constraints = stage_params.get("constraints", {})
                 has_restraints = any(float(v) > 0 for v in constraints.values())
 
                 if has_restraints:
-                    config_name = self._get_config_name(stage_name, i)
+                    config_name = self._get_config_name(stage_name, eq_idx)
                     if config_name == "step7_production":
                         restraint_file = (
                             restraints_dir / f"{config_name}_restraints.pdb"
@@ -2219,6 +2368,7 @@ class NAMDEquilibrationManager:
                         selections=selections,
                     )
                     self.logger.info(f"  Generated: {restraint_file.name}")
+                eq_idx += 1
         else:
             self.logger.warning(
                 f"System PDB not found: {system_pdb}, skipping restraints"
@@ -2226,7 +2376,12 @@ class NAMDEquilibrationManager:
 
         # Step 4: Generate run scripts (local + cluster)
         self.logger.info("Generating run scripts...")
-        run_script_content = self.generate_run_script(protocols_dict, namd_executable)
+        namd_run_stages = {
+            name: params
+            for name, params in protocols_dict.items()
+            if not _is_minimization_stage(params)
+        }
+        run_script_content = self.generate_run_script(namd_run_stages, namd_executable)
         run_script = namd_dir / "run_equilibration.sh"
         run_script.write_text(run_script_content)
         run_script.chmod(0o755)
@@ -2239,7 +2394,7 @@ class NAMDEquilibrationManager:
 
             cluster_exe = cluster_engine_executable("namd", namd_executable)
             write_cluster_run_script(
-                namd_dir, self.generate_run_script(protocols_dict, cluster_exe)
+                namd_dir, self.generate_run_script(namd_run_stages, cluster_exe)
             )
             self.logger.info("  Generated: run_equilibration_cluster.sh")
         except Exception as exc:
@@ -2285,12 +2440,14 @@ class NAMDEquilibrationManager:
                     )
                     for config_file in config_files:
                         config_text = config_file.read_text()
-                        if "colvars on" not in config_text:
-                            config_file.write_text(
-                                config_text.rstrip() + activation_block
-                            )
+                        updated = _insert_namd_colvars_activation(
+                            config_text, activation_block
+                        )
+                        if updated != config_text:
+                            config_file.write_text(updated)
                     self.logger.info(
-                        "  COM colvars file generated and activated in NAMD configs."
+                        "  COM colvars file generated and activated in NAMD configs "
+                        "(before minimize/run)."
                     )
             else:
                 self.logger.warning(
@@ -2941,7 +3098,7 @@ colvarsRestartFrequency 5000
                     f'  echo "RESUME: skipping stage {stage_num} ({namd_stem})"',
                     "else",
                     f'  echo "Running Stage {stage_num}: {stage_name}"',
-                    f'  echo "Steps: {steps}, Timestep: {timestep} ps"',
+                    f'  echo "Steps: {steps}, Timestep: {timestep} fs"',
                     f'  echo "Resources: {cpu_cores} CPU cores, GPU: {gpu_info}"',
                     f"  {namd_cmd}",
                     "",
@@ -3049,19 +3206,15 @@ colvarsRestartFrequency 5000
         Returns:
             Customized NAMD configuration content
         """
-        # Map scheme types to folder names
-        scheme_folders = {
-            "NVT": "01_NVT",
-            "NPT": "02_NPT",
-            "NPAT": "03_NPAT",
-            "NPgT": "04_NPgT",
-        }
-
-        if scheme_type not in scheme_folders:
+        # Map scheme types to production folders; eq stages share eq/
+        if scheme_type not in {"NVT", "NPT", "NPAT", "NPgT"}:
             raise ValueError(f"Unknown scheme type: {scheme_type}")
 
         # Build template file path
-        scheme_folder = scheme_folders[scheme_type]
+        if stage_number == 13:
+            scheme_folder = f"production/{scheme_type}"
+        else:
+            scheme_folder = "eq"
         if stage_number <= 12:
             # Use stage 6 template for all equilibration stages 7-12
             if stage_number <= 6:
@@ -3328,7 +3481,7 @@ colvarsRestartFrequency 5000
             Content of the NAMD configuration file
         """
         # Skip minimization stage - it's now incorporated into the first equilibration
-        if stage_name == "minimization":
+        if _is_minimization_stage({"name": stage_name, **(stage_params or {})}):
             self.logger.info(
                 "Skipping separate minimization stage - now included in eq1_equilibration"
             )
@@ -3429,15 +3582,12 @@ colvarsRestartFrequency 5000
         Returns:
             Customized NAMD configuration content
         """
-        # Map scheme types to template directories
-        scheme_mapping = {
-            "NVT": "01_NVT",
-            "NPT": "02_NPT",
-            "NPAT": "03_NPAT",
-            "NPgT": "04_NPgT",
-        }
-
-        scheme_folder = scheme_mapping.get(scheme_type, "01_NVT")
+        scheme_folder = template_subdir_for_stage(
+            stage_params,
+            scheme_type,
+            stage_index=stage_index,
+            template_filename=template_filename,
+        )
         template_path = self.namd_templates_dir / scheme_folder / template_filename
 
         if not template_path.exists():
@@ -3460,7 +3610,7 @@ colvarsRestartFrequency 5000
         return stamp_equilibration_header(
             customized_content,
             engine="namd",
-            scheme=scheme_type,
+            scheme=resolve_stage_scheme(stage_params, scheme_type),
             template_filename=template_filename,
         )
 
@@ -3691,7 +3841,13 @@ colvarsRestartFrequency 5000
         stage_params: Dict[str, Any],
         all_stage_settings: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> int:
-        """Calculate the first timestep for a stage based on previous stages."""
+        """Calculate the first timestep for a stage based on previous stages.
+
+        ``stage_index`` is the NAMD write index among MD stages (Minimization
+        folded into Equilibration 1). When ``all_stage_settings`` still contains
+        a separate Minimization entry, that stage is skipped here and its
+        ``minimize_steps`` are attributed to the first MD stage.
+        """
         if stage_index == 0:
             return 0  # First stage always starts from 0
 
@@ -3701,30 +3857,38 @@ colvarsRestartFrequency 5000
             cumulative_steps = stage_index * current_stage_steps
             return cumulative_steps
 
-        # Build list of actual stage keys from all_stage_settings in order
-        # The keys might be in format "Equilibration 1", "Equilibration 2", ..., "Production"
-        # or "equilibration_1", "equilibration_2", ..., "production"
-        stage_keys = list(all_stage_settings.keys())
+        pending_mini = 0
+        md_configs: List[Dict[str, Any]] = []
+        for stage_config in all_stage_settings.values():
+            if _is_minimization_stage(stage_config):
+                pending_mini = int(
+                    stage_config.get("minimize_steps", 10000) or 10000
+                )
+                continue
+            md_configs.append(stage_config)
 
         cumulative_steps = 0
         for i in range(stage_index):
-            if i < len(stage_keys):
-                stage_key = stage_keys[i]
-                stage_config = all_stage_settings[stage_key]
+            if i < len(md_configs):
+                stage_config = md_configs[i]
 
-                # Get run steps based on time_ns and timestep
-                time_ns = stage_config.get("time_ns", 0.125)
-                timestep = stage_config.get("timestep", 1.0)
-                run_steps = int(time_ns * 1e6 / timestep)
+                time_ns = float(stage_config.get("time_ns") or 0.0)
+                timestep = float(stage_config.get("timestep") or 1.0)
+                run_steps = (
+                    int(time_ns * 1e6 / timestep)
+                    if time_ns > 0 and timestep > 0
+                    else 0
+                )
 
-                # Add minimize steps for first stage only
+                # Minimization is folded into the first MD stage for NAMD
                 if i == 0:
-                    minimize_steps = stage_config.get("minimize_steps", 10000)
-                    cumulative_steps += minimize_steps
+                    minimize_steps = stage_config.get("minimize_steps")
+                    if minimize_steps is None or int(minimize_steps or 0) == 0:
+                        minimize_steps = pending_mini
+                    cumulative_steps += int(minimize_steps or 0)
 
                 cumulative_steps += run_steps
             else:
-                # Default steps if stage not found
                 cumulative_steps += 125000
 
         return cumulative_steps
@@ -3877,10 +4041,10 @@ class OpenMMEquilibrationManager:
     """
 
     SCHEME_MAPPING: Dict[str, str] = {
-        "NVT": "01_NVT",
-        "NPT": "02_NPT",
-        "NPAT": "03_NPAT",
-        "NPgT": "04_NPgT",
+        "NVT": "NVT",
+        "NPT": "NPT",
+        "NPAT": "NPAT",
+        "NPgT": "NPgT",
     }
 
     TEMPLATE_MAPPING: Dict[str, str] = {
@@ -4149,19 +4313,40 @@ class OpenMMEquilibrationManager:
             "custom_pos_per_stage", {}
         )
 
-        for stage_index, stage_params in enumerate(stage_params_list, start=1):
-            stage_name = stage_params.get("name", f"Stage {stage_index}")
-            self.logger.info(f"Processing stage {stage_index}: {stage_name}")
+        pending_mini_steps = 0
+        eq_num = 0
+        for stage_params in stage_params_list:
+            stage_name = stage_params.get("name", "Stage")
+            if _is_minimization_stage(stage_params):
+                pending_mini_steps = int(
+                    stage_params.get("minimize_steps", 5000) or 5000
+                )
+                self.logger.info(
+                    f"Folding minimization ({pending_mini_steps} steps) into first OpenMM equilibration stage"
+                )
+                continue
 
+            if _is_production_stage(stage_params):
+                key_idx = 7
+            else:
+                eq_num += 1
+                key_idx = min(eq_num, 6)
+
+            stage_params_eff = dict(stage_params)
+            if pending_mini_steps and key_idx == 1:
+                stage_params_eff["minimize_steps"] = pending_mini_steps
+                pending_mini_steps = 0
+
+            self.logger.info(f"Processing stage key_idx={key_idx}: {stage_name}")
             config_content = self.generate_openmm_config(
                 stage_name=stage_name,
-                stage_params=stage_params,
-                stage_index=stage_index,
+                stage_params=stage_params_eff,
+                stage_index=key_idx,
                 scheme_type=scheme_type,
-                custom_pos_file=custom_pos_per_stage.get(stage_index),
+                custom_pos_file=custom_pos_per_stage.get(key_idx),
             )
 
-            config_filename = self._get_config_filename(stage_index)
+            config_filename = self._get_config_filename(key_idx)
             config_path = openmm_dir / config_filename
             config_path.write_text(config_content)
             config_files.append(config_path)
@@ -4277,7 +4462,16 @@ class OpenMMEquilibrationManager:
             String content of the generated .inp file.
         """
         template_key = self.STAGE_INDEX_TO_KEY.get(stage_index, "step7_production")
-        scheme_folder = self.SCHEME_MAPPING[scheme_type]
+        scheme_norm = normalize_scheme_label(str(scheme_type))
+        if scheme_norm not in self.SCHEME_MAPPING:
+            raise ValueError(
+                f"Unknown scheme_type '{scheme_type}'. "
+                f"Must be one of {list(self.SCHEME_MAPPING.keys())}"
+            )
+        stage_scheme = resolve_stage_scheme(stage_params, scheme_norm)
+        scheme_folder = template_subdir_for_stage(
+            stage_params, scheme_norm, stage_index=stage_index, template_key=template_key
+        )
         template_filename = self.TEMPLATE_MAPPING[template_key]
         template_path = self.templates_dir / scheme_folder / template_filename
 
@@ -4337,6 +4531,41 @@ class OpenMMEquilibrationManager:
         content = content.replace("{NSTEP}", str(nstep))
         content = content.replace("{DT}", f"{dt_ps:.3f}")
         content = content.replace("{NSTDCD}", str(dcd_freq))
+
+        # Pressure / surface tension from stage params (defaults match templates).
+        # OpenMM ``p_tens`` is dyne/cm; omm_barostat.py multiplies by 10 → bar·nm.
+        def _stage_float(key: str, default: float) -> float:
+            value = stage_params.get(key)
+            if value is None or value == "":
+                return float(default)
+            return float(value)
+
+        pressure = _stage_float("pressure", 1.0)
+        surface_tension = _stage_float("surface_tension", 0.0)
+        if re.search(r"(?m)^\s*p_ref\s*=", content):
+            # Membrane / isotropic: scalar. NPAT anisotropic: Pxx, Pyy, Pzz.
+            if re.search(r"(?m)^\s*p_ref\s*=\s*[\d.]+(?:\s*,\s*[\d.]+){2}", content):
+                content = re.sub(
+                    r"(?m)^(\s*p_ref\s*=\s*)[\d.]+(?:\s*,\s*[\d.]+){2}",
+                    rf"\g<1>{pressure:.4f}, {pressure:.4f}, {pressure:.4f}",
+                    content,
+                    count=1,
+                )
+            else:
+                content = re.sub(
+                    r"(?m)^(\s*p_ref\s*=\s*)[\d.]+",
+                    rf"\g<1>{pressure:.4f}",
+                    content,
+                    count=1,
+                )
+        if re.search(r"(?m)^\s*p_tens\s*=", content):
+            content = re.sub(
+                r"(?m)^(\s*p_tens\s*=\s*)[\d.]+",
+                rf"\g<1>{surface_tension:.4f}",
+                content,
+                count=1,
+            )
+
         # Some production templates ship with a literal "rest = no" instead of
         # "{REST}". Make restraint toggling robust for both formats.
         if "{REST}" in content:
@@ -4384,12 +4613,13 @@ class OpenMMEquilibrationManager:
         self.logger.debug(
             f"Stage {stage_index} ({stage_name}): template={template_filename}, "
             f"T={temperature:.2f}K, nstep={nstep}, dt={dt_ps:.3f}ps, rest={rest}, "
+            f"P={pressure:.2f} bar, γ={surface_tension:.2f} dyn/cm, "
             f"fc_bb={fc_bb_kj:.1f}, fc_sc={fc_sc_kj:.1f}, fc_lpos={fc_lpos_kj:.1f} kJ/mol/nm²"
         )
         return stamp_equilibration_header(
             content,
             engine="openmm",
-            scheme=scheme_type,
+            scheme=stage_scheme,
             template_filename=template_filename,
         )
 
@@ -4851,8 +5081,17 @@ class OpenMMEquilibrationManager:
                         continue
                     custom_atom_groups[key] = ag
 
-                # Write per-stage files with the correct force constant for each stage
-                for stage_i, sp in enumerate(stage_params_list, start=1):
+                # Write per-stage files with the correct force constant for each stage.
+                # Indexing matches setup_openmm_equilibration (mini folded away; eq 1–6; prod 7).
+                eq_num = 0
+                for sp in stage_params_list:
+                    if _is_minimization_stage(sp):
+                        continue
+                    if _is_production_stage(sp):
+                        stage_i = 7
+                    else:
+                        eq_num += 1
+                        stage_i = min(eq_num, 6)
                     stage_constraints = sp.get("constraints", {})
                     stage_custom: Dict[str, float] = {
                         k: float(v)
@@ -5088,110 +5327,22 @@ class OpenMMEquilibrationManager:
         temperature: float = 310.15,
         include_production: bool = False,
     ) -> List[Dict[str, Any]]:
+        """Return universal membrane packing stages for OpenMM.
+
+        Heat/scaffold under NVT, pack under NPgT (γ=0) from Equilibration 3
+        through Equilibration 6, then ``scheme_type`` for production.
+        Minimization is folded into Equilibration 1 via ``minimize_steps``.
         """
-        Return default CHARMM-GUI-style equilibration stages for a membrane protein system.
+        return _build_universal_membrane_stages(
+            scheme_type,
+            temperature,
+            include_minimization=False,
+            include_production=include_production,
+            mini_steps=5000,
+            production_ns=50.0,
+            production_dcd_freq=50000,
+        )
 
-        Six stages with gradually decreasing positional restraints, following the
-        standard CHARMM-GUI membrane equilibration schedule. Suitable as a starting
-        point that can be further customised before passing to setup_openmm_equilibration.
-
-        Args:
-            scheme_type: Ensemble for all stages (NVT | NPT | NPAT | NPgT).
-            temperature: Simulation temperature in Kelvin (default 310.15).
-            include_production: When True, append a 50 ns unrestrained production
-                stage (default False).
-
-        Returns:
-            List of :class:`EquilibrationStage` objects ready to pass to
-            setup_openmm_equilibration.  Fields can be edited via attribute
-            assignment or the :meth:`~EquilibrationStage.replace` method.
-
-        Example::
-
-            >>> from dataclasses import replace
-            >>> stages = OpenMMEquilibrationManager.get_default_stage_params("NPT",
-            ...                                                               include_production=True)
-            >>> stages[-1].time_ns = 100.0          # mutable attribute set
-            >>> stages[0] = stages[0].replace(temperature=303.15)  # immutable copy
-            >>> manager = OpenMMEquilibrationManager(Path("/work/dir"))
-            >>> result = manager.setup_openmm_equilibration(stage_params_list=stages)
-        """
-        valid = {"NVT", "NPT", "NPAT", "NPgT"}
-        if scheme_type not in valid:
-            raise ValueError(
-                f"scheme_type must be one of {sorted(valid)}, got '{scheme_type}'"
-            )
-
-        def _stage(
-            name,
-            time_ns,
-            timestep,
-            minimize_steps=0,
-            dcd_freq=5000,
-            **constraints_overrides,
-        ):
-            base_constraints = {
-                "protein_backbone": 0.0,
-                "protein_sidechain": 0.0,
-                "lipid_head": 0.0,
-                "lipid_tail": 0.0,
-                "water": 0.0,
-                "ions": 0.0,
-                "other": 0.0,
-            }
-            base_constraints.update(constraints_overrides)
-            return EquilibrationStage(
-                name=name,
-                ensemble=scheme_type,
-                time_ns=time_ns,
-                timestep=timestep,
-                temperature=temperature,
-                minimize_steps=minimize_steps,
-                dcd_freq=dcd_freq,
-                constraints=base_constraints,
-            )
-
-        stages: List[EquilibrationStage] = [
-            _stage(
-                "Equilibration 1",
-                0.125,
-                1.0,
-                minimize_steps=5000,
-                protein_backbone=10.0,
-                protein_sidechain=5.0,
-                lipid_head=2.5,
-            ),
-            _stage(
-                "Equilibration 2",
-                0.125,
-                1.0,
-                protein_backbone=5.0,
-                protein_sidechain=2.5,
-                lipid_head=1.0,
-            ),
-            _stage(
-                "Equilibration 3",
-                0.125,
-                1.0,
-                protein_backbone=2.5,
-                protein_sidechain=1.0,
-                lipid_head=0.5,
-            ),
-            _stage(
-                "Equilibration 4",
-                0.25,
-                1.0,
-                protein_backbone=1.0,
-                protein_sidechain=0.5,
-            ),
-            _stage("Equilibration 5", 0.25, 2.0, protein_backbone=0.5),
-            _stage("Equilibration 6", 0.5, 2.0, protein_backbone=0.1),
-        ]
-
-        if include_production:
-            stages.append(_stage("Production", 50.0, 2.0, dcd_freq=50000))
-
-        return stages
 
     def _get_config_filename(self, stage_index: int) -> str:
         """Return the .inp filename for a given 1-based stage index."""
@@ -5242,10 +5393,10 @@ class GROMACSEquilibrationManager:
     _KCAL_TO_KJ: float = 418.4
 
     SCHEME_MAPPING: Dict[str, str] = {
-        "NVT": "01_NVT",
-        "NPT": "02_NPT",
-        "NPAT": "03_NPAT",
-        "NPgT": "04_NPgT",
+        "NVT": "NVT",
+        "NPT": "NPT",
+        "NPAT": "NPAT",
+        "NPgT": "NPgT",
     }
 
     TEMPLATE_MAPPING: Dict[str, str] = {
@@ -6487,103 +6638,21 @@ class GROMACSEquilibrationManager:
         temperature: float = 310.15,
         include_production: bool = False,
     ) -> List["EquilibrationStage"]:
-        """Return default CHARMM-GUI-style GROMACS equilibration stages.
+        """Return universal membrane packing stages for GROMACS.
 
-        Six stages with gradually decreasing positional restraints, matching
-        the standard CHARMM-GUI membrane equilibration schedule (kJ/mol/nm²
-        equivalents are computed from kcal/mol/Å² at run time).
-
-        Args:
-            scheme_type: Ensemble for all stages (NVT | NPT | NPAT | NPgT).
-            temperature: Simulation temperature in Kelvin (default 310.15 K).
-            include_production: When True, append a 50 ns unrestrained
-                production stage.
-
-        Returns:
-            List of :class:`EquilibrationStage` objects ready to pass to
-            :meth:`setup_gromacs_equilibration`.
-
-        Example::
-
-            >>> stages = GROMACSEquilibrationManager.get_default_stage_params("NPT")
-            >>> stages[-1].time_ns = 5.0
-            >>> manager = GROMACSEquilibrationManager(Path("/work"))
-            >>> result = manager.setup_gromacs_equilibration(stage_params_list=stages)
+        Separate minimization, heat/scaffold under NVT, pack under NPgT (γ=0)
+        from Equilibration 3 through Equilibration 6, then ``scheme_type``
+        for production.
         """
-        valid = {"NVT", "NPT", "NPAT", "NPgT"}
-        if scheme_type not in valid:
-            raise ValueError(
-                f"scheme_type must be one of {sorted(valid)}, got '{scheme_type}'"
-            )
+        return _build_universal_membrane_stages(
+            scheme_type,
+            temperature,
+            include_minimization=True,
+            include_production=include_production,
+            mini_steps=10000,
+            production_ns=50.0,
+        )
 
-        def _stage(name, time_ns, timestep, minimize_steps=0, **constraints_overrides):
-            base = {
-                "protein_backbone": 0.0,
-                "protein_sidechain": 0.0,
-                "lipid_head": 0.0,
-                "lipid_tail": 0.0,
-                "water": 0.0,
-                "ions": 0.0,
-                "other": 0.0,
-            }
-            base.update(constraints_overrides)
-            return EquilibrationStage(
-                name=name,
-                ensemble=scheme_type,
-                time_ns=time_ns,
-                timestep=timestep,
-                temperature=temperature,
-                minimize_steps=minimize_steps,
-                constraints=base,
-            )
-
-        stages: List[EquilibrationStage] = [
-            _stage(
-                "Minimization",
-                0.0,
-                1.0,
-                minimize_steps=5000,
-                protein_backbone=10.0,
-                protein_sidechain=5.0,
-                lipid_head=2.5,
-            ),
-            _stage(
-                "Equilibration 1",
-                0.125,
-                1.0,
-                protein_backbone=10.0,
-                protein_sidechain=5.0,
-                lipid_head=2.5,
-            ),
-            _stage(
-                "Equilibration 2",
-                0.125,
-                1.0,
-                protein_backbone=5.0,
-                protein_sidechain=2.5,
-                lipid_head=1.0,
-            ),
-            _stage(
-                "Equilibration 3",
-                0.125,
-                1.0,
-                protein_backbone=2.5,
-                protein_sidechain=1.0,
-                lipid_head=1.0,
-            ),
-            _stage(
-                "Equilibration 4",
-                0.25,
-                1.0,
-                protein_backbone=1.0,
-                protein_sidechain=0.5,
-            ),
-            _stage("Equilibration 5", 0.25, 2.0, protein_backbone=0.5),
-            _stage("Equilibration 6", 0.5, 2.0, protein_backbone=0.1),
-        ]
-        if include_production:
-            stages.append(_stage("Production", 50.0, 2.0))
-        return stages
 
     # ------------------------------------------------------------------
     # MDP file generation
@@ -6630,7 +6699,15 @@ class GROMACSEquilibrationManager:
             String content of the generated ``.mdp`` file.
         """
         template_key = self.STAGE_INDEX_TO_KEY.get(stage_index, "step7_production")
-        scheme_folder = self.SCHEME_MAPPING[scheme_type]
+        stage_scheme = resolve_stage_scheme(stage_params, scheme_type)
+        if stage_scheme not in self.SCHEME_MAPPING:
+            raise ValueError(
+                f"Unknown stage ensemble '{stage_scheme}'. "
+                f"Must be one of {list(self.SCHEME_MAPPING.keys())}"
+            )
+        scheme_folder = template_subdir_for_stage(
+            stage_params, scheme_type, stage_index=stage_index, template_key=template_key
+        )
         template_filename = self.TEMPLATE_MAPPING[template_key]
         template_path = self.templates_dir / scheme_folder / template_filename
 
@@ -6745,6 +6822,47 @@ class GROMACSEquilibrationManager:
             content,
         )
 
+        # ------ pressure / surface tension (ref_p) ------
+        # Stage ``surface_tension`` is dyn/cm. GROMACS surface-tension coupling
+        # expects the first ref_p component in bar·nm (1 dyn/cm = 10 bar·nm).
+        def _stage_float(key: str, default: float) -> float:
+            value = stage_params.get(key)
+            if value is None or value == "":
+                return float(default)
+            return float(value)
+
+        pressure = _stage_float("pressure", 1.0)
+        surface_tension = _stage_float("surface_tension", 0.0)
+        if re.search(r"(?m)^\s*ref_p\s*=", content):
+            pcoupltype_match = re.search(
+                r"(?m)^\s*pcoupltype\s*=\s*(\S+)", content
+            )
+            pcoupltype = (
+                pcoupltype_match.group(1).lower() if pcoupltype_match else ""
+            )
+            if "surface-tension" in pcoupltype or "surface_tension" in pcoupltype:
+                gamma_bar_nm = surface_tension * 10.0
+                content = re.sub(
+                    r"(?m)^(\s*ref_p\s*=\s*)[\d.eE+-]+\s+[\d.eE+-]+",
+                    rf"\g<1>{gamma_bar_nm:.6g}     {pressure:.6g}",
+                    content,
+                    count=1,
+                )
+            else:
+                # semiisotropic / isotropic: both components are pressure (bar)
+                content = re.sub(
+                    r"(?m)^(\s*ref_p\s*=\s*)[\d.eE+-]+\s+[\d.eE+-]+",
+                    rf"\g<1>{pressure:.6g}     {pressure:.6g}",
+                    content,
+                    count=1,
+                )
+                content = re.sub(
+                    r"(?m)^(\s*ref_p\s*=\s*)[\d.eE+-]+\s*$",
+                    rf"\g<1>{pressure:.6g}",
+                    content,
+                    count=1,
+                )
+
         # ------ force constants in define line ------
         def _sub_std_macros(text: str) -> str:
             text = re.sub(r"POSRES_FC_BB=[\d.]+", f"POSRES_FC_BB={fc_bb:.1f}", text)
@@ -6841,7 +6959,7 @@ class GROMACSEquilibrationManager:
         return stamp_equilibration_header(
             content,
             engine="gromacs",
-            scheme=scheme_type,
+            scheme=stage_scheme,
             template_filename=template_filename,
         )
 
@@ -7371,9 +7489,11 @@ class GROMACSEquilibrationManager:
             # Determine stage_index_key:
             # First stage with minimize_steps > 0 → minimization (idx 0)
             # Then equilibration stages (1..6), then production (7)
-            if stage_index == 0 and int(stage_params.get("minimize_steps", 0)) > 0:
+            if _is_minimization_stage(stage_params) or (
+                stage_index == 0 and int(stage_params.get("minimize_steps", 0)) > 0
+            ):
                 key_idx = 0
-            elif stage_params.get("name", "").lower() == "production":
+            elif _is_production_stage(stage_params):
                 key_idx = 7
             else:
                 key_idx = min(stage_index, 6) if stage_index > 0 else 1
@@ -7550,10 +7670,10 @@ class AmberEquilibrationManager:
     """
 
     SCHEME_MAPPING: Dict[str, str] = {
-        "NVT": "01_NVT",
-        "NPT": "02_NPT",
-        "NPAT": "03_NPAT",
-        "NPgT": "04_NPgT",
+        "NVT": "NVT",
+        "NPT": "NPT",
+        "NPAT": "NPAT",
+        "NPgT": "NPgT",
     }
 
     TEMPLATE_MAPPING: Dict[str, str] = {
@@ -7974,81 +8094,22 @@ class AmberEquilibrationManager:
         temperature: float = 310.15,
         include_production: bool = False,
     ) -> List["EquilibrationStage"]:
-        """Return default Amber stages (separate minimization + 6 eq [+ production])."""
-        valid = {"NVT", "NPT", "NPAT", "NPgT"}
-        if scheme_type not in valid:
-            raise ValueError(
-                f"scheme_type must be one of {sorted(valid)}, got '{scheme_type}'"
-            )
+        """Return universal membrane packing stages for Amber.
 
-        def _stage(name, time_ns, timestep, minimize_steps=0, **constraints_overrides):
-            base = {
-                "protein_backbone": 0.0,
-                "protein_sidechain": 0.0,
-                "lipid_head": 0.0,
-                "lipid_tail": 0.0,
-                "water": 0.0,
-                "ions": 0.0,
-                "other": 0.0,
-            }
-            base.update(constraints_overrides)
-            return EquilibrationStage(
-                name=name,
-                ensemble=scheme_type,
-                time_ns=time_ns,
-                timestep=timestep,
-                temperature=temperature,
-                minimize_steps=minimize_steps,
-                constraints=base,
-            )
+        Separate minimization, heat/scaffold under NVT, pack under NPgT (γ=0)
+        from Equilibration 3 through Equilibration 6 with a soft first-barostat
+        stage (CPU ``pmemd`` by default), then ``scheme_type`` for production.
+        Later MD stages use GPU.
+        """
+        return _build_universal_membrane_stages(
+            scheme_type,
+            temperature,
+            include_minimization=True,
+            include_production=include_production,
+            mini_steps=10000,
+            production_ns=50.0,
+        )
 
-        stages: List[EquilibrationStage] = [
-            _stage(
-                "Minimization",
-                0.0,
-                1.0,
-                minimize_steps=5000,
-                protein_backbone=10.0,
-                protein_sidechain=5.0,
-                lipid_head=2.5,
-            ),
-            _stage(
-                "Equilibration 1",
-                0.125,
-                1.0,
-                protein_backbone=10.0,
-                protein_sidechain=5.0,
-                lipid_head=2.5,
-            ),
-            _stage(
-                "Equilibration 2",
-                0.125,
-                1.0,
-                protein_backbone=5.0,
-                protein_sidechain=2.5,
-                lipid_head=1.0,
-            ),
-            _stage(
-                "Equilibration 3",
-                0.125,
-                1.0,
-                protein_backbone=2.5,
-                protein_sidechain=1.0,
-                lipid_head=1.0,
-            ),
-            _stage(
-                "Equilibration 4",
-                0.25,
-                1.0,
-                protein_backbone=1.0,
-                protein_sidechain=0.5,
-            ),
-            _stage("Equilibration 5", 0.25, 2.0, protein_backbone=0.5),
-            _stage("Equilibration 6", 0.5, 2.0, protein_backbone=0.1),
-        ]
-        if include_production:
-            stages.append(_stage("Production", 50.0, 2.0))
-        return stages
 
     def _get_mdin_filename(self, stage_index: int) -> str:
         key = self.STAGE_INDEX_TO_KEY.get(stage_index, "step7_production")
@@ -8167,7 +8228,15 @@ class AmberEquilibrationManager:
     ) -> str:
         """Load an Amber mdin template and substitute GateWizard placeholders."""
         template_key = self.STAGE_INDEX_TO_KEY.get(stage_index, "step7_production")
-        scheme_folder = self.SCHEME_MAPPING[scheme_type]
+        stage_scheme = resolve_stage_scheme(stage_params, scheme_type)
+        if stage_scheme not in self.SCHEME_MAPPING:
+            raise ValueError(
+                f"Unknown stage ensemble '{stage_scheme}'. "
+                f"Must be one of {list(self.SCHEME_MAPPING.keys())}"
+            )
+        scheme_folder = template_subdir_for_stage(
+            stage_params, scheme_type, stage_index=stage_index, template_key=template_key
+        )
         template_filename = self.TEMPLATE_MAPPING[template_key]
         template_path = self.templates_dir / scheme_folder / template_filename
         if not template_path.exists():
@@ -8211,6 +8280,19 @@ class AmberEquilibrationManager:
             nstlim = max(1, int(round(time_ns * 1000.0 / dt_ps)))
             content = content.replace("{NSTLIM}", str(nstlim))
             content = content.replace("{DT}", f"{dt_ps:.6g}")
+            is_production = (
+                str(stage_params.get("stage_kind") or "").lower() == "production"
+                or str(stage_params.get("name") or "").lower() == "production"
+            )
+            dcd_freq = int(
+                stage_params.get("dcd_freq", 50000 if is_production else 5000)
+                or (50000 if is_production else 5000)
+            )
+            content = re.sub(
+                r"ntwx\s*=\s*\d+",
+                f"ntwx={dcd_freq}",
+                content,
+            )
 
         content = content.replace("{TEMPERATURE}", f"{temperature:.4f}")
         content = content.replace("{PRES0}", f"{pressure:.4f}")
@@ -8223,7 +8305,7 @@ class AmberEquilibrationManager:
         return stamp_equilibration_header(
             content,
             engine="amber",
-            scheme=scheme_type,
+            scheme=stage_scheme,
             template_filename=template_filename,
         )
 
@@ -8381,6 +8463,15 @@ class AmberEquilibrationManager:
                 f"  {amber_var} -O -i {stem}.mdin -o {stem}.mdout -p $PRMTOP \\",
                 f"      -c {coord} -r {stem}.rst7 -inf {stem}.mdinfo{ref_flag}{traj} \\",
                 f"      || {{ ec=$?; echo \"ERROR: {stem} failed (exit code ${{ec}})\" >&2; exit ${{ec}}; }}",
+            ]
+            # After first packing barostat stage (step3), re-anchor restraint
+            # reference to the post-barostat box/coords.
+            if stem == "step3_equilibration":
+                lines += [
+                    "  # Universal packing: refresh restraint reference after first barostat stage",
+                    f'  REF="{stem}.rst7"',
+                ]
+            lines += [
                 "fi",
                 "",
             ]
@@ -8489,7 +8580,15 @@ class AmberEquilibrationManager:
             bilayer_pdb=bilayer_dest,
             system_pdb=pdb_path,
         )
-        if scheme_type in {"NPT", "NPAT", "NPgT"}:
+        # Packing stages may use NPgT even when the final ensemble is NVT — always
+        # stamp IFBOX if any stage (or the protocol scheme) needs a barostat.
+        needs_prmtop_box = scheme_type in {"NPT", "NPAT", "NPgT"} or any(
+            normalize_scheme_label(str(s.get("ensemble") or ""))
+            in {"NPT", "NPAT", "NPgT"}
+            for s in stage_params_list
+            if isinstance(s, dict)
+        )
+        if needs_prmtop_box:
             prmtop_dest = amber_dir / Path(
                 system_files.get("prmtop", "system.prmtop")
             ).name
@@ -8509,9 +8608,11 @@ class AmberEquilibrationManager:
 
         for stage_index, stage_params in enumerate(stage_params_list):
             stage_name = stage_params.get("name", f"Stage {stage_index}")
-            if stage_index == 0 and int(stage_params.get("minimize_steps", 0)) > 0:
+            if _is_minimization_stage(stage_params) or (
+                stage_index == 0 and int(stage_params.get("minimize_steps", 0)) > 0
+            ):
                 key_idx = 0
-            elif stage_params.get("name", "").lower() == "production":
+            elif _is_production_stage(stage_params):
                 key_idx = 7
             else:
                 key_idx = min(stage_index, 6) if stage_index > 0 else 1

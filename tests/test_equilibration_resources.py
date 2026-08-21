@@ -28,14 +28,73 @@ def test_resolve_stage_resources_minimization_forces_cpu() -> None:
     assert resolved["cpu_cores"] == 6
 
 
-def test_engine_resource_profile_amber_cpu_eq_gpu_prod() -> None:
+def test_engine_resource_profile_amber_gpu_md() -> None:
     from gatewizard.utils.equilibration_resources import engine_resource_profile
 
     profile = engine_resource_profile("amber")
-    assert profile["equilibration"]["cpu_cores"] == 6
-    assert profile["equilibration"]["use_gpu"] is False
+    assert profile["equilibration"]["cpu_cores"] == 1
+    assert profile["equilibration"]["use_gpu"] is True
     assert profile["production"]["cpu_cores"] == 1
     assert profile["production"]["use_gpu"] is True
+    assert profile["minimization"]["use_gpu"] is False
+
+
+def test_amber_first_barostat_stage_defaults_to_cpu() -> None:
+    stages = resolve_all_stage_resources(
+        [
+            {"name": "Minimization", "stage_kind": "minimization"},
+            {
+                "name": "Equilibration 1",
+                "stage_kind": "equilibration",
+                "ensemble": "NVT",
+                "resources_inherit": True,
+            },
+            {
+                "name": "Equilibration 2",
+                "stage_kind": "equilibration",
+                "ensemble": "NVT",
+                "resources_inherit": True,
+            },
+            {
+                "name": "Equilibration 3",
+                "stage_kind": "equilibration",
+                "ensemble": "NPgT",
+                "resources_inherit": True,
+            },
+            {
+                "name": "Equilibration 4",
+                "stage_kind": "equilibration",
+                "ensemble": "NPgT",
+                "resources_inherit": True,
+            },
+            {"name": "Production", "stage_kind": "production", "ensemble": "NPT"},
+        ],
+        engine="amber",
+    )
+    assert stages[1]["use_gpu"] is True and stages[1]["cpu_cores"] == 1
+    assert stages[2]["use_gpu"] is True and stages[2]["cpu_cores"] == 1
+    assert stages[3]["use_gpu"] is False and stages[3]["cpu_cores"] == 6
+    assert stages[4]["use_gpu"] is True and stages[4]["cpu_cores"] == 1
+    assert stages[5]["use_gpu"] is True
+
+
+def test_amber_first_barostat_respects_explicit_gpu() -> None:
+    stages = resolve_all_stage_resources(
+        [
+            {
+                "name": "Equilibration 3",
+                "stage_kind": "equilibration",
+                "ensemble": "NPgT",
+                "resources_inherit": False,
+                "cpu_cores": 1,
+                "use_gpu": True,
+                "num_gpus": 1,
+            },
+        ],
+        engine="amber",
+    )
+    assert stages[0]["use_gpu"] is True
+    assert stages[0]["num_gpus"] == 1
 
 
 def test_engine_resource_profile_gromacs_gpu_md() -> None:
@@ -71,7 +130,12 @@ def test_aggregate_slurm_resources_amber_engine_defaults() -> None:
     stages = resolve_all_stage_resources(
         [
             {"name": "Minimization", "stage_kind": "minimization"},
-            {"name": "Equilibration 1", "stage_kind": "equilibration", "resources_inherit": True},
+            {
+                "name": "Equilibration 1",
+                "stage_kind": "equilibration",
+                "ensemble": "NVT",
+                "resources_inherit": True,
+            },
             {"name": "Production", "stage_kind": "production"},
         ],
         engine="amber",
@@ -80,7 +144,7 @@ def test_aggregate_slurm_resources_amber_engine_defaults() -> None:
     assert slurm["cpu_cores"] == 6
     assert slurm["num_gpus"] == 1
     assert stages[0]["use_gpu"] is False
-    assert stages[1]["use_gpu"] is False
+    assert stages[1]["use_gpu"] is True
     assert stages[2]["use_gpu"] is True
 
 
