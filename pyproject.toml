@@ -33,6 +33,7 @@ dependencies = [
     "requests>=2.25.0",
     "MDAnalysis>=2.0.0",
     "lipyphilic>=0.12.0",
+    "freud-analysis>=2.5.0",
     "propka>=3.2.0",
     "Pillow>=9.0.0",
     "rdkit>=2023.3.1",

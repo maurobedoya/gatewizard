@@ -113,19 +113,20 @@ Both types support multiple files, custom time assignment, and flexible unit sel
 
 ### Bilayer Analysis (lipyphilic)
 
-Lipid bilayer properties are calculated via the `BilayerTrajectoryAnalyzer` class using [lipyphilic](https://lipyphilic.readthedocs.io/), which is installed automatically with gatewizard (`pip install -e .` or `pip install gatewizard`).
+Lipid bilayer properties are calculated via the `BilayerTrajectoryAnalyzer` class. Area per lipid uses **EVAPL** (Exclusion-aware Voronoi Area Per Lipid): one periodic XY Voronoi, then non-lipid occupants (protein, peptide, DNA, ligands, …) shrink the lipid cells they sit in. Leaflet assignment and membrane thickness use [lipyphilic](https://lipyphilic.readthedocs.io/). Dependencies install with gatewizard (`pip install -e .` or `pip install gatewizard`).
 
 Working examples: **Example 14** (area per lipid) and **Example 15** (membrane thickness) in `tests/analysis_examples/`, using `equilibration_folder/system.pdb` and equilibration DCD trajectories. See [Analysis Module API](api/analysis.md).
 
 #### Area per Lipid
 
-**Purpose**: Measure the lateral area occupied by each lipid via 2D Voronoi tessellation.
+**Purpose**: Measure the lateral area occupied by each lipid via 2D Voronoi tessellation (**EVAPL**). Exclude atoms (default `protein`; also peptide, DNA, ligands) that fall in a lipid cell reduce that lipid's area instead of inflating the leaflet mean.
 
 **Usage**:
 ```
 1. Load bilayer topology and trajectories from equilibration_folder (Example 14 / 15)
 2. Set lipid headgroup selection (e.g. "resname PC and name P31" for AMBER POPC)
-3. Run area-per-lipid analysis
+3. Optionally set exclude_sel="protein" (default) and exclude_cutoff (Å)
+4. Run area-per-lipid analysis
 ```
 
 **Output**:
@@ -135,8 +136,8 @@ Working examples: **Example 14** (area per lipid) and **Example 15** (membrane t
 
 **Interpretation**:
 - ~40–70 Å²: Typical phospholipid areas (force-field dependent)
-- Lower area: Higher packing / Lo phase
-- Higher area: Looser packing / Ld phase
+- Lower area: Higher packing / Lo phase, or protein footprint excluded
+- Higher area: Looser packing / Ld phase; without exclusion, protein–membrane systems can approach box / n_lipids
 
 #### Membrane Thickness
 

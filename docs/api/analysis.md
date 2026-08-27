@@ -8,7 +8,7 @@ The analysis module provides three main trajectory/energy classes:
 
 - **`EnergyAnalyzer`** - Parse and plot NAMD energy data with full customization
 - **`TrajectoryAnalyzer`** - Calculate and plot RMSD, RMSF, distances, and radius of gyration with complete control
-- **`BilayerTrajectoryAnalyzer`** - Calculate area per lipid and membrane thickness using [lipyphilic](https://lipyphilic.readthedocs.io/)
+- **`BilayerTrajectoryAnalyzer`** - Calculate area per lipid (**EVAPL**: Exclusion-aware Voronoi Area Per Lipid) and membrane thickness (lipyphilic)
 
 **Key Features:**
 
@@ -1508,12 +1508,16 @@ Same topology/trajectory interface as `TrajectoryAnalyzer`. Leaflet assignment i
 
 ### Method: `calculate_area_per_lipid()`
 
-Calculate the area per lipid via 2D Voronoi tessellation ([lipyphilic `AreaPerLipid`](https://lipyphilic.readthedocs.io/en/latest/reference/analysis/areas.html)).
+Calculate the area per lipid via periodic 2D Voronoi tessellation ([freud](https://freud.readthedocs.io/)). Leaflet assignment still uses [lipyphilic `AssignLeaflets`](https://lipyphilic.readthedocs.io/). The default algorithm is **EVAPL** (Exclusion-aware Voronoi Area Per Lipid): one periodic XY Voronoi, then atoms in `exclude_sel` (protein, peptide, DNA, ligands, …) that fall in a lipid cell shrink that cell with one in-cell COM half-plane clip. Default `exclude_sel` is `"protein"`.
 
 ```python
 calculate_area_per_lipid(
     lipid_sel: str = "name PO4",
     leaflet_lipid_sel: Optional[str] = None,
+    exclude_sel: Optional[str] = "protein",
+    exclude_cutoff: float = 30.0,
+    exclude_dim: int = 3,
+    apl_method: Optional[str] = "auto",
     start: Optional[int] = None,
     stop: Optional[int] = None,
     step: Optional[int] = None,
@@ -1527,7 +1531,11 @@ calculate_area_per_lipid(
 |-----------|-------------|
 | `lipid_sel` | Atoms used for Voronoi tessellation. MARTINI: `"name GL1 GL2 ROH"`. All-atom: `"name PO4"` or phosphate selections. |
 | `leaflet_lipid_sel` | Selection for leaflet assignment. Defaults to `lipid_sel`. |
-| `start`, `stop`, `step` | Trajectory frame range passed to lipyphilic. |
+| `exclude_sel` | Non-lipid occupant atoms (e.g. `"protein"`, a peptide, DNA). Empty/`None` disables exclusion. |
+| `exclude_cutoff` | Å cutoff for exclude atoms near the leaflet (`0` = all exclude atoms). Default `30` Å (3.0 nm). |
+| `exclude_dim` | `3` = 3D distance to leaflet atoms; `1` = \|z − leaflet midplane\|. |
+| `apl_method` | `auto` (EVAPL when `exclude_sel` is set, else lipyphilic), `evapl`, `lipyphilic` (pure lipids only), `gridmat`, or `vtmc`. |
+| `start`, `stop`, `step` | Trajectory frame range. |
 
 **Returns:** `time` (ns), `areas` (n_lipids × n_frames, Å²), `mean_area_per_lipid`, `mean_upper_leaflet`, `mean_lower_leaflet`, `resids`, `resnames`.
 
@@ -2086,7 +2094,7 @@ print("Separate figures saved: temp_density_example_13_temp.png, temp_density_ex
 
 ### Example 14: Area per Lipid
 
-Calculate and plot the area per lipid using [lipyphilic](https://lipyphilic.readthedocs.io/) Voronoi tessellation on the membrane-protein equilibration trajectories in `equilibration_folder`.
+Calculate and plot the area per lipid using **EVAPL** (Exclusion-aware Voronoi Area Per Lipid; default `exclude_sel="protein"`) on the membrane-protein equilibration trajectories in `equilibration_folder`.
 
 ```python
 from pathlib import Path
