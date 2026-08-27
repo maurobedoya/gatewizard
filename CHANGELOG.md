@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Area per lipid (`evapl`):** default method is **EVAPL** (Exclusion-aware Voronoi Area Per Lipid): one periodic XY Voronoi; exclude atoms (protein, peptide, DNA, ligands, …) assigned to the nearest lipid cell; that cell is clipped by the in-cell occupant COM half-plane. `apl_method='auto'` uses EVAPL when `exclude_sel` is set, else lipyphilic. **`lipyphilic`** is the empty-box reference and is **not recommended** when occupants are present. **`apl_method='gridmat'`** adds a GridMAT-MD-style grid assignment reference ([Allen et al. 2009](https://github.com/jalemkul/gridmat-md)); tune with `gridmat_n` (default 20) and `gridmat_precision` (default 13 Å). **`apl_method='vtmc'`** adds Mori–Ogushi–Sugita Voronoi + Monte Carlo ([doi:10.1002/jcc.21973](https://doi.org/10.1002/jcc.21973)); tune with `vtmc_n_samples` (default 50000) and `vtmc_protein_radius` (default 1.7 Å). Default **`exclude_cutoff=30` Å**. Pure bilayers (`exclude_sel` empty) match lipyphilic (~Lx·Ly/n_leaflet). Dependency: `freud-analysis>=2.5.0`.
 - **Equilibration default protocol:** Eq6 packing extended from 17.625 ns to **47.625 ns** so Eq1–6 total **50 ns** of MD (was 20 ns). Same for GUI `base.json` and API `_build_universal_membrane_stages()` for all engines/ensembles.
 - **Equilibration Eq1 label:** renamed from “heat/heating” to **thermalization** (velocities at target T; no temperature ramp).
 - **Cluster probe:** collect Slurm partitions/nodes (`sinfo`) before the slower `module avail`, and batch path env queries into one SSH round-trip, so Run-on-cluster Resources can fill sooner.
@@ -22,12 +23,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Builder:** bilayer-only packing (omit `pdb_file`, set `distxy_fix` / `dims` for XY size) and free molecules via `solutes` (`--solute` / `--solute_con`, optional `--solute_inmem` / `--solute_prot_dist`). Membrane-protein jobs still pass `--pdb` and are unchanged.
 - **Builder:** `Builder.cancel_preparation` stops a running job via `process.pid` process-group kill and marks `status.json` as `cancelled`.
 - **Tools Fix PBC (GROMACS):** multi-select center/output index groups merge into temporary `GW_CENTER` / `GW_OUTPUT` compound ndx entries; optional `skip_cluster`; smarter lipid multi-group recommendations when `SOLU_MEMB` is absent.
 - **Cluster submit:** optional Slurm **GPU type** (`gpu_type`) for typed GRES — `#SBATCH --gres=gpu:TYPE:N` when set; untyped jobs still use `#SBATCH --gpus=N`. Types are parsed from probed node GRES.
 
 ### Fixed
 
+- **Tools Fix PBC:** Amber/NAMD/OpenMM center recommendation is protein + bilayer. Lipid residue names are read from PSF and PDB (not only Amber prmtop), so a NAMD PSF no longer recommends protein-only.
+- **Equilibration cluster metadata:** writing folder sizes (or a race with submit) no longer replaces the whole `execution` block, so `scheduler_job_id` / `remote_path` cannot be wiped.
+- **Cluster job rediscovery:** parse `#SBATCH -J`, sibling `remote_path`, remote `gw_<id>.log` names, and `sacct` allocation rows so Watch/Reload can restore a wiped Slurm id.
 - **PlotSpec overlay:** shared y-limits span every panel (union), and panel ylim falls back to global — structural APL Pub PNG no longer clips leaflets to the Mean-only window.
 - **PlotSpec / Pub PNG:** keep panel `series_keys` through `normalize_plot_spec`, and use the panel **x** limits (not y) when `sync_x` is on — fixes empty energetic “one panel per set” publication PNGs where lines were missing or crushed into an invisible speck at t≈0.
 - **Update manifest:** `releases/gui-versions.json` refreshed to GUI **1.0.13** / API **1.0.53** (was stuck at 1.0.11 / 1.0.49, so in-app update banners never appeared).
