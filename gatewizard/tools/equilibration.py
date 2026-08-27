@@ -54,6 +54,236 @@ def _is_production_stage(stage_params: Dict[str, Any]) -> bool:
     return kind == "production" or name == "production"
 
 
+_PROTEIN_CONSTRAINT_KEYS = frozenset({"protein_backbone", "protein_sidechain"})
+
+# Standard amino-acid / cap residue names used when MDAnalysis is unavailable.
+_STANDARD_PROTEIN_RESNAMES = frozenset(
+    {
+        "ALA",
+        "ARG",
+        "ASN",
+        "ASP",
+        "CYS",
+        "GLN",
+        "GLU",
+        "GLY",
+        "HIS",
+        "ILE",
+        "LEU",
+        "LYS",
+        "MET",
+        "PHE",
+        "PRO",
+        "SER",
+        "THR",
+        "TRP",
+        "TYR",
+        "VAL",
+        "HSE",
+        "HSD",
+        "HSP",
+        "CYX",
+        "HIE",
+        "HID",
+        "HIP",
+        "ASH",
+        "GLH",
+        "LYN",
+        "TYM",
+        "CYM",
+        "SEP",
+        "T2P",
+        "ACE",
+        "NHE",
+        "NME",
+        "COO",
+    }
+)
+
+
+def _structure_path_for_protein_detect(
+    system_files: Optional[Dict[str, Any]],
+) -> Optional[Path]:
+    """Prefer the system PDB/GRO over a bilayer-only CRYST1 file."""
+    if not system_files:
+        return None
+    for key in ("pdb", "gro", "bilayer_pdb"):
+        raw = system_files.get(key)
+        if not raw:
+            continue
+        path = Path(raw)
+        if path.is_file():
+            return path
+    return None
+
+
+def _pdb_has_protein_resname_fallback(structure_path: Path) -> bool:
+    """True if any ATOM/HETATM residue name looks like a standard amino acid."""
+    try:
+        with open(structure_path, "r", errors="ignore") as fh:
+            for line in fh:
+                if not line.startswith(("ATOM", "HETATM")):
+                    continue
+                resname = line[17:21].strip().upper()
+                if resname in _STANDARD_PROTEIN_RESNAMES:
+                    return True
+    except OSError:
+        return False
+    return False
+
+
+def pdb_has_protein(structure_path: Any) -> bool:
+    """Return True if *structure_path* contains protein atoms.
+
+    Uses MDAnalysis ``protein`` when available; falls back to standard residue
+    names if MDAnalysis is missing or the file cannot be parsed that way.
+    """
+    path = Path(structure_path)
+    if not path.is_file():
+        return False
+    try:
+        import MDAnalysis as mda
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            u = mda.Universe(str(path))
+            return len(u.select_atoms("protein")) > 0
+    except ImportError:
+        return _pdb_has_protein_resname_fallback(path)
+    except Exception as exc:
+        logger.debug("pdb_has_protein MDAnalysis failed for %s: %s", path, exc)
+        return _pdb_has_protein_resname_fallback(path)
+
+
+def _is_protein_constraint_key(key: Any) -> bool:
+    k = str(key or "").strip().lower().replace(" ", "_")
+    return k in _PROTEIN_CONSTRAINT_KEYS
+
+
+def _gui_constraint_is_protein(item: Any) -> bool:
+    """True for a GUI constraint row that targets protein backbone/sidechain."""
+    if not isinstance(item, dict):
+        return False
+    if _is_protein_constraint_key(item.get("name")):
+        return True
+    sel = " ".join(str(item.get("selection") or "").lower().split())
+    if _is_protein_constraint_key(sel):
+        return True
+    return sel in {
+        "protein and backbone",
+        "protein and not backbone",
+        "protein and name ca",
+    }
+
+
+def _com_selection_is_protein_targeted(selection: Optional[str]) -> bool:
+    """True when a COM selection is the default protein Cα / protein group."""
+    s = " ".join(str(selection or "name CA").lower().split())
+    if not s:
+        return True
+    if s in {
+        "name ca",
+        "ca",
+        "protein",
+        "protein and name ca",
+        "protein and backbone",
+        "backbone",
+    }:
+        return True
+    if "protein" in s:
+        return True
+    return bool(re.search(r"\bname\s+ca\b", s))
+
+
+def strip_protein_restraints_from_stages(
+    stage_params_list: Optional[List[Any]],
+) -> bool:
+    """Zero or drop protein backbone/sidechain restraints in-place.
+
+    Dict-style ``constraints`` (API) are zeroed so templates still see the keys.
+    List-style GUI rows are removed from the protocol. Returns True if anything
+    was active (force > 0) and was omitted.
+    """
+    if not stage_params_list:
+        return False
+    changed = False
+    for stage in stage_params_list:
+        if not isinstance(stage, dict):
+            continue
+        constraints = stage.get("constraints")
+        if isinstance(constraints, dict):
+            for key in list(constraints.keys()):
+                if not _is_protein_constraint_key(key):
+                    continue
+                try:
+                    val = float(constraints.get(key) or 0.0)
+                except (TypeError, ValueError):
+                    val = 0.0
+                if val > 0:
+                    constraints[key] = 0.0
+                    changed = True
+        elif isinstance(constraints, list):
+            kept: List[Any] = []
+            for item in constraints:
+                if _gui_constraint_is_protein(item):
+                    try:
+                        val = float((item or {}).get("force_constant") or 0.0)
+                    except (TypeError, ValueError):
+                        val = 0.0
+                    if val > 0:
+                        changed = True
+                    continue
+                kept.append(item)
+            if len(kept) != len(constraints):
+                stage["constraints"] = kept
+    return changed
+
+
+def adjust_protocol_for_missing_protein(
+    stage_params_list: Optional[List[Any]],
+    system_files: Optional[Dict[str, Any]] = None,
+    structure_path: Optional[Path] = None,
+    *,
+    add_com_restraint: bool = False,
+    add_rotation_restraint: bool = False,
+    com_selection: str = "name CA",
+    log: Any = None,
+) -> Tuple[bool, bool]:
+    """Omit protein positional (and protein COM) restraints when none is present.
+
+    Mutates *stage_params_list* in place. If protein presence cannot be
+    determined, the protocol is left unchanged.
+
+    Returns:
+        Updated ``(add_com_restraint, add_rotation_restraint)`` flags.
+    """
+    path = (
+        Path(structure_path)
+        if structure_path is not None
+        else _structure_path_for_protein_detect(system_files)
+    )
+    if path is None:
+        return add_com_restraint, add_rotation_restraint
+    if pdb_has_protein(path):
+        return add_com_restraint, add_rotation_restraint
+
+    log = log or logger
+    if strip_protein_restraints_from_stages(stage_params_list):
+        log.info(
+            "No protein detected in %s; protein backbone/sidechain restraints "
+            "were omitted from the protocol.",
+            path.name,
+        )
+    if add_com_restraint and _com_selection_is_protein_targeted(com_selection):
+        log.info(
+            "No protein detected; skipping COM/rotation restraints (selection %r).",
+            com_selection,
+        )
+        return False, False
+    return add_com_restraint, add_rotation_restraint
+
+
 def _build_universal_membrane_stages(
     scheme_type: str,
     temperature: float,
@@ -2285,6 +2515,14 @@ class NAMDEquilibrationManager:
             s.to_dict() if isinstance(s, EquilibrationStage) else s
             for s in stage_params_list
         ]
+        add_com_restraint, add_rotation_restraint = adjust_protocol_for_missing_protein(
+            stage_params_list,
+            system_files,
+            add_com_restraint=add_com_restraint,
+            add_rotation_restraint=add_rotation_restraint,
+            com_selection=com_selection,
+            log=self.logger,
+        )
 
         # Convert stage list to protocols dictionary
         for i, stage_params in enumerate(stage_params_list):
@@ -4257,6 +4495,14 @@ class OpenMMEquilibrationManager:
             s.to_dict() if isinstance(s, EquilibrationStage) else s
             for s in stage_params_list
         ]
+        add_com_restraint, add_rotation_restraint = adjust_protocol_for_missing_protein(
+            stage_params_list,
+            system_files,
+            add_com_restraint=add_com_restraint,
+            add_rotation_restraint=add_rotation_restraint,
+            com_selection=com_selection,
+            log=self.logger,
+        )
 
         if scheme_type is None:
             scheme_type = stage_params_list[0].get("ensemble", "NPT")
@@ -5158,48 +5404,7 @@ class OpenMMEquilibrationManager:
     ) -> None:
         """PDB name-based fallback for prot_pos.txt / lipid_pos.txt (no MDAnalysis)."""
         _BB_NAMES = frozenset({"N", "CA", "C", "O", "OXT", "H", "H1", "H2", "H3", "HA"})
-        _PROT_RESNAMES = frozenset(
-            {
-                "ALA",
-                "ARG",
-                "ASN",
-                "ASP",
-                "CYS",
-                "GLN",
-                "GLU",
-                "GLY",
-                "HIS",
-                "ILE",
-                "LEU",
-                "LYS",
-                "MET",
-                "PHE",
-                "PRO",
-                "SER",
-                "THR",
-                "TRP",
-                "TYR",
-                "VAL",
-                "HSE",
-                "HSD",
-                "HSP",
-                "CYX",
-                "HIE",
-                "HID",
-                "HIP",
-                "ASH",
-                "GLH",
-                "LYN",
-                "TYM",
-                "CYM",
-                "SEP",
-                "T2P",
-                "ACE",
-                "NHE",
-                "NME",
-                "COO",
-            }
-        )
+        _PROT_RESNAMES = _STANDARD_PROTEIN_RESNAMES
         _LIPID_RESNAMES = frozenset(
             {
                 "POPC",
@@ -6265,17 +6470,31 @@ class GROMACSEquilibrationManager:
                 f"protein={protein_name!r} lipid={lipid_name!r}"
             )
 
-        prot_copy = next(
-            (
-                c
-                for c in copies
-                if protein_name
-                and c["name"] == protein_name
-                and c["copy_idx"] == 0
-            ),
-            None,
-        )
-        if prot_copy is not None and index_path.exists():
+        if constraints_max is None:
+            need_prot_bb = True
+            need_prot_sc = True
+            need_lipid_posres = True
+        else:
+            need_prot_bb = float(constraints_max.get("protein_backbone") or 0.0) > 0
+            need_prot_sc = float(constraints_max.get("protein_sidechain") or 0.0) > 0
+            need_lipid_posres = (
+                float(constraints_max.get("lipid_head") or 0.0) > 0
+                or float(constraints_max.get("lipid_tail") or 0.0) > 0
+            )
+
+        prot_copy = None
+        if need_prot_bb or need_prot_sc:
+            prot_copy = next(
+                (
+                    c
+                    for c in copies
+                    if protein_name
+                    and c["name"] == protein_name
+                    and c["copy_idx"] == 0
+                ),
+                None,
+            )
+        if (need_prot_bb or need_prot_sc) and prot_copy is not None and index_path.exists():
             for group_idx, key, outfile, macro in (
                 (
                     4,
@@ -6290,6 +6509,10 @@ class GROMACSEquilibrationManager:
                     "POSRES_FC_SC",
                 ),
             ):
+                if key == "backbone" and not need_prot_bb:
+                    continue
+                if key == "sidechain" and not need_prot_sc:
+                    continue
                 gids = self._parse_ndx_group(index_path, group_idx)
                 local = self._local_indices_in_copy(gids, prot_copy)
                 if not local:
@@ -6314,20 +6537,24 @@ class GROMACSEquilibrationManager:
                             f"  Generated {outfile.name} "
                             f"({len(local)} local atoms in {protein_name}, {macro})"
                         )
-        else:
-            result["backbone"] = _genrestr(
-                4, output_dir / "posre_protein_backbone.itp", "POSRES_FC_BB"
-            )
-            result["sidechain"] = _genrestr(
-                8, output_dir / "posre_protein_sidechain.itp", "POSRES_FC_SC"
-            )
+        elif need_prot_bb or need_prot_sc:
+            if need_prot_bb:
+                result["backbone"] = _genrestr(
+                    4, output_dir / "posre_protein_backbone.itp", "POSRES_FC_BB"
+                )
+            if need_prot_sc:
+                result["sidechain"] = _genrestr(
+                    8, output_dir / "posre_protein_sidechain.itp", "POSRES_FC_SC"
+                )
             if result["backbone"] or result["sidechain"]:
                 self.logger.warning(
                     "Protein molecule type not resolved; protein POSRES may use "
                     "global indices and fail grompp if the protein has multiple copies."
                 )
 
-        if top_path is None or not top_path.exists():
+        if not need_lipid_posres:
+            self.logger.info("  Skipping lipid POSRES (force constants are 0).")
+        elif top_path is None or not top_path.exists():
             self.logger.warning(
                 "Topology not found; cannot determine lipid atom range. "
                 "Falling back to group-12 genrestr (may produce wrong indices)."
@@ -7370,6 +7597,14 @@ class GROMACSEquilibrationManager:
             s.to_dict() if isinstance(s, EquilibrationStage) else s
             for s in stage_params_list
         ]
+        add_com_restraint, add_rotation_restraint = adjust_protocol_for_missing_protein(
+            stage_params_list,
+            system_files,
+            add_com_restraint=add_com_restraint,
+            add_rotation_restraint=add_rotation_restraint,
+            com_selection=com_selection,
+            log=self.logger,
+        )
 
         if scheme_type is None:
             scheme_type = stage_params_list[0].get("ensemble", "NPT")
@@ -8515,6 +8750,11 @@ class AmberEquilibrationManager:
             s.to_dict() if isinstance(s, EquilibrationStage) else s
             for s in stage_params_list
         ]
+        adjust_protocol_for_missing_protein(
+            stage_params_list,
+            system_files,
+            log=self.logger,
+        )
 
         if scheme_type is None:
             scheme_type = stage_params_list[0].get("ensemble", "NPT")

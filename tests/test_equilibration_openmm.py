@@ -13,11 +13,17 @@ Usage:
 import pytest
 import sys
 import os
+import re
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from gatewizard.tools.equilibration import OpenMMEquilibrationManager
+from gatewizard.tools.equilibration import (
+    OpenMMEquilibrationManager,
+    pdb_has_protein,
+    strip_protein_restraints_from_stages,
+    adjust_protocol_for_missing_protein,
+)
 from gatewizard.utils.openmm_analysis import OpenMMLogAnalyzer
 
 POPC_DIR = Path(__file__).parent / "equilibration_examples" / "popc_membrane"
@@ -958,6 +964,122 @@ class TestOpenMMLogAnalyzerPlot:
         from gatewizard.utils.openmm_analysis import _COLUMN_MAP
 
         assert "Potential Energy (kJ/mol)" in _COLUMN_MAP
+
+
+# ============================================================================
+# SECTION: BILAYER-ONLY / NO-PROTEIN PROTOCOL
+# ============================================================================
+
+
+class TestNoProteinProtocol:
+    """Protein restraints must be omitted for lipid-only systems."""
+
+    def _write_pdb(self, path: Path, resname: str, atom: str = "CA") -> None:
+        path.write_text(
+            f"ATOM      1  {atom:<3s} {resname:<4s}A   1       "
+            "0.000   0.000   0.000  1.00  0.00           C\n"
+            "END\n"
+        )
+
+    def test_pdb_has_protein_true(self, tmp_path):
+        pdb = tmp_path / "prot.pdb"
+        self._write_pdb(pdb, "ALA", "CA")
+        assert pdb_has_protein(pdb) is True
+
+    def test_pdb_has_protein_false_lipid(self, tmp_path):
+        pdb = tmp_path / "lipid.pdb"
+        self._write_pdb(pdb, "POPC", "P")
+        assert pdb_has_protein(pdb) is False
+
+    def test_strip_protein_restraints_zeros_dict(self):
+        stages = [
+            {
+                "constraints": {
+                    "protein_backbone": 10.0,
+                    "protein_sidechain": 5.0,
+                    "lipid_head": 2.5,
+                }
+            }
+        ]
+        assert strip_protein_restraints_from_stages(stages) is True
+        assert stages[0]["constraints"]["protein_backbone"] == 0.0
+        assert stages[0]["constraints"]["protein_sidechain"] == 0.0
+        assert stages[0]["constraints"]["lipid_head"] == 2.5
+
+    def test_strip_protein_restraints_drops_gui_rows(self):
+        stages = [
+            {
+                "constraints": [
+                    {
+                        "name": "Protein backbone",
+                        "force_constant": 10.0,
+                        "selection": "protein_backbone",
+                    },
+                    {
+                        "name": "Lipid head",
+                        "force_constant": 2.5,
+                        "selection": "lipid_head",
+                    },
+                ]
+            }
+        ]
+        assert strip_protein_restraints_from_stages(stages) is True
+        names = [c["name"] for c in stages[0]["constraints"]]
+        assert names == ["Lipid head"]
+
+    def test_adjust_disables_protein_com(self, tmp_path):
+        pdb = tmp_path / "lipid.pdb"
+        self._write_pdb(pdb, "POPC", "P")
+        stages = [{"constraints": {"protein_backbone": 10.0, "lipid_head": 2.5}}]
+        com, rot = adjust_protocol_for_missing_protein(
+            stages,
+            {"pdb": str(pdb)},
+            add_com_restraint=True,
+            add_rotation_restraint=True,
+            com_selection="name CA",
+        )
+        assert com is False
+        assert rot is False
+        assert stages[0]["constraints"]["protein_backbone"] == 0.0
+
+    def test_openmm_lipid_only_omits_prot_pos(self, tmp_path):
+        prmtop = tmp_path / "system.prmtop"
+        inpcrd = tmp_path / "system.inpcrd"
+        pdb = tmp_path / "system.pdb"
+        prmtop.write_text("# stub prmtop")
+        inpcrd.write_text("# stub inpcrd")
+        self._write_pdb(pdb, "POPC", "P")
+        stages = [
+            {
+                "name": "NVT Stage 1",
+                "ensemble": "NVT",
+                "time_ns": 0.125,
+                "timestep": 1.0,
+                "temperature": 310.15,
+                "minimize_steps": 5000,
+                "constraints": {
+                    "protein_backbone": 10.0,
+                    "protein_sidechain": 5.0,
+                    "lipid_head": 2.5,
+                },
+            }
+        ]
+        manager = OpenMMEquilibrationManager(working_dir=tmp_path)
+        result = manager.setup_openmm_equilibration(
+            system_files={
+                "prmtop": str(prmtop),
+                "inpcrd": str(inpcrd),
+                "pdb": str(pdb),
+            },
+            stage_params_list=stages,
+            output_name="lipid_only",
+        )
+        restraints_dir = result["openmm_dir"] / "restraints"
+        assert not (restraints_dir / "prot_pos.txt").exists()
+        inp = result["config_files"][0].read_text()
+        assert re.search(r"fc_bb\s*=\s*0(?:\.0+)?", inp)
+        assert re.search(r"fc_sc\s*=\s*0(?:\.0+)?", inp)
+        assert stages[0]["constraints"]["protein_backbone"] == 0.0
 
 
 # ============================================================================

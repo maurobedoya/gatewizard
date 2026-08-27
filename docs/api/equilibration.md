@@ -4,6 +4,8 @@ Module for setting up NAMD, OpenMM, GROMACS, and Amber equilibration protocols f
 
 The three engine managers share a similar user-facing API, with engine-specific file formats and run scripts.
 
+Systems without a protein (for example a packed bilayer) omit `protein_backbone` / `protein_sidechain` restraints and protein COM/rotation. Detection uses the system PDB or GRO (`pdb_has_protein`). Lipid restraints are unchanged.
+
 ## Import
 
 ```python
