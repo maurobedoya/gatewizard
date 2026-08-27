@@ -335,9 +335,9 @@ class SystemValidator:
 
     def validate_system_inputs(
         self,
-        pdb_file: str,
-        upper_lipids: List[str],
-        lower_lipids: List[str],
+        pdb_file: Optional[str] = None,
+        upper_lipids: Optional[List[str]] = None,
+        lower_lipids: Optional[List[str]] = None,
         lipid_ratios: str = "",
         **kwargs,
     ) -> Tuple[bool, str]:
@@ -345,7 +345,7 @@ class SystemValidator:
         Validation of all system preparation inputs.
 
         Args:
-            pdb_file: Path to PDB file
+            pdb_file: Path to PDB file, or empty/None for a bilayer-only build
             upper_lipids: List of upper leaflet lipids
             lower_lipids: List of lower leaflet lipids
             lipid_ratios: Lipid ratios string
@@ -354,10 +354,63 @@ class SystemValidator:
         Returns:
             Tuple of (is_valid, error_message)
         """
-        # Validate PDB file
-        valid, error = self.validate_pdb_file(pdb_file)
-        if not valid:
-            return False, error
+        upper_lipids = upper_lipids or []
+        lower_lipids = lower_lipids or []
+        # Validate PDB file when a protein (or other --pdb) structure is given.
+        # Bilayer-only builds omit --pdb and must set --distxy_fix (or --dims).
+        pdb_path = (pdb_file or "").strip() if pdb_file else ""
+        if pdb_path:
+            valid, error = self.validate_pdb_file(pdb_path)
+            if not valid:
+                return False, error
+        else:
+            distxy = kwargs.get("distxy_fix")
+            dims = kwargs.get("dims")
+            has_distxy = False
+            if distxy is not None and str(distxy).strip() != "":
+                try:
+                    has_distxy = float(distxy) > 0
+                except (TypeError, ValueError):
+                    return False, "distxy_fix must be a positive number (Å)"
+            has_dims = False
+            if dims and len(dims) >= 1:
+                try:
+                    has_dims = float(dims[0]) > 0
+                except (TypeError, ValueError):
+                    return False, "Box X dimension must be a positive number (Å)"
+            if not has_distxy and not has_dims:
+                return (
+                    False,
+                    "A protein PDB or a membrane XY size is required. "
+                    "Set distxy_fix (Å) or explicit box dims when building a "
+                    "bilayer without a protein.",
+                )
+
+        solutes = kwargs.get("solutes") or []
+        if not solutes and kwargs.get("solute"):
+            raw = kwargs.get("solute")
+            paths = [raw] if isinstance(raw, str) else list(raw)
+            solutes = [{"pdb": p} for p in paths if str(p).strip()]
+        for solute in solutes:
+            if isinstance(solute, str):
+                solute_pdb = solute
+                concentration = str(kwargs.get("solute_con") or "1")
+            elif isinstance(solute, dict):
+                solute_pdb = str(solute.get("pdb") or solute.get("path") or "")
+                concentration = str(
+                    solute.get("concentration", solute.get("solute_con", "1"))
+                )
+            else:
+                continue
+            valid, error = self.validate_pdb_file(solute_pdb)
+            if not valid:
+                return False, f"Free-molecule PDB: {error}"
+            if not str(concentration).strip():
+                return (
+                    False,
+                    "Each free molecule needs a count or concentration "
+                    "(--solute_con), e.g. 4 or 0.1M.",
+                )
 
         # Validate lipid composition
         valid, error = self.validate_lipid_composition(upper_lipids, lower_lipids)
