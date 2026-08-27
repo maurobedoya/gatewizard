@@ -15,6 +15,17 @@ from gatewizard.utils.cluster.ssh import run_remote
 from gatewizard.utils.cluster.types import ClusterProfile, ProbeResult
 from gatewizard.utils.equilibration_job_metadata import JOB_METADATA_FILE
 
+_EXECUTION_IDENTITY_KEYS = (
+    "mode",
+    "scheduler_job_id",
+    "cluster_id",
+    "cluster_name",
+    "remote_path",
+    "submitted_at",
+    "scheduler",
+    "batch_script",
+)
+
 
 def probe_cluster(
     session_id: str,
@@ -234,24 +245,180 @@ def read_job_metadata(eq_dir: Path) -> Dict[str, Any]:
 
 
 def write_execution_metadata(eq_dir: Path, execution: Dict[str, Any]) -> Path:
-    """Merge ``execution`` into equilibration_job.json (create minimal file if needed)."""
+    """Merge ``execution`` into equilibration_job.json (create the file if needed).
+
+    Incoming keys overlay the on-disk block, but identity fields
+    (``scheduler_job_id``, ``mode``, ``remote_path``, cluster id/name, …)
+    are kept when the incoming dict omits them. That prevents a folder-size
+    write or a race with submit from wiping a live remote job.
+    """
     eq_dir = Path(eq_dir)
     eq_dir.mkdir(parents=True, exist_ok=True)
     path = eq_dir / JOB_METADATA_FILE
     payload = read_job_metadata(eq_dir)
-    payload["execution"] = execution
+    existing = (
+        dict(payload["execution"])
+        if isinstance(payload.get("execution"), dict)
+        else {}
+    )
+    incoming = dict(execution or {})
+    merged = dict(existing)
+    merged.update(incoming)
+    for key in _EXECUTION_IDENTITY_KEYS:
+        if not merged.get(key) and existing.get(key):
+            merged[key] = existing[key]
+    payload["execution"] = merged
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return path
 
 
 def update_execution_fields(eq_dir: Path, **fields: Any) -> Dict[str, Any]:
-    payload = read_job_metadata(eq_dir)
-    execution = dict(payload.get("execution") or {})
-    execution.update({k: v for k, v in fields.items() if v is not None})
-    payload["execution"] = execution
-    path = Path(eq_dir) / JOB_METADATA_FILE
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    return execution
+    incoming = {k: v for k, v in fields.items() if v is not None}
+    write_execution_metadata(eq_dir, incoming)
+    return dict(read_job_metadata(eq_dir).get("execution") or {})
+
+
+def parse_sbatch_job_name(eq_dir: Path) -> str:
+    """Return ``#SBATCH -J`` / ``--job-name`` from the local batch script, else folder name."""
+    eq_dir = Path(eq_dir)
+    slurm = eq_dir / "run_equilibration.slurm"
+    if slurm.is_file():
+        try:
+            text = slurm.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            text = ""
+        for line in text.splitlines():
+            s = line.strip()
+            if not s.startswith("#SBATCH"):
+                continue
+            m = re.search(r"(?:-J|--job-name=)\s*(\S+)", s)
+            if m:
+                return m.group(1).strip().strip("'\"")
+    return eq_dir.name
+
+
+def local_scheduler_job_id_hints(eq_dir: Path, job_name: str = "") -> List[str]:
+    """Job ids from local ``gw_<id>.log`` / ``{name}.<id>.out`` artifacts (newest first)."""
+    eq_dir = Path(eq_dir)
+    name = (job_name or parse_sbatch_job_name(eq_dir)).strip()
+    ranked: List[tuple[float, str]] = []
+    for path in eq_dir.glob("gw_*.log"):
+        m = re.fullmatch(r"gw_(\d+)\.log", path.name)
+        if not m:
+            continue
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        ranked.append((mtime, m.group(1)))
+    if name:
+        for path in list(eq_dir.glob(f"{name}.*.out")) + list(eq_dir.glob(f"{name}.*.err")):
+            m = re.fullmatch(rf"{re.escape(name)}\.(\d+)\.(?:out|err)", path.name)
+            if not m:
+                continue
+            try:
+                mtime = path.stat().st_mtime
+            except OSError:
+                mtime = 0.0
+            ranked.append((mtime, m.group(1)))
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    seen: set[str] = set()
+    out: List[str] = []
+    for _mtime, jid in ranked:
+        if jid not in seen:
+            seen.add(jid)
+            out.append(jid)
+    return out
+
+
+def infer_remote_path_from_peer_jobs(eq_dir: Path) -> Optional[str]:
+    """Infer this folder's remote path from a sibling job that still has ``remote_path``."""
+    eq_dir = Path(eq_dir)
+    parent = eq_dir.parent
+    folder = eq_dir.name
+    if not parent.is_dir() or not folder:
+        return None
+    try:
+        peers = list(parent.iterdir())
+    except OSError:
+        return None
+    for peer in peers:
+        if not peer.is_dir() or peer == eq_dir:
+            continue
+        remote = str(
+            (read_job_metadata(peer).get("execution") or {}).get("remote_path") or ""
+        ).rstrip("/")
+        if not remote:
+            continue
+        peer_name = peer.name
+        if remote.endswith("/" + peer_name):
+            return remote[: -len(peer_name)].rstrip("/") + "/" + folder
+        if remote == peer_name:
+            return folder
+    return None
+
+
+def parse_job_ids_from_filenames(names: List[str], job_name: str) -> List[str]:
+    """Extract Slurm ids from ``gw_<id>.log`` / ``{job_name}.<id>.out`` paths (order preserved)."""
+    name = (job_name or "").strip()
+    out: List[str] = []
+    seen: set[str] = set()
+    for raw in names:
+        base = Path(str(raw).strip()).name
+        if not base:
+            continue
+        jid = ""
+        m = re.fullmatch(r"gw_(\d+)\.log", base)
+        if m:
+            jid = m.group(1)
+        elif name:
+            m = re.fullmatch(rf"{re.escape(name)}\.(\d+)\.(?:out|err)", base)
+            if m:
+                jid = m.group(1)
+        if jid and jid not in seen:
+            seen.add(jid)
+            out.append(jid)
+    return out
+
+
+def parse_sacct_allocations(text: str) -> List[Dict[str, str]]:
+    """Parse ``sacct -P -X -n -o JobID,JobName,State,End`` rows (skip .batch/.extern)."""
+    rows: List[Dict[str, str]] = []
+    for line in (text or "").splitlines():
+        raw = line.strip()
+        if not raw or "|" not in raw:
+            continue
+        parts = raw.split("|")
+        jid = (parts[0] or "").strip()
+        if not jid or "." in jid or not jid.isdigit():
+            continue
+        rows.append(
+            {
+                "job_id": jid,
+                "name": (parts[1] or "").strip() if len(parts) > 1 else "",
+                "state": (parts[2] or "").strip() if len(parts) > 2 else "",
+                "end": (parts[3] or "").strip() if len(parts) > 3 else "",
+            }
+        )
+    return rows
+
+
+def pick_latest_sacct_allocation(rows: List[Dict[str, str]]) -> Optional[Dict[str, str]]:
+    """Prefer a live allocation, else the one with the latest End timestamp."""
+    if not rows:
+        return None
+    from gatewizard.utils.cluster.resources import canonicalize_slurm_state
+
+    _LIVE = {"RUNNING", "PENDING", "CONFIGURING", "COMPLETING", "REQUEUED"}
+
+    def _score(row: Dict[str, str]) -> tuple:
+        state = canonicalize_slurm_state(row.get("state") or "")
+        end = str(row.get("end") or "").strip()
+        if end.upper() in {"", "UNKNOWN", "NONE", "N/A"}:
+            end = ""
+        return (1 if state in _LIVE else 0, end)
+
+    return max(rows, key=_score)
 
 
 def read_batch_script_resources(eq_dir: Path) -> Dict[str, Any]:

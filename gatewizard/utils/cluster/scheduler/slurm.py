@@ -52,6 +52,24 @@ class SlurmAdapter:
     def cancel_command(self, job_id: str) -> List[str]:
         return ["scancel", str(job_id)]
 
+    def name_status_command(self, job_name: str) -> List[str]:
+        fmt = "%i|%T|%j|%P|%R|%N|%M|%C"
+        return ["squeue", "--me", "-n", str(job_name), "-h", "-o", fmt]
+
+    def name_accounting_command(self, job_name: str) -> List[str]:
+        return [
+            "sacct",
+            "--name",
+            str(job_name),
+            "-X",
+            "-n",
+            "-P",
+            "-o",
+            "JobID,JobName,State,End",
+            "--starttime",
+            "2024-01-01",
+        ]
+
     def inventory_command(self) -> List[str]:
         return ["sinfo", "-o", "%P %a %D %c %G %m %l"]
 

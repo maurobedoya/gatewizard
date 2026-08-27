@@ -19,6 +19,7 @@ from gatewizard.utils.cluster import (
     parse_sinfo,
     parse_squeue_me,
     prefer_gpu_modules,
+    read_job_metadata,
     render_batch_script,
     update_execution_fields,
     write_execution_metadata,
@@ -113,15 +114,15 @@ def test_parse_gpu_types_from_gres():
     assert normalize_gpu_type("bad type!") == ""
 
     nodes = [
-        NodeInfo(name="vision", partition="normal", gres="gpu:2080ti:2,gpu:3090:1", gpus=3),
-        NodeInfo(name="sina", partition="normal", gres="gpu:l4:2", gpus=2),
+        NodeInfo(name="gpu-a", partition="normal", gres="gpu:2080ti:2,gpu:3090:1", gpus=3),
+        NodeInfo(name="gpu-b", partition="normal", gres="gpu:l4:2", gpus=2),
         NodeInfo(name="cpu01", partition="normal", gres="", gpus=0),
     ]
     all_types = gpu_types_from_nodes(nodes, partition="normal")
     assert {t["type"] for t in all_types} == {"2080ti", "3090", "l4"}
-    vision_only = gpu_types_from_nodes(nodes, partition="normal", nodelist="vision")
-    assert {t["type"] for t in vision_only} == {"2080ti", "3090"}
-    assert next(t["count"] for t in vision_only if t["type"] == "3090") == 1
+    gpu_a_only = gpu_types_from_nodes(nodes, partition="normal", nodelist="gpu-a")
+    assert {t["type"] for t in gpu_a_only} == {"2080ti", "3090"}
+    assert next(t["count"] for t in gpu_a_only if t["type"] == "3090") == 1
 
 
 def test_batch_script_typed_gpu_gres():
@@ -132,13 +133,13 @@ def test_batch_script_typed_gpu_gres():
             gpus=1,
             gpu_type="3090",
             partition="normal",
-            nodelist="vision",
+            nodelist="gpu-a",
             modules=["md/namd/3.0.1+cuda"],
         )
     )
     assert "#SBATCH --gres=gpu:3090:1" in script
     assert "#SBATCH --gpus=" not in script
-    assert "#SBATCH --nodelist=vision" in script
+    assert "#SBATCH --nodelist=gpu-a" in script
 
     untyped = render_batch_script(
         BatchScriptRequest(job_name="eq", cpus=4, gpus=1, partition="gpu")
@@ -437,6 +438,98 @@ def test_execution_metadata_roundtrip(tmp_path: Path):
     assert '"scheduler_job_id": "238"' in text
 
 
+def test_write_execution_metadata_preserves_job_id_on_size_update(tmp_path: Path):
+    write_execution_metadata(
+        tmp_path,
+        {
+            "mode": "remote",
+            "scheduler_job_id": "5234",
+            "remote_path": "/home/user/gw_tests/v3_confs/o_npgt",
+            "cluster_id": "demo",
+        },
+    )
+    write_execution_metadata(
+        tmp_path, {"local_bytes": 12, "sizes_checked_at": "2026-08-26T00:00:00+00:00"}
+    )
+    execution = read_job_metadata(tmp_path)["execution"]
+    assert execution["scheduler_job_id"] == "5234"
+    assert execution["mode"] == "remote"
+    assert execution["remote_path"].endswith("/o_npgt")
+    assert execution["local_bytes"] == 12
+
+
+def test_parse_sbatch_job_name_and_local_hints(tmp_path: Path):
+    from gatewizard.utils.cluster.probe import (
+        local_scheduler_job_id_hints,
+        parse_sbatch_job_name,
+    )
+
+    (tmp_path / "run_equilibration.slurm").write_text(
+        "#!/bin/bash\n#SBATCH -J o_npgt\n#SBATCH -o o_npgt.%j.out\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "gw_5249.log").write_text("ok\n", encoding="utf-8")
+    (tmp_path / "o_npgt.5234.out").write_text("done\n", encoding="utf-8")
+    assert parse_sbatch_job_name(tmp_path) == "o_npgt"
+    hints = local_scheduler_job_id_hints(tmp_path)
+    assert "5234" in hints
+    assert "5249" in hints
+
+
+def test_infer_remote_path_from_peer_jobs(tmp_path: Path):
+    from gatewizard.utils.cluster.probe import infer_remote_path_from_peer_jobs
+
+    sibling = tmp_path / "n_nvt"
+    target = tmp_path / "o_npgt"
+    sibling.mkdir()
+    target.mkdir()
+    write_execution_metadata(
+        sibling,
+        {
+            "mode": "remote",
+            "remote_path": "/home/user/calculations/gw_tests/v3_confs/n_nvt",
+            "scheduler_job_id": "1001",
+        },
+    )
+    inferred = infer_remote_path_from_peer_jobs(target)
+    assert inferred == "/home/user/calculations/gw_tests/v3_confs/o_npgt"
+
+
+def test_parse_sacct_and_remote_filenames():
+    from gatewizard.utils.cluster.probe import (
+        parse_job_ids_from_filenames,
+        parse_sacct_allocations,
+        pick_latest_sacct_allocation,
+    )
+
+    rows = parse_sacct_allocations(
+        "JobID|JobName|State|End\n"
+        "5234|n_npat|COMPLETED|2026-08-20T01:00:00\n"
+        "5234.batch|n_npat|COMPLETED|2026-08-20T01:00:00\n"
+        "5249|n_npat|RUNNING|Unknown\n"
+    )
+    ids = {r["job_id"] for r in rows}
+    assert ids == {"5234", "5249"}
+    picked = pick_latest_sacct_allocation(rows)
+    assert picked is not None
+    assert picked["job_id"] == "5249"
+    names = [
+        "/home/u/o_npgt/gw_5234.log",
+        "/home/u/o_npgt/o_npgt.5200.out",
+    ]
+    assert parse_job_ids_from_filenames(names, "o_npgt") == ["5234", "5200"]
+
+
+def test_slurm_name_lookup_commands():
+    adapter = get_scheduler("slurm")
+    q = adapter.name_status_command("o_npgt")
+    assert q[:4] == ["squeue", "--me", "-n", "o_npgt"]
+    acct = adapter.name_accounting_command("n_npat")
+    assert "--name" in acct
+    assert "n_npat" in acct
+    assert "--starttime" in acct
+
+
 def test_archive_previous_run_outputs_and_newer_than(tmp_path: Path):
     from gatewizard.utils.equilibration_failure import (
         archive_previous_run_outputs,
@@ -659,4 +752,22 @@ def test_format_byte_size_and_local_dir_byte_size(tmp_path: Path) -> None:
     (tmp_path / "a.log").write_bytes(b"x" * 1000)
     (tmp_path / "skip.pid").write_bytes(b"y" * 50)
     assert local_dir_byte_size(tmp_path, excludes=["*.pid"]) == 1000
+
+
+def test_pull_progress_display_bytes_maps_session_to_absolute() -> None:
+    from gatewizard.utils.cluster.ssh import pull_progress_display_bytes
+
+    start = int(1.0 * 1024**3)
+    session = int(0.25 * 1024**3)
+    on_disk = start  # rsync temp file not visible to folder scan yet
+    assert pull_progress_display_bytes(
+        start,
+        on_disk=on_disk,
+        session_transferred=session,
+    ) == start + session
+    assert pull_progress_display_bytes(
+        start,
+        on_disk=on_disk,
+        absolute_hint=start + session,
+    ) == start + session
 

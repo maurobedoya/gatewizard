@@ -271,7 +271,7 @@ def render_batch_script(req: BatchScriptRequest) -> str:
         gpu_type = normalize_gpu_type(getattr(req, "gpu_type", "") or "")
         n_gpus = int(req.gpus)
         if gpu_type:
-            # Typed GRES (e.g. LBQC vision: gpu:3090:1). Portable where types exist.
+            # Typed GRES (e.g. gpu:3090:1). Portable where types exist.
             extra_lines.append(f"#SBATCH --gres=gpu:{gpu_type}:{n_gpus}")
         else:
             extra_lines.append(f"#SBATCH --gpus={n_gpus}")
