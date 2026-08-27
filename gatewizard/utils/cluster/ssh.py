@@ -55,7 +55,7 @@ def parse_rsync_progress_line(line: str) -> Optional[Dict[str, object]]:
         "bytes": transferred,
         "speed": match.group("speed"),
         "eta": match.group("eta"),
-        "message": f"Downloading… {percent}% ({match.group('speed')})",
+        "message": f"Downloading… {match.group('speed')}",
     }
 
 
@@ -69,6 +69,43 @@ def format_byte_size(num: int) -> str:
             return f"{n:.1f} {unit}"
         n /= 1024.0
     return f"{int(num)} B"
+
+
+def format_byte_size_progress(num: int) -> str:
+    """Progress line formatting — finer steps so large pulls do not look frozen."""
+    n = float(max(0, int(num)))
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024.0 or unit == "TB":
+            if unit == "B":
+                return f"{int(n)} {unit}"
+            if unit in {"GB", "TB"}:
+                return f"{n:.2f} {unit}"
+            return f"{n:.1f} {unit}"
+        n /= 1024.0
+    return f"{int(num)} B"
+
+
+def pull_progress_display_bytes(
+    start_local: int,
+    *,
+    on_disk: Optional[int] = None,
+    session_transferred: Optional[int] = None,
+    absolute_hint: Optional[int] = None,
+) -> int:
+    """Best local byte estimate during a pull.
+
+    rsync progress2 ``bytes`` are cumulative for the current session only.
+  When the folder already holds data from a prior partial pull, map session
+    bytes to ``start_local + session`` so a growing large file still moves the bar.
+    """
+    best = max(0, int(start_local))
+    if on_disk is not None and on_disk >= 0:
+        best = max(best, int(on_disk))
+    if session_transferred is not None and session_transferred >= 0:
+        best = max(best, int(start_local) + int(session_transferred))
+    if absolute_hint is not None and absolute_hint >= 0:
+        best = max(best, int(absolute_hint))
+    return int(best)
 
 
 def compute_rsync_timeout(
@@ -521,6 +558,7 @@ def rsync_from_remote(
     append: bool = False,
     on_progress: Optional[ProgressCallback] = None,
     expected_bytes: Optional[int] = None,
+    cancel_event: Optional[threading.Event] = None,
 ) -> Tuple[int, str, str]:
     session = get_session(session_id)
     Path(local_dir).mkdir(parents=True, exist_ok=True)
@@ -535,6 +573,7 @@ def rsync_from_remote(
             excludes=excludes,
             includes=includes,
             on_progress=on_progress,
+            cancel_event=cancel_event,
         )
 
     ssh_opts = [
@@ -574,6 +613,8 @@ def rsync_from_remote(
     wall_timeout = compute_rsync_timeout(expected_bytes, base=timeout)
     idle_limit = max(60, int(idle_timeout))
 
+    start_local = local_dir_byte_size(local_dir, excludes=ex_list)
+
     if on_progress is None:
         proc = subprocess.run(
             cmd, capture_output=True, text=True, timeout=wall_timeout, check=False
@@ -583,19 +624,33 @@ def rsync_from_remote(
     total_bytes = int(expected_bytes or 0)
     if total_bytes <= 0:
         total_bytes = remote_dir_byte_size(session_id, remote_dir)
-    on_progress(
-        {
-            "phase": "sync",
-            "percent": 0,
-            "bytes": 0,
-            "total_bytes": total_bytes or None,
-            "message": (
-                f"Downloading… 0 / {format_byte_size(total_bytes)}"
-                if total_bytes > 0
-                else "Starting download…"
-            ),
-        }
-    )
+    if total_bytes > 0:
+        start_pct = max(0, min(99, int(100.0 * start_local / total_bytes)))
+        on_progress(
+            {
+                "phase": "sync",
+                "percent": start_pct,
+                "bytes": start_local,
+                "total_bytes": total_bytes,
+                "message": (
+                    f"Downloading… {format_byte_size(start_local)} / "
+                    f"{format_byte_size(total_bytes)}"
+                ),
+            }
+        )
+    else:
+        on_progress(
+            {
+                "phase": "sync",
+                "percent": 0,
+                "bytes": start_local,
+                "message": (
+                    f"Downloading… {format_byte_size(start_local)} on disk"
+                    if start_local > 0
+                    else "Starting download…"
+                ),
+            }
+        )
     try:
         proc = subprocess.Popen(
             cmd,
@@ -612,11 +667,47 @@ def rsync_from_remote(
     stdout_chunks: List[str] = []
     stop = threading.Event()
     last_pct = -1
+    last_emit_bytes = -1
     lock = threading.Lock()
     progress2_seen = threading.Event()
-    start_local = local_dir_byte_size(local_dir, excludes=ex_list)
     start_time = time.time()
     activity = {"time": start_time, "bytes": start_local}
+
+    def _sync_display_bytes(hint: Optional[int] = None) -> int:
+        """On-disk folder size plus rsync session bytes when progress2 is active."""
+        try:
+            on_disk = local_dir_byte_size(local_dir, excludes=ex_list)
+        except Exception:
+            on_disk = activity["bytes"]
+        absolute = hint if isinstance(hint, int) else None
+        return pull_progress_display_bytes(
+            start_local,
+            on_disk=on_disk,
+            absolute_hint=absolute,
+        )
+
+    def _normalize_sync_evt(evt: Dict[str, object]) -> Dict[str, object]:
+        payload = dict(evt)
+        if payload.get("phase") != "sync" or total_bytes <= 0:
+            return payload
+        hint = payload.get("bytes")
+        display = _sync_display_bytes(hint if isinstance(hint, int) else None)
+        payload["bytes"] = display
+        payload["total_bytes"] = total_bytes
+        payload["percent"] = max(0, min(99, int(100.0 * display / total_bytes)))
+        speed = payload.get("speed")
+        if "Downloading" in str(payload.get("message") or "") or "Re-syncing" in str(
+            payload.get("message") or ""
+        ) or display > 0:
+            base = (
+                f"Downloading… {format_byte_size_progress(display)} / "
+                f"{format_byte_size_progress(total_bytes)}"
+            )
+            if speed:
+                payload["message"] = f"{base} · {speed}"
+            else:
+                payload["message"] = base
+        return payload
 
     def _mark_activity(bytes_hint: Optional[int] = None) -> None:
         activity["time"] = time.time()
@@ -624,21 +715,30 @@ def rsync_from_remote(
             activity["bytes"] = max(activity["bytes"], bytes_hint)
 
     def _emit(evt: Dict[str, object]) -> None:
-        nonlocal last_pct
-        transferred = evt.get("bytes")
+        nonlocal last_pct, last_emit_bytes
+        payload = _normalize_sync_evt(evt)
+        transferred = payload.get("bytes")
         if isinstance(transferred, int):
             _mark_activity(transferred)
         else:
             _mark_activity()
         with lock:
-            pct_raw = evt.get("percent")
+            pct_raw = payload.get("percent")
             pct = int(pct_raw) if isinstance(pct_raw, (int, float)) else -1
-            # Throttle duplicate percentages (size poller can fire often).
-            if pct == last_pct and pct not in {0, 100}:
+            b = int(transferred) if isinstance(transferred, int) else -1
+            # Throttle duplicate percentages, but keep emitting when bytes advance
+            # (one large trajectory can hold percent flat while bytes still climb).
+            if (
+                pct == last_pct
+                and pct not in {0, 100}
+                and b <= last_emit_bytes
+            ):
                 return
             if pct >= 0:
                 last_pct = pct
-            on_progress(evt)
+            if b >= 0:
+                last_emit_bytes = b
+            on_progress(payload)
 
     def _progress_from_transferred(transferred: int) -> Dict[str, object]:
         if total_bytes > 0:
@@ -649,15 +749,15 @@ def rsync_from_remote(
                 "bytes": transferred,
                 "total_bytes": total_bytes,
                 "message": (
-                    f"Downloading… {format_byte_size(transferred)} / "
-                    f"{format_byte_size(total_bytes)} ({pct}%)"
+                    f"Downloading… {format_byte_size_progress(transferred)} / "
+                    f"{format_byte_size_progress(total_bytes)}"
                 ),
             }
         return {
             "phase": "sync",
             "percent": 0,
             "bytes": transferred,
-            "message": f"Downloading… {format_byte_size(transferred)}",
+            "message": f"Downloading… {format_byte_size_progress(transferred)}",
         }
 
     def _consume_progress_line(line: str) -> None:
@@ -667,7 +767,11 @@ def rsync_from_remote(
         progress2_seen.set()
         transferred = evt.get("bytes")
         if isinstance(transferred, int) and transferred >= 0:
-            base = _progress_from_transferred(transferred)
+            absolute = pull_progress_display_bytes(
+                start_local,
+                session_transferred=int(transferred),
+            )
+            base = _progress_from_transferred(absolute)
             if evt.get("speed"):
                 base["speed"] = evt["speed"]
                 base["message"] = f"{base['message']} · {evt['speed']}"
@@ -725,33 +829,23 @@ def rsync_from_remote(
     def _poll_local_size() -> None:
         """Fallback progress when progress2 is silent: local size vs remote total.
 
-        When local is already nearly full (typical ignore-times re-pull), size
-        stays flat — emit a status heartbeat until progress2 reports bytes.
+        Keep emitting whenever on-disk size advances — large trajectory files can
+        sit on the same integer percent for a long time while bytes still climb.
         """
         if total_bytes <= 0:
             return
-        nearly_full = start_local >= int(total_bytes * 0.95)
+        last_disk = -1
         while not stop.wait(0.4):
-            if progress2_seen.is_set():
-                continue
-            if nearly_full:
-                _emit(
-                    {
-                        "phase": "sync",
-                        "percent": max(1, last_pct) if last_pct > 0 else 1,
-                        "bytes": start_local,
-                        "total_bytes": total_bytes,
-                        "message": (
-                            f"Re-syncing… {format_byte_size(start_local)} on disk / "
-                            f"{format_byte_size(total_bytes)} remote "
-                            "(waiting for transfer counters)"
-                        ),
-                    }
-                )
-                continue
             cur = local_dir_byte_size(local_dir, excludes=ex_list)
             if cur > activity["bytes"]:
                 _mark_activity(cur)
+            grew = cur > last_disk
+            if grew:
+                last_disk = cur
+            # After progress2 starts, still emit on real disk growth; skip only
+            # when nothing changed on disk (progress2 owns the heartbeats then).
+            if progress2_seen.is_set() and not grew:
+                continue
             pct = max(0, min(99, int(100.0 * cur / total_bytes)))
             _emit(
                 {
@@ -760,8 +854,8 @@ def rsync_from_remote(
                     "bytes": cur,
                     "total_bytes": total_bytes,
                     "message": (
-                        f"Downloading… {format_byte_size(cur)} / "
-                        f"{format_byte_size(total_bytes)} ({pct}%)"
+                        f"Downloading… {format_byte_size_progress(cur)} / "
+                        f"{format_byte_size_progress(total_bytes)}"
                     ),
                 }
             )
@@ -774,6 +868,10 @@ def rsync_from_remote(
     size_thread.start()
 
     while proc.poll() is None:
+        if cancel_event and cancel_event.is_set():
+            proc.kill()
+            stop.set()
+            raise ClusterSSHError("Pull cancelled")
         now = time.time()
         if now - activity["time"] > idle_limit:
             proc.kill()
@@ -1006,6 +1104,7 @@ def _rsync_from_paramiko_sftp(
     excludes: Optional[List[str]] = None,
     includes: Optional[List[str]] = None,
     on_progress: Optional[ProgressCallback] = None,
+    cancel_event: Optional[threading.Event] = None,
 ) -> Tuple[int, str, str]:
     client = getattr(session, "_client", None)
     if client is None:
@@ -1029,6 +1128,7 @@ def _rsync_from_paramiko_sftp(
             excludes=excludes or [],
             includes=includes,
             on_progress=on_progress,
+            cancel_event=cancel_event,
         )
     finally:
         sftp.close()
@@ -1105,8 +1205,11 @@ def _download_dir_sftp(
     excludes: List[str],
     includes: Optional[List[str]] = None,
     on_progress: Optional[ProgressCallback] = None,
+    cancel_event: Optional[threading.Event] = None,
     _state: Optional[Dict[str, int]] = None,
 ) -> int:
+    if cancel_event and cancel_event.is_set():
+        raise ClusterSSHError("Pull cancelled")
     Path(local_dir).mkdir(parents=True, exist_ok=True)
     import stat as statmod
 
@@ -1120,6 +1223,8 @@ def _download_dir_sftp(
         _state = {"done": 0, "total": total}
 
     for entry in sftp.listdir_attr(remote_dir):
+        if cancel_event and cancel_event.is_set():
+            raise ClusterSSHError("Pull cancelled")
         name = entry.filename
         if name in {".", ".."}:
             continue
@@ -1135,6 +1240,7 @@ def _download_dir_sftp(
                 excludes=excludes,
                 includes=includes,
                 on_progress=on_progress,
+                cancel_event=cancel_event,
                 _state=_state,
             )
         elif _name_matches_includes(name, includes):
