@@ -35,6 +35,116 @@ from gatewizard.tools.ligand_parametrization import (
 logger = get_logger(__name__)
 
 
+def optional_pdb_path(pdb_file: Optional[str]) -> Optional[str]:
+    """Return a non-empty PDB path, or ``None`` when building without a protein."""
+    if pdb_file is None:
+        return None
+    text = str(pdb_file).strip()
+    if not text or text.lower() in {"none", "null"}:
+        return None
+    return text
+
+
+def normalize_builder_solutes(config: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """Normalize free-molecule entries for packmol-memgen ``--solute`` / ``--solute_con``.
+
+    Accepts ``solutes`` as a list of dicts (``pdb``, ``concentration``, optional
+    ``in_membrane`` / ``prot_dist`` / ``name``) or the shorthand ``solute`` plus
+    ``solute_con`` strings/lists used in the Amber tutorial.
+    """
+    cfg = config or {}
+    raw = cfg.get("solutes")
+    out: List[Dict[str, Any]] = []
+    if raw:
+        items = raw if isinstance(raw, (list, tuple)) else [raw]
+        for item in items:
+            if isinstance(item, str):
+                path = item.strip()
+                if path:
+                    out.append(
+                        {
+                            "pdb": path,
+                            "concentration": "1",
+                            "in_membrane": False,
+                            "prot_dist": None,
+                            "name": "",
+                        }
+                    )
+                continue
+            if not isinstance(item, dict):
+                continue
+            path = str(item.get("pdb") or item.get("path") or "").strip()
+            if not path:
+                continue
+            prot_dist = item.get("prot_dist", item.get("solute_prot_dist"))
+            out.append(
+                {
+                    "pdb": path,
+                    "concentration": str(
+                        item.get("concentration", item.get("solute_con", "1"))
+                    ).strip()
+                    or "1",
+                    "in_membrane": bool(
+                        item.get("in_membrane", item.get("solute_inmem", False))
+                    ),
+                    "prot_dist": prot_dist,
+                    "name": str(item.get("name") or "").strip(),
+                }
+            )
+        return out
+
+    solute = cfg.get("solute")
+    if not solute:
+        return []
+    paths = [solute] if isinstance(solute, str) else list(solute)
+    cons = cfg.get("solute_con", "1")
+    if isinstance(cons, (list, tuple)):
+        cons_list = [str(c).strip() or "1" for c in cons]
+    else:
+        cons_list = [str(cons).strip() or "1"]
+    in_mem = bool(cfg.get("solute_inmem", False))
+    prot_dist = cfg.get("solute_prot_dist")
+    for i, path in enumerate(paths):
+        text = str(path).strip()
+        if not text:
+            continue
+        con = cons_list[i] if i < len(cons_list) else cons_list[-1]
+        out.append(
+            {
+                "pdb": text,
+                "concentration": con,
+                "in_membrane": in_mem,
+                "prot_dist": prot_dist,
+                "name": "",
+            }
+        )
+    return out
+
+
+def effective_distxy_fix(config: Optional[Dict[str, Any]] = None) -> Optional[float]:
+    """Membrane XY size (Å) for packmol-memgen ``--distxy_fix``.
+
+    Uses ``distxy_fix`` when set; otherwise the X length of ``dims``.
+    Required by packmol-memgen when no protein PDB is given.
+    """
+    cfg = config or {}
+    raw = cfg.get("distxy_fix")
+    if raw is not None and str(raw).strip() != "":
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            return None
+        return value if value > 0 else None
+    dims = cfg.get("dims")
+    if dims and len(dims) >= 1:
+        try:
+            value = float(dims[0])
+        except (TypeError, ValueError):
+            return None
+        return value if value > 0 else None
+    return None
+
+
 class BuilderError(Exception):
     """Custom exception for system building errors."""
 
@@ -78,6 +188,10 @@ class Builder:
             "nloop_all": 100,  # GENCAN loops for all-together packing
             "tolerance": 2.0,  # PACKMOL clash tolerance (radius1+radius2)
             "md_engine": None,  # Target MD engine: namd, gromacs, openmm, amber, or None
+            "distxy_fix": None,  # Fixed membrane XY size (Å); required without a protein PDB
+            "solutes": [],  # Free molecules: [{pdb, concentration, in_membrane, prot_dist, name}]
+            "solute_inmem": False,  # Place free molecules in the membrane (else water)
+            "solute_prot_dist": None,  # Keep free molecules this far from the protein (Å)
         }
 
     def set_configuration(self, **kwargs):
@@ -87,9 +201,9 @@ class Builder:
 
     def validate_system_inputs(
         self,
-        pdb_file: str,
-        upper_lipids: List[str],
-        lower_lipids: List[str],
+        pdb_file: Optional[str] = None,
+        upper_lipids: Optional[List[str]] = None,
+        lower_lipids: Optional[List[str]] = None,
         lipid_ratios: str = "",
         **kwargs,
     ) -> Tuple[bool, str]:
@@ -97,7 +211,7 @@ class Builder:
         Validate all inputs for system preparation.
 
         Args:
-            pdb_file: Path to input PDB file
+            pdb_file: Path to input PDB file, or empty/None for a bilayer-only build
             upper_lipids: List of lipids for upper leaflet
             lower_lipids: List of lipids for lower leaflet
             lipid_ratios: Ratio string (format: upper_ratios//lower_ratios)
@@ -108,8 +222,9 @@ class Builder:
             message, the message is a warning (e.g. force-field note or
             protein hydrogens detected).
         """
+        pdb_path = optional_pdb_path(pdb_file)
         valid, error_msg = self.validator.validate_system_inputs(
-            pdb_file, upper_lipids, lower_lipids, lipid_ratios, **kwargs
+            pdb_path, upper_lipids or [], lower_lipids or [], lipid_ratios, **kwargs
         )
         if not valid:
             return False, error_msg
@@ -119,10 +234,11 @@ class Builder:
             warnings.append(error_msg)
 
         # Foreign / non-Amber protein H often break tleap after packmol-memgen.
-        # Skip the warning when the user already opted to strip them.
-        if not kwargs.get("remove_protein_h", False):
+        # Skip the warning when the user already opted to strip them, or when
+        # there is no protein PDB (bilayer-only / free-molecule builds).
+        if pdb_path and not kwargs.get("remove_protein_h", False):
             try:
-                n_h = count_protein_hydrogens(pdb_file)
+                n_h = count_protein_hydrogens(pdb_path)
             except OSError as exc:
                 logger.warning(f"Could not scan protein hydrogens: {exc}")
                 n_h = 0
@@ -136,14 +252,26 @@ class Builder:
                     "heteroatoms keep theirs."
                 )
 
+        solutes = normalize_builder_solutes(kwargs)
+        if solutes and kwargs.get("parametrize", True):
+            ligand_params = kwargs.get("ligand_params") or {}
+            named = [s.get("name") or "" for s in solutes]
+            missing = [n for n in named if n and n not in ligand_params]
+            if not ligand_params or missing:
+                warnings.append(
+                    "Free molecules need GAFF parameters (frcmod/lib) when "
+                    "parametrizing. Parametrize each molecule before generating "
+                    "inputs, or pass ligand_params / --ligand_param."
+                )
+
         return True, "\n\n".join(warnings)
 
     def prepare_system(
         self,
-        pdb_file: str,
-        working_dir: str,
-        upper_lipids: List[str],
-        lower_lipids: List[str],
+        pdb_file: Optional[str] = None,
+        working_dir: str = "",
+        upper_lipids: Optional[List[str]] = None,
+        lower_lipids: Optional[List[str]] = None,
         lipid_ratios: str = "",
         **kwargs,
     ) -> Tuple[bool, str, Optional[Path]]:
@@ -151,7 +279,7 @@ class Builder:
         Prepare a complete membrane protein system.
 
         Args:
-            pdb_file: Path to input PDB file
+            pdb_file: Path to input PDB file, or empty/None for a bilayer-only build
             working_dir: Working directory for outputs
             upper_lipids: List of lipids for upper leaflet
             lower_lipids: List of lipids for lower leaflet
@@ -166,12 +294,18 @@ class Builder:
                   checks when *wait=True* (default ``5.0``).
                 * **wait_verbose** (*bool*) – Print progress while waiting
                   (default ``True``).
+                * **distxy_fix** (*float*) – Membrane XY size in Å. Required
+                  when *pdb_file* is omitted.
+                * **solutes** (*list*) – Free molecules to pack (``pdb`` +
+                  ``concentration``; see ``normalize_builder_solutes``).
 
         Returns:
             Tuple of (success, message, job_directory)
         """
         # Update configuration with provided parameters
         config = {**self.config, **kwargs}
+        upper_lipids = upper_lipids or []
+        lower_lipids = lower_lipids or []
 
         # Validate inputs
         valid, error_msg = self.validate_system_inputs(
@@ -181,28 +315,9 @@ class Builder:
             return False, error_msg, None
 
         try:
-            # Create job directory
-            custom_output_name = config.get("output_folder_name", None)
-            job_dir = self._create_job_directory(
-                pdb_file, working_dir, custom_output_name
+            job_dir, local_pdb, config = self._prepare_job_workspace(
+                pdb_file, working_dir, config
             )
-
-            # Copy PDB file to job directory (optionally strip protein H)
-            local_pdb = self._prepare_input_files(
-                pdb_file, job_dir, remove_protein_h=bool(config.get("remove_protein_h"))
-            )
-
-            # Check if we need to use the notprotonate approach
-            # When notprotonate=True, the user should have already prepared the PDB
-            # with correct protonation states and residue names (e.g., GLU->GLH)
-            if config.get("notprotonate", False):
-                logger.info(
-                    "Using notprotonate mode - assuming PDB has correct protonation states"
-                )
-                # Add a comment in the generated script about the proper workflow
-                config["_workflow_note"] = (
-                    "IMPORTANT: When using --notprotonate, ensure your PDB file has correct protonation states and residue names (e.g., GLU->GLH for protonated glutamate)"
-                )
 
             # Build packmol-memgen command
             cmd = self._build_command(
@@ -238,10 +353,10 @@ class Builder:
 
     def generate_preparation_inputs(
         self,
-        pdb_file: str,
-        working_dir: str,
-        upper_lipids: List[str],
-        lower_lipids: List[str],
+        pdb_file: Optional[str] = None,
+        working_dir: str = "",
+        upper_lipids: Optional[List[str]] = None,
+        lower_lipids: Optional[List[str]] = None,
         lipid_ratios: str = "",
         **kwargs,
     ) -> Tuple[bool, str, Optional[Path]]:
@@ -250,8 +365,13 @@ class Builder:
 
         Creates a job directory with ``run_preparation.sh`` and ``status.json``
         (status ``not_started``).  Use :meth:`run_preparation` to execute the job.
+
+        *pdb_file* may be empty/None for a bilayer-only build (set
+        ``distxy_fix`` or ``dims``). Free molecules use ``solutes``.
         """
         config = {**self.config, **kwargs}
+        upper_lipids = upper_lipids or []
+        lower_lipids = lower_lipids or []
 
         valid, error_msg = self.validate_system_inputs(
             pdb_file, upper_lipids, lower_lipids, lipid_ratios, **config
@@ -260,22 +380,9 @@ class Builder:
             return False, error_msg, None
 
         try:
-            custom_output_name = config.get("output_folder_name", None)
-            job_dir = self._create_job_directory(
-                pdb_file, working_dir, custom_output_name
+            job_dir, local_pdb, config = self._prepare_job_workspace(
+                pdb_file, working_dir, config
             )
-            local_pdb = self._prepare_input_files(
-                pdb_file, job_dir, remove_protein_h=bool(config.get("remove_protein_h"))
-            )
-
-            if config.get("notprotonate", False):
-                logger.info(
-                    "Using notprotonate mode - assuming PDB has correct protonation states"
-                )
-                config["_workflow_note"] = (
-                    "IMPORTANT: When using --notprotonate, ensure your PDB file has correct protonation states and residue names (e.g., GLU->GLH for protonated glutamate)"
-                )
-
             cmd = self._build_command(
                 local_pdb, upper_lipids, lower_lipids, lipid_ratios, config
             )
@@ -557,8 +664,44 @@ class Builder:
 
             time.sleep(poll_interval)
 
+    def _prepare_job_workspace(
+        self,
+        pdb_file: Optional[str],
+        working_dir: str,
+        config: Dict[str, Any],
+    ) -> Tuple[Path, Optional[Path], Dict[str, Any]]:
+        """Create the job directory and copy protein / free-molecule PDBs."""
+        pdb_path = optional_pdb_path(pdb_file)
+        custom_output_name = config.get("output_folder_name", None)
+        job_dir = self._create_job_directory(
+            pdb_path, working_dir, custom_output_name
+        )
+
+        local_pdb: Optional[Path] = None
+        if pdb_path:
+            local_pdb = self._prepare_input_files(
+                pdb_path, job_dir, remove_protein_h=bool(config.get("remove_protein_h"))
+            )
+            if config.get("notprotonate", False):
+                logger.info(
+                    "Using notprotonate mode - assuming PDB has correct protonation states"
+                )
+                config["_workflow_note"] = (
+                    "IMPORTANT: When using --notprotonate, ensure your PDB file has correct protonation states and residue names (e.g., GLU->GLH for protonated glutamate)"
+                )
+
+        solutes = normalize_builder_solutes(config)
+        if solutes:
+            config["solutes"] = self._prepare_solute_files(job_dir, solutes)
+
+        config["_has_protein"] = local_pdb is not None
+        return job_dir, local_pdb, config
+
     def _create_job_directory(
-        self, pdb_file: str, working_dir: str, custom_output_name: Optional[str] = None
+        self,
+        pdb_file: Optional[str],
+        working_dir: str,
+        custom_output_name: Optional[str] = None,
     ) -> Path:
         """Create unique job directory."""
         work_dir = Path(working_dir).resolve()
@@ -573,11 +716,16 @@ class Builder:
                 job_dir = work_dir / f"{custom_output_name}_{timestamp}"
         else:
             # Use default naming scheme
-            pdb_name = os.path.splitext(os.path.basename(pdb_file))[0]
-            job_dir = work_dir / f"02_build_{pdb_name}"
+            pdb_path = optional_pdb_path(pdb_file)
+            if pdb_path:
+                pdb_name = os.path.splitext(os.path.basename(pdb_path))[0]
+                stem = f"02_build_{pdb_name}"
+            else:
+                stem = "02_build_bilayer"
+            job_dir = work_dir / stem
             if job_dir.exists():
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                job_dir = work_dir / f"02_build_{pdb_name}_{timestamp}"
+                job_dir = work_dir / f"{stem}_{timestamp}"
 
         job_dir.mkdir(parents=True, exist_ok=True)
 
@@ -608,9 +756,26 @@ class Builder:
         logger.info(f"Copied PDB file to: {local_pdb}")
         return local_pdb
 
+    def _prepare_solute_files(
+        self, job_dir: Path, solutes: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Copy free-molecule PDBs into the job directory."""
+        dest_dir = job_dir / "solutes"
+        dest_dir.mkdir(exist_ok=True)
+        local: List[Dict[str, Any]] = []
+        for index, solute in enumerate(solutes):
+            src = Path(solute["pdb"]).expanduser().resolve()
+            dest = dest_dir / src.name
+            if dest.exists() and dest.resolve() != src:
+                dest = dest_dir / f"{src.stem}_{index}{src.suffix}"
+            shutil.copy2(src, dest)
+            local.append({**solute, "pdb": str(dest)})
+            logger.info(f"Copied solute PDB to: {dest}")
+        return local
+
     def _build_command(
         self,
-        pdb_file: Path,
+        pdb_file: Optional[Path],
         upper_lipids: List[str],
         lower_lipids: List[str],
         lipid_ratios: str,
@@ -618,7 +783,8 @@ class Builder:
     ) -> List[str]:
         """Build packmol-memgen command."""
         cmd = ["packmol-memgen"]
-        cmd.extend(["--pdb", str(pdb_file)])
+        if pdb_file is not None:
+            cmd.extend(["--pdb", str(pdb_file)])
 
         # Add lipids (only needed for packing stage or single-stage process)
         if not config.get("parametrize_only", False):
@@ -635,8 +801,10 @@ class Builder:
         cmd.extend(["--ffprot", config["protein_ff"]])
         cmd.extend(["--fflip", config["lipid_ff"]])
 
-        # Add flags
-        if config.get("preoriented", True):
+        # Add flags. --preoriented is only meaningful with a protein PDB
+        # (otherwise packmol-memgen would run MEMEMBED on nothing).
+        has_protein = pdb_file is not None
+        if has_protein and config.get("preoriented", True):
             cmd.append("--preoriented")
 
         # Add --parametrize to generate bilayer*_lipid.pdb with CRYST1 information
@@ -681,6 +849,37 @@ class Builder:
         if dims and len(dims) == 3:
             cmd.extend(["--dims", str(dims[0]), str(dims[1]), str(dims[2])])
 
+        # Fixed membrane XY size. Required by packmol-memgen when --pdb is omitted.
+        # Do not infer from --dims when a protein is present — that would change
+        # the existing membrane-protein command.
+        explicit_distxy = config.get("distxy_fix")
+        if explicit_distxy is not None and str(explicit_distxy).strip() != "":
+            cmd.extend(["--distxy_fix", str(explicit_distxy)])
+        elif not has_protein:
+            inferred = effective_distxy_fix(config)
+            if inferred is not None:
+                cmd.extend(["--distxy_fix", str(inferred)])
+
+        # Free molecules packed into water (default) or the membrane.
+        solutes = normalize_builder_solutes(config)
+        if solutes and not config.get("parametrize_only", False):
+            for solute in solutes:
+                cmd.extend(["--solute", str(solute["pdb"])])
+                cmd.extend(["--solute_con", str(solute["concentration"])])
+            in_mem = bool(config.get("solute_inmem", False)) or any(
+                bool(s.get("in_membrane")) for s in solutes
+            )
+            if in_mem:
+                cmd.append("--solute_inmem")
+            prot_dist = config.get("solute_prot_dist")
+            if prot_dist is None:
+                for solute in solutes:
+                    if solute.get("prot_dist") not in (None, ""):
+                        prot_dist = solute["prot_dist"]
+                        break
+            if has_protein and prot_dist not in (None, ""):
+                cmd.extend(["--solute_prot_dist", str(prot_dist)])
+
         # Add ligand parameters (--ligand_param frcmod:lib for each ligand)
         ligand_params = config.get("ligand_params", {})
         if ligand_params:
@@ -722,7 +921,8 @@ class Builder:
 
     def _get_workflow_steps(self, config: Dict[str, Any]) -> List[str]:
         """Return workflow step names for the given configuration."""
-        preoriented = config.get("preoriented", True)
+        has_protein = config.get("_has_protein", True)
+        preoriented = config.get("preoriented", True) or not has_protein
         parametrize = config.get("parametrize", True)
         if preoriented:
             return ["Packmol", "pdb4amber", "tleap"] if parametrize else ["Packmol"]

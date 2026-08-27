@@ -112,14 +112,14 @@ The results table shows:
 
 *GUI: Builder tab.*
 
-The **Builder** tab provides an interface for building membrane protein systems using **packmol-memgen** and **AmberTools**.
+The **Builder** tab provides an interface for building membrane systems using **packmol-memgen** and **AmberTools**: a protein in a bilayer (default), a bilayer alone, and optional free molecules in water or in the membrane.
 
 ### Overview
 
 The Builder tab automates the process of:
 
-1. Packing the protein into a lipid membrane
-2. Adding water and ions
+1. Packing a protein (optional) into a lipid membrane
+2. Adding water, ions, and optional free molecules
 3. Parametrizing the system for molecular dynamics simulations
 4. Generating all necessary input files (topology, coordinates, restraints)
 
@@ -133,11 +133,13 @@ The Builder tab automates the process of:
 
 #### 2. Select Working File (PDB)
 
-- **Input**: Your prepared protein structure (ideally from Propka analysis)
-- **Requirements**: 
+- **Include protein** (checked by default): your prepared protein structure (ideally from Propka analysis)
+- **Requirements** (when a protein is included):
   - Clean PDB format
   - Proper protonation states if using propka results
   - Pre-oriented if using that option
+- Uncheck **Include protein** to build a bilayer only. Then set **Membrane XY** (Å) under System Options (`--distxy_fix`; required by packmol-memgen when there is no protein).
+- **Free molecules** (optional): add a ligand/solute PDB, amount (`4` or `0.1M`), and optionally place copies in the membrane. Parametrize (GAFF2) before generating inputs if you will run tleap. With a protein, **Protein distance** keeps copies away from the protein (`--solute_prot_dist`).
 - **Browse** to select your PDB file
 
 #### 3. Set Output Folder Name
@@ -299,6 +301,7 @@ Equilibration is critical before production MD simulations. This tab:
 
 - Select the directory containing your prepared system
 - Should contain `.prmtop` and `.inpcrd` files from Builder tab
+- **Bilayer-only (no protein):** protein backbone and sidechain restraints are omitted automatically. Lipid restraints still follow the default schedule. Protein–membrane jobs are unchanged.
 
 #### 2. Set Output Folder Name
 

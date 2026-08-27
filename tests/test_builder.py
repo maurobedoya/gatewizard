@@ -136,6 +136,186 @@ class TestBuilder:
         assert "--nloop_all 120" in cmd_str
         assert "--tolerance 1.5" in cmd_str
 
+    def test_build_command_protein_path_unchanged(self, builder, tmp_path):
+        """Membrane-protein command still uses --pdb and does not add bilayer-only flags."""
+        pdb_file = tmp_path / "protein.pdb"
+        pdb_file.write_text("END\n")
+        cmd = builder._build_command(
+            pdb_file, ["POPC"], ["POPC"], "1//1", {**builder.config}
+        )
+        assert cmd[0] == "packmol-memgen"
+        assert "--pdb" in cmd
+        assert str(pdb_file) in cmd
+        assert "--preoriented" in cmd
+        assert "--distxy_fix" not in cmd
+        assert "--solute" not in cmd
+
+    def test_build_command_bilayer_only(self, builder):
+        """Bilayer-only builds omit --pdb and require --distxy_fix."""
+        config = {**builder.config, "distxy_fix": 100, "preoriented": True}
+        cmd = builder._build_command(None, ["POPC"], ["POPC"], "1//1", config)
+        cmd_str = " ".join(str(c) for c in cmd)
+        assert "--pdb" not in cmd
+        assert "--preoriented" not in cmd
+        assert "--distxy_fix" in cmd
+        assert "100" in cmd
+        assert "--lipids" in cmd
+        assert "MEMEMBED" not in cmd_str
+
+    def test_build_command_bilayer_only_infers_distxy_from_dims(self, builder):
+        config = {**builder.config, "dims": [80, 80, 120]}
+        cmd = builder._build_command(None, ["DOPE", "DOPG"], ["DOPE", "DOPG"], "3:1//3:1", config)
+        assert "--pdb" not in cmd
+        assert "--distxy_fix" in cmd
+        assert cmd[cmd.index("--distxy_fix") + 1] == "80.0"
+
+    def test_build_command_free_solute(self, builder, tmp_path):
+        """Free molecules add --solute/--solute_con and optional in-membrane placement."""
+        pdb_file = tmp_path / "protein.pdb"
+        pdb_file.write_text("END\n")
+        tea = tmp_path / "TEA.pdb"
+        tea.write_text("HETATM    1  N   TEA A   1       0.000   0.000   0.000  1.00  0.00           N\n")
+        config = {
+            **builder.config,
+            "solutes": [
+                {
+                    "pdb": str(tea),
+                    "concentration": "4",
+                    "in_membrane": False,
+                    "prot_dist": 10,
+                }
+            ],
+            "ligand_params": {
+                "TEA": {"frcmod": "TEA.frcmod", "lib": "TEA.lib"}
+            },
+        }
+        cmd = builder._build_command(pdb_file, ["POPC"], ["POPC"], "1//1", config)
+        assert "--solute" in cmd
+        assert str(tea) in cmd
+        assert "--solute_con" in cmd
+        assert cmd[cmd.index("--solute_con") + 1] == "4"
+        assert "--solute_prot_dist" in cmd
+        assert "--solute_inmem" not in cmd
+        assert "--ligand_param" in cmd
+        assert "--gaff2" in cmd
+        assert "--pdb" in cmd
+
+    def test_build_command_solute_in_membrane_no_protein(self, builder, tmp_path):
+        tea = tmp_path / "TEA.pdb"
+        tea.write_text("HETATM    1  N   TEA A   1       0.000   0.000   0.000  1.00  0.00           N\n")
+        config = {
+            **builder.config,
+            "distxy_fix": 75,
+            "solute_inmem": True,
+            "solutes": [{"pdb": str(tea), "concentration": "0.1M"}],
+        }
+        cmd = builder._build_command(None, ["POPC"], ["POPC"], "1//1", config)
+        assert "--pdb" not in cmd
+        assert "--solute_inmem" in cmd
+        assert "--solute_prot_dist" not in cmd
+
+    def test_validate_bilayer_only_requires_xy_size(self, builder):
+        valid, msg = builder.validate_system_inputs(
+            pdb_file=None,
+            upper_lipids=["POPC"],
+            lower_lipids=["POPC"],
+            lipid_ratios="1//1",
+            water_model="tip3p",
+            protein_ff="ff19SB",
+            lipid_ff="lipid21",
+        )
+        assert valid is False
+        assert "XY" in msg or "distxy" in msg.lower() or "protein" in msg.lower()
+
+        valid_ok, msg_ok = builder.validate_system_inputs(
+            pdb_file=None,
+            upper_lipids=["POPC"],
+            lower_lipids=["POPC"],
+            lipid_ratios="1//1",
+            water_model="tip3p",
+            protein_ff="ff19SB",
+            lipid_ff="lipid21",
+            distxy_fix=100,
+        )
+        assert valid_ok is True, msg_ok
+        assert "Remove protein hydrogens" not in (msg_ok or "")
+
+    def test_validate_skips_protein_hydrogen_scan_without_pdb(self, builder, tmp_path):
+        tea = tmp_path / "TEA.pdb"
+        tea.write_text(
+            "HETATM    1  N   TEA A   1       0.000   0.000   0.000  1.00  0.00           N\n"
+        )
+        valid, msg = builder.validate_system_inputs(
+            pdb_file="",
+            upper_lipids=["POPC"],
+            lower_lipids=["POPC"],
+            lipid_ratios="1//1",
+            water_model="tip3p",
+            protein_ff="ff19SB",
+            lipid_ff="lipid21",
+            distxy_fix=80,
+            solutes=[{"pdb": str(tea), "concentration": "4", "name": "TEA"}],
+            parametrize=True,
+        )
+        assert valid is True, msg
+        assert "Remove protein hydrogens" not in (msg or "")
+        assert "GAFF" in msg or "ligand_params" in msg or "Parametrize" in msg
+
+    def test_generate_preparation_inputs_bilayer_only(self, builder, tmp_path):
+        success, message, job_dir = builder.generate_preparation_inputs(
+            pdb_file=None,
+            working_dir=str(tmp_path),
+            upper_lipids=["POPC"],
+            lower_lipids=["POPC"],
+            lipid_ratios="1//1",
+            distxy_fix=100,
+            water_model="tip3p",
+            protein_ff="ff19SB",
+            lipid_ff="lipid21",
+        )
+        assert success, message
+        assert job_dir is not None
+        assert job_dir.name.startswith("02_build_bilayer")
+        assert (job_dir / "run_preparation.sh").is_file()
+        import json
+
+        status = json.loads((job_dir / "status.json").read_text())
+        command = status["command"]
+        assert "--pdb" not in command.split()
+        assert "--distxy_fix" in command
+        assert "--preoriented" not in command.split()
+        assert status["status"] == "not_started"
+        assert "MEMEMBED" not in status["steps"]
+    def test_generate_preparation_inputs_with_solute(self, builder, tmp_path):
+        tea = tmp_path / "TEA.pdb"
+        tea.write_text(
+            "HETATM    1  N   TEA A   1       0.000   0.000   0.000  1.00  0.00           N\nEND\n"
+        )
+        success, message, job_dir = builder.generate_preparation_inputs(
+            pdb_file=None,
+            working_dir=str(tmp_path),
+            upper_lipids=["POPC"],
+            lower_lipids=["POPC"],
+            lipid_ratios="1//1",
+            distxy_fix=75,
+            solutes=[{"pdb": str(tea), "concentration": "4", "in_membrane": True, "name": "TEA"}],
+            ligand_params={"TEA": {"frcmod": str(tmp_path / "TEA.frcmod"), "lib": str(tmp_path / "TEA.lib")}},
+            water_model="tip3p",
+            protein_ff="ff19SB",
+            lipid_ff="lipid21",
+        )
+        assert success, message
+        assert (job_dir / "solutes" / "TEA.pdb").is_file()
+        import json
+
+        command = json.loads((job_dir / "status.json").read_text())["command"]
+        assert "--pdb" not in command.split()
+        assert "--solute" in command
+        assert "--solute_con" in command
+        assert "--solute_inmem" in command
+        assert "--gaff2" in command
+        assert "--distxy_fix" in command
+
 
 # ============================================================================
 # SECTION 2: FORCE FIELD MANAGEMENT TESTS

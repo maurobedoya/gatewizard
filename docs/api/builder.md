@@ -199,7 +199,7 @@ validate_system_inputs(
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `pdb_file` | `str` | Yes | Path to input PDB file |
+| `pdb_file` | `str` | No | Path to input PDB file, or empty/None for a bilayer-only build |
 | `upper_lipids` | `List[str]` | Yes | List of lipids for upper leaflet |
 | `lower_lipids` | `List[str]` | Yes | List of lipids for lower leaflet |
 | `lipid_ratios` | `str` | No | Lipid ratios string |
@@ -287,12 +287,16 @@ prepare_system(
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `pdb_file` | `str` | Yes | Path to input PDB file (oriented protein) |
+| `pdb_file` | `str` | No | Path to input PDB file (oriented protein). Omit or pass `None` for a bilayer-only build |
 | `working_dir` | `str` | Yes | Working directory for output files |
 | `upper_lipids` | `List[str]` | Yes | List of lipid types for upper leaflet |
 | `lower_lipids` | `List[str]` | Yes | List of lipid types for lower leaflet |
 | `lipid_ratios` | `str` | No | Lipid molar ratios (format: "ratio1:ratio2//ratio3:ratio4") |
 | `output_folder_name` | `str` | No | Custom output folder name (kwarg) |
+| `distxy_fix` | `float` | No | Membrane XY size in Å (`--distxy_fix`). **Required** when `pdb_file` is omitted |
+| `solutes` | `list` | No | Free molecules to pack: `[{"pdb": "TEA.pdb", "concentration": "4", "in_membrane": False}]` |
+| `solute_inmem` | `bool` | No | Place free molecules in the membrane instead of water (`--solute_inmem`) |
+| `solute_prot_dist` | `float` | No | Keep free molecules this far from the protein, in Å (`--solute_prot_dist`) |
 | `wait` | `bool` | No | Block until the job completes or errors (default `False`) |
 | `wait_timeout` | `float` | No | Maximum seconds to wait when `wait=True` (`None` = unlimited) |
 | `wait_poll_interval` | `float` | No | Seconds between status checks (default `5.0`) |
@@ -351,6 +355,52 @@ In `{output_folder_name}/` directory:
 **Note:** By default, system preparation runs in the background and the method returns immediately.
 Pass `wait=True` to block until the job finishes — useful for scripting sequential preparations.
 For asynchronous monitoring, use the log files or the `JobMonitor` class (see examples below).
+
+### Bilayer-only and free molecules
+
+packmol-memgen can pack a membrane **without a protein**. Omit `pdb_file` and set `distxy_fix` (Å) for the XY size. Free copies of a molecule go in `solutes` (`--solute` / `--solute_con`); parametrize them first and pass `ligand_params` plus GAFF2. The membrane-protein path (`pdb_file` required, `--pdb` + `--preoriented`) is unchanged.
+
+```python
+from gatewizard.core.builder import Builder
+
+builder = Builder()
+
+# Membrane only (no protein): XY size is required
+success, msg, job_dir = builder.generate_preparation_inputs(
+    pdb_file=None,
+    working_dir="./systems",
+    upper_lipids=["DOPE", "DOPG"],
+    lower_lipids=["DOPE", "DOPG"],
+    lipid_ratios="3:1//3:1",
+    distxy_fix=100,
+)
+
+# Free ligand in water around a protein
+success, msg, job_dir = builder.generate_preparation_inputs(
+    pdb_file="1BL8.pdb",
+    working_dir="./systems",
+    upper_lipids=["DOPE", "DOPG"],
+    lower_lipids=["DOPE", "DOPG"],
+    lipid_ratios="3:1//3:1",
+    solutes=[{"pdb": "TEA.pdb", "concentration": "4"}],
+    solute_prot_dist=10,
+    ligand_params={"TEA": {"frcmod": "TEA.frcmod", "lib": "TEA.lib"}},
+)
+
+# Ligand + bilayer, no protein (place copies in the membrane)
+success, msg, job_dir = builder.generate_preparation_inputs(
+    pdb_file=None,
+    working_dir="./systems",
+    upper_lipids=["POPC"],
+    lower_lipids=["POPC"],
+    lipid_ratios="1//1",
+    distxy_fix=75,
+    solutes=[{"pdb": "TEA.pdb", "concentration": "0.1M", "in_membrane": True}],
+    ligand_params={"TEA": {"frcmod": "TEA.frcmod", "lib": "TEA.lib"}},
+)
+```
+
+`concentration` is a molecule count (`"4"`) or a packmol-memgen concentration (`"0.1M"`, `"2%"`). `--solute_inmem` is set when any solute has `in_membrane=True` or when `solute_inmem=True`. `--solute_prot_dist` is only passed when a protein PDB is present.
 
 ### Example 9: Simple Symmetric Membrane
 ```python
