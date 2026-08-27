@@ -66,6 +66,16 @@ _AMBER_LIPID_RESNAMES = frozenset(
         "SM",
         "BSM",
         "SPM",
+        "PSM",
+        "NSM",
+        "OLE",
+        "PAL",
+        "STE",
+        "LIN",
+        "CHOLEST",
+        "PALM",
+        "OLEO",
+        "STEROL",
     }
 )
 _AMBER_LIPID_RESNAME_ORDER = (
@@ -101,6 +111,38 @@ _AMBER_LIPID_RESNAME_ORDER = (
     "SM",
     "BSM",
     "SPM",
+    "PSM",
+    "NSM",
+    "OLE",
+    "PAL",
+    "STE",
+    "LIN",
+    "CHOLEST",
+    "PALM",
+    "OLEO",
+    "STEROL",
+)
+# Compact protein + bilayer default when the topology has not been parsed yet
+# (or has no recognised lipids). Extra names match nothing and are harmless.
+_DEFAULT_BILAYER_CENTER_RESNAMES = (
+    "PA",
+    "PC",
+    "OL",
+    "PE",
+    "PS",
+    "PG",
+    "PI",
+    "POPC",
+    "POPE",
+    "POPS",
+    "DPPC",
+    "DMPC",
+    "DOPC",
+    "DSPC",
+    "CHL",
+    "CHOL",
+    "CHL1",
+    "SM",
 )
 _GROMACS_TRAJ = {".xtc", ".trr"}
 _AMBER_TRAJ = {".nc", ".ncdf", ".mdcrd", ".crd"}
@@ -498,30 +540,91 @@ def _sibling_engine_hint(path: Path) -> Optional[str]:
     return None
 
 
-def _find_companion_tpr(trajectory: Path, topology: Optional[Path] = None) -> Optional[Path]:
+def _find_companion_tpr(
+    trajectory: Optional[Path] = None,
+    topology: Optional[Path] = None,
+    explicit: Optional[Path] = None,
+) -> Optional[Path]:
+    """Locate a GROMACS ``.tpr`` near the trajectory and/or topology.
+
+    Search order:
+    1. Explicit path (user Browse for GROMACS TPR)
+    2. Topology itself if it is a ``.tpr``
+    3. Same stem / folder as the trajectory
+    4. Same stem / folder as the topology (e.g. ``system.pdb`` → ``step*.tpr``)
+    """
+    if explicit is not None:
+        exp = Path(explicit).expanduser()
+        if exp.is_file() and exp.suffix.lower() == ".tpr":
+            return exp.resolve()
     if topology and topology.suffix.lower() == ".tpr" and topology.is_file():
-        return topology
-    candidates = [
-        trajectory.with_suffix(".tpr"),
-        trajectory.parent / f"{trajectory.stem}.tpr",
-    ]
-    if topology:
+        return topology.resolve()
+
+    candidates: list[Path] = []
+    if trajectory is not None:
+        candidates.extend(
+            [
+                trajectory.with_suffix(".tpr"),
+                trajectory.parent / f"{trajectory.stem}.tpr",
+            ]
+        )
+        if topology:
+            candidates.append(topology.parent / f"{trajectory.stem}.tpr")
+    if topology is not None:
         candidates.append(topology.with_suffix(".tpr"))
-        candidates.append(topology.parent / f"{trajectory.stem}.tpr")
+        # Prefer CHARMM-GUI / GateWizard stage TPRs next to the topology.
+        parent = topology.parent
+        for pattern in ("step7_production.tpr", "step6_*.tpr", "step0_*.tpr", "*.tpr"):
+            for hit in sorted(parent.glob(pattern)):
+                if hit.is_file():
+                    candidates.append(hit)
+
+    seen: set[Path] = set()
     for c in candidates:
-        if c.is_file():
-            return c.resolve()
-    # Any tpr next to the traj
-    tprs = sorted(trajectory.parent.glob("*.tpr"))
-    return tprs[0].resolve() if tprs else None
+        try:
+            resolved = c.resolve()
+        except OSError:
+            continue
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if resolved.is_file():
+            return resolved
+
+    if trajectory is not None:
+        tprs = sorted(p for p in trajectory.parent.glob("*.tpr") if p.is_file())
+        if tprs:
+            return tprs[0].resolve()
+    return None
 
 
-def _find_companion_ndx(trajectory: Path, tpr: Optional[Path] = None) -> Optional[Path]:
-    search = [trajectory.parent]
-    if tpr:
+def _find_companion_ndx(
+    trajectory: Optional[Path] = None,
+    tpr: Optional[Path] = None,
+    topology: Optional[Path] = None,
+    explicit: Optional[Path] = None,
+) -> Optional[Path]:
+    if explicit is not None:
+        exp = Path(explicit).expanduser()
+        if exp.is_file():
+            return exp.resolve()
+    search: list[Path] = []
+    if trajectory is not None:
+        search.append(trajectory.parent)
+    if tpr is not None:
         search.append(tpr.parent)
+    if topology is not None:
+        search.append(topology.parent)
+    seen: set[Path] = set()
     for d in search:
-        ndx = d / "index.ndx"
+        try:
+            resolved = d.resolve()
+        except OSError:
+            continue
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        ndx = resolved / "index.ndx"
         if ndx.is_file():
             return ndx.resolve()
     return None
@@ -552,6 +655,99 @@ def _prmtop_residue_names(topology: Path) -> list[str]:
     return names
 
 
+def _pdb_residue_names(topology: Path) -> list[str]:
+    """Unique residue names from PDB ATOM/HETATM records (columns 18–21)."""
+    names: list[str] = []
+    seen: set[str] = set()
+    try:
+        with topology.open(encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if not line.startswith(("ATOM", "HETATM")):
+                    continue
+                name = line[17:21].strip().upper()
+                if not name or name in seen:
+                    continue
+                seen.add(name)
+                names.append(name)
+    except OSError:
+        return []
+    return names
+
+
+def _psf_residue_names(topology: Path) -> list[str]:
+    """Unique residue names from a CHARMM/NAMD PSF atom section (4th field)."""
+    names: list[str] = []
+    seen: set[str] = set()
+    try:
+        with topology.open(encoding="utf-8", errors="replace") as fh:
+            in_atoms = False
+            remaining = 0
+            for line in fh:
+                upper = line.upper()
+                if not in_atoms:
+                    if "!NATOM" not in upper:
+                        continue
+                    in_atoms = True
+                    try:
+                        remaining = int(line.split("!")[0].split()[0])
+                    except (IndexError, ValueError):
+                        remaining = 10**9
+                    continue
+                s = line.strip()
+                if not s:
+                    continue
+                if s.startswith("!") or "!N" in upper:
+                    break
+                parts = s.split()
+                if len(parts) < 4:
+                    continue
+                remaining -= 1
+                name = parts[3].strip().upper()
+                if name and name not in seen:
+                    seen.add(name)
+                    names.append(name)
+                if remaining <= 0:
+                    break
+    except OSError:
+        return []
+    return names
+
+
+def _gro_residue_names(topology: Path) -> list[str]:
+    """Unique residue names from a GROMACS GRO (columns 6–10)."""
+    names: list[str] = []
+    seen: set[str] = set()
+    try:
+        with topology.open(encoding="utf-8", errors="replace") as fh:
+            for i, line in enumerate(fh):
+                if i < 2:
+                    continue
+                if len(line) < 10:
+                    continue
+                name = line[5:10].strip().upper()
+                if not name or name in seen:
+                    continue
+                seen.add(name)
+                names.append(name)
+    except OSError:
+        return []
+    return names
+
+
+def _topology_residue_names(topology: Path) -> list[str]:
+    """Residue names from prmtop, PSF, PDB, or GRO — used to pick lipid defaults."""
+    ext = topology.suffix.lower()
+    if ext in {".prmtop", ".parm7"}:
+        return _prmtop_residue_names(topology)
+    if ext == ".psf":
+        return _psf_residue_names(topology)
+    if ext in {".pdb", ".ent"}:
+        return _pdb_residue_names(topology)
+    if ext == ".gro":
+        return _gro_residue_names(topology)
+    return []
+
+
 def ordered_lipid_resnames(residue_names: list[str] | set[str]) -> list[str]:
     """Lipid residue names from a topology, in a stable display order."""
     found = {str(n).strip().upper() for n in residue_names if str(n).strip()}
@@ -563,24 +759,31 @@ def ordered_lipid_resnames(residue_names: list[str] | set[str]) -> list[str]:
     return ordered + extra
 
 
+def default_cpptraj_membrane_center_selection() -> str:
+    """Protein + common bilayer residue names (Amber lipid21 and CHARMM lipids)."""
+    return "protein or resname " + " ".join(_DEFAULT_BILAYER_CENTER_RESNAMES)
+
+
 def recommend_cpptraj_center_selection(
     topology_file: str | Path | None = None,
     residue_names: Optional[list[str]] = None,
 ) -> tuple[str, list[str]]:
     """
-    Default cpptraj/MDA center selection for Amber-like membranes.
+    Default cpptraj/MDA center selection for Amber/NAMD/OpenMM membranes.
 
     Protein-only autoimage splits the bilayer. When lipid residues are present
-    (e.g. lipid21 ``PA``/``PC``/``OL``), return ``protein or resname …``.
+    in the topology (prmtop, PSF, PDB, GRO), return ``protein or resname …``.
+    Otherwise return protein + a compact common-lipid list so PSF/PDB loads
+    do not fall back to protein-only.
     """
     names = list(residue_names or [])
     if not names and topology_file:
         path = Path(topology_file).expanduser()
-        if path.is_file() and path.suffix.lower() in {".prmtop", ".parm7"}:
-            names = _prmtop_residue_names(path)
+        if path.is_file():
+            names = _topology_residue_names(path)
     lipids = ordered_lipid_resnames(names)
     if not lipids:
-        return "protein", []
+        return default_cpptraj_membrane_center_selection(), []
     return f"protein or resname {' '.join(lipids)}", lipids
 
 
@@ -588,13 +791,18 @@ def detect_pbc_engine(
     topology_file: str,
     trajectory_files: list[str],
     engine_hint: Optional[str] = None,
+    tpr_path: Optional[str] = None,
+    ndx_path: Optional[str] = None,
 ) -> dict:
     """
     Detect which MD engine / tool should fix PBC for the given inputs.
 
     Returns dict with ``engine``, ``method``, ``reason``, ``tpr``, ``ndx``,
-    ``warnings``, and for Amber/cpptraj engines ``lipid_resnames`` plus
-    ``recommended_center_selection`` (protein + detected lipids).
+    ``warnings``, and for Amber/NAMD/OpenMM ``lipid_resnames`` plus
+    ``recommended_center_selection`` (protein + detected or common lipids).
+
+    ``tpr_path`` / ``ndx_path`` are optional explicit overrides from the Tools UI
+    (GROMACS TPR / Index browse fields).
     """
     hint = (engine_hint or "auto").strip().lower()
     if hint not in _VALID_ENGINES:
@@ -651,12 +859,22 @@ def detect_pbc_engine(
         "mdanalysis": "MDAnalysis make_whole + wrap",
     }.get(engine, "unknown")
 
-    tpr = _find_companion_tpr(trajs[0], top) if trajs else None
-    ndx = _find_companion_ndx(trajs[0], tpr) if trajs else None
+    tpr = _find_companion_tpr(
+        trajs[0] if trajs else None,
+        top,
+        explicit=Path(tpr_path).expanduser() if tpr_path else None,
+    )
+    ndx = _find_companion_ndx(
+        trajs[0] if trajs else None,
+        tpr,
+        topology=top,
+        explicit=Path(ndx_path).expanduser() if ndx_path else None,
+    )
 
-    if engine == "gromacs" and tpr is None:
+    if engine == "gromacs" and tpr is None and trajs:
         warnings.append(
-            "No .tpr found next to the trajectory. GROMACS Fix PBC requires a matching .tpr."
+            "No .tpr found next to the trajectory or topology. "
+            "Browse for the matching step*.tpr under GROMACS TPR."
         )
     if engine in {"amber", "namd", "openmm"} and top_ext not in {
         ".prmtop",
@@ -672,7 +890,7 @@ def detect_pbc_engine(
     recommended_center = None
     recommended_center_groups: list[str] = []
     recommended_output = "System"
-    if engine == "gromacs":
+    if engine == "gromacs" and (tpr or ndx):
         group_info = list_gromacs_index_groups(
             ndx_path=str(ndx) if ndx else None,
             tpr_path=str(tpr) if tpr else None,
@@ -688,7 +906,7 @@ def detect_pbc_engine(
 
     lipid_resnames: list[str] = []
     recommended_center_selection = "protein"
-    if engine != "gromacs" and top is not None:
+    if engine != "gromacs":
         recommended_center_selection, lipid_resnames = recommend_cpptraj_center_selection(
             top
         )
@@ -1899,7 +2117,13 @@ def fix_pbc_trajectories(
         raise ValueError("No trajectory files provided")
 
     _check_cancel(job_path)
-    detected = detect_pbc_engine(topology_file, trajectory_files, engine_hint=engine)
+    detected = detect_pbc_engine(
+        topology_file,
+        trajectory_files,
+        engine_hint=engine,
+        tpr_path=tpr_path,
+        ndx_path=ndx_path,
+    )
     eng = detected["engine"]
     _log(f"Engine: {eng} ({detected['method']}) — {detected['reason']}")
     sel = (center_selection or "protein").strip() or "protein"
@@ -2326,7 +2550,13 @@ def start_fix_pbc_job(
 
     stride_n = _normalize_stride(stride)
     stride_map = _resolve_file_strides(trajectory_files, file_strides, stride_n)
-    detected = detect_pbc_engine(topology_file, trajectory_files, engine_hint=engine)
+    detected = detect_pbc_engine(
+        topology_file,
+        trajectory_files,
+        engine_hint=engine,
+        tpr_path=tpr_path,
+        ndx_path=ndx_path,
+    )
     steps = ["Detect engine"] + [f"Fix {Path(p).name}" for p in trajectory_files] + [
         "Finalize"
     ]
