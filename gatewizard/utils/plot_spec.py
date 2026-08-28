@@ -28,6 +28,18 @@ DEFAULT_GLOBAL_STYLE: Dict[str, Any] = {
     "title": None,
     "xlim": None,
     "ylim": None,
+    "show_ticks": True,
+    "tick_length": 4.0,
+    "tick_width": 1.0,
+    "spine_width": 1.0,
+    "show_spine_left": True,
+    "show_spine_bottom": True,
+    "show_spine_top": False,
+    "show_spine_right": False,
+    "extra_left": 0.0,
+    "extra_right": 0.0,
+    "extra_top": 0.0,
+    "extra_bottom": 0.0,
 }
 
 DEFAULT_LINE_COLORS = [
@@ -57,6 +69,116 @@ def _as_pair(value: Any) -> Optional[Tuple[float, float]]:
     return None
 
 
+def _as_float(value: Any, default: Optional[float] = None) -> Optional[float]:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def normalize_reference_lines(raw: Any) -> List[Dict[str, Any]]:
+    """Normalize ``[{axis, value, color, width, style, label}, ...]`` (also hlines/vlines)."""
+    out: List[Dict[str, Any]] = []
+    if not isinstance(raw, list):
+        return out
+    for item in raw:
+        axis = "y"
+        style = "dashed"
+        color = "#888888"
+        width = 1.2
+        label = ""
+        value: Optional[float] = None
+        if isinstance(item, dict):
+            value = _as_float(item.get("value"))
+            ax = str(item.get("axis") or "y").lower()
+            axis = ax if ax in ("x", "y") else "y"
+            st = str(item.get("style") or "dashed").lower()
+            style = st if st in ("solid", "dashed", "dotted", "dashdot", "--", ":", "-.", "-") else "dashed"
+            color = str(item.get("color") or color)
+            width = _as_float(item.get("width"), 1.2) or 1.2
+            label = str(item.get("label") or "")
+        else:
+            value = _as_float(item)
+        if value is None:
+            continue
+        out.append(
+            {
+                "axis": axis,
+                "value": value,
+                "color": color,
+                "width": width if width > 0 else 1.2,
+                "style": style,
+                "label": label,
+            }
+        )
+    return out
+
+
+def grid_spec_slices(
+    n_panels: int,
+    cols: int,
+    last_row_align: str = "start",
+) -> Tuple[List[Tuple[int, int, int]], int, int]:
+    """Slices into a (rows × cols*2) micro-grid so a short last row can center.
+
+    Returns ``(slices, rows, micro_cols)`` where each slice is ``(row, c0, c1)``.
+    """
+    n_cols = max(1, int(cols))
+    n = max(0, int(n_panels))
+    rows = max(1, (n + n_cols - 1) // n_cols if n else 1)
+    micro_cols = n_cols * 2
+    slices: List[Tuple[int, int, int]] = []
+    full = n // n_cols
+    rem = n % n_cols
+    for i in range(full * n_cols):
+        r = i // n_cols
+        c = i % n_cols
+        slices.append((r, c * 2, c * 2 + 2))
+    if rem:
+        r = full
+        start = (n_cols - rem) if last_row_align == "center" else 0
+        for k in range(rem):
+            c0 = start + k * 2
+            slices.append((r, c0, c0 + 2))
+    return slices, rows, micro_cols
+
+
+def _clamp_legend_fontsize(raw: Any, default: float = 8.0) -> float:
+    """Map GUI px (often 10–40) to matplotlib points so figure legends stay readable."""
+    n = _as_float(raw, default)
+    if n is None:
+        n = default
+    if n > 14:
+        n = max(6.0, min(11.0, round(n * 0.28 + 5.2)))
+    return max(6.0, min(11.0, float(n)))
+
+
+def _normalize_legend(raw: Any) -> Dict[str, Any]:
+    src = raw if isinstance(raw, dict) else {}
+    mode = str(src.get("mode") or "").lower()
+    if mode not in ("each", "one", "outside", "none", ""):
+        mode = ""
+    loc = str(src.get("loc") or "bottom").lower()
+    if loc not in ("top", "bottom", "left", "right"):
+        loc = "bottom"
+    entries = str(src.get("entries") or "sets").lower()
+    if entries not in ("sets", "roles", "both"):
+        entries = "sets"
+    fontsize = _clamp_legend_fontsize(src.get("fontsize"), 8.0)
+    ncol = int(src.get("ncol") or 1)
+    ncol = max(1, min(ncol, 8))
+    cell = int(src.get("cell") or 0)
+    return {
+        "mode": mode,
+        "cell": max(0, cell),
+        "loc": loc,
+        "entries": entries,
+        "fontsize": fontsize,
+        "ncol": ncol,
+        "title": str(src.get("title") or ""),
+    }
+
+
 def normalize_plot_spec(spec: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Return a validated PlotSpec dict with defaults filled in."""
     src = deepcopy(spec or {})
@@ -84,23 +206,103 @@ def normalize_plot_spec(spec: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         series_keys = panel.get("series_keys")
         if isinstance(series_keys, list) and series_keys:
             p["series_keys"] = [str(k) for k in series_keys if k is not None and str(k)]
+        if "show_xlabel" in panel:
+            p["show_xlabel"] = bool(panel.get("show_xlabel"))
+        if "show_ylabel" in panel:
+            p["show_ylabel"] = bool(panel.get("show_ylabel"))
+        if "show_ticks" in panel:
+            p["show_ticks"] = bool(panel.get("show_ticks"))
+        if "show_xticklabels" in panel:
+            p["show_xticklabels"] = bool(panel.get("show_xticklabels"))
+        if "show_yticklabels" in panel:
+            p["show_yticklabels"] = bool(panel.get("show_yticklabels"))
+        for spine_key in (
+            "show_spine_left",
+            "show_spine_bottom",
+            "show_spine_top",
+            "show_spine_right",
+        ):
+            if spine_key in panel:
+                p[spine_key] = bool(panel.get(spine_key))
+        for num_key in ("tick_length", "tick_width", "spine_width"):
+            if panel.get(num_key) is not None:
+                p[num_key] = panel.get(num_key)
+        if panel.get("linewidth") is not None:
+            p["linewidth"] = panel.get("linewidth")
+        if panel.get("linestyle"):
+            p["linestyle"] = str(panel.get("linestyle"))
+        if "show_legend" in panel:
+            p["show_legend"] = bool(panel.get("show_legend"))
+        if panel.get("legend_loc"):
+            p["legend_loc"] = str(panel.get("legend_loc"))
+        if panel.get("legend_fontsize") is not None:
+            p["legend_fontsize"] = _clamp_legend_fontsize(panel.get("legend_fontsize"))
+        refs = normalize_reference_lines(panel.get("reference_lines"))
+        if refs:
+            p["reference_lines"] = refs
         panels.append(p)
 
     layout = str(src.get("layout") or "overlay").lower()
     if layout not in ("overlay", "grid"):
         layout = "overlay"
 
-    cols = int(src.get("cols") or 2)
-    cols = max(1, min(cols, 4))
+    try:
+        cols = int(src.get("cols") or 2)
+    except (TypeError, ValueError):
+        cols = 2
+    cols = max(1, min(cols, 8))
 
-    return {
+    try:
+        rows_raw = src.get("rows")
+        rows = int(rows_raw) if rows_raw not in (None, "") else None
+    except (TypeError, ValueError):
+        rows = None
+    if rows is not None:
+        rows = max(1, min(rows, 16))
+
+    last_row_align = str(src.get("last_row_align") or "start").lower()
+    if last_row_align not in ("start", "center"):
+        last_row_align = "start"
+
+    wspace = _as_float(src.get("wspace"))
+    hspace = _as_float(src.get("hspace"))
+    cell_aspect = _as_float(src.get("cell_aspect"))
+
+    ref_lines = normalize_reference_lines(src.get("reference_lines"))
+    g_refs = normalize_reference_lines(global_style.get("reference_lines"))
+    hlines = normalize_reference_lines(
+        [{"axis": "y", "value": v} if not isinstance(v, dict) else {**v, "axis": "y"} for v in (global_style.get("hlines") or [])]
+        if isinstance(global_style.get("hlines"), list)
+        else []
+    )
+    vlines = normalize_reference_lines(
+        [{"axis": "x", "value": v} if not isinstance(v, dict) else {**v, "axis": "x"} for v in (global_style.get("vlines") or [])]
+        if isinstance(global_style.get("vlines"), list)
+        else []
+    )
+    merged_refs = ref_lines + g_refs + hlines + vlines
+
+    out: Dict[str, Any] = {
         "version": int(src.get("version") or PLOT_SPEC_VERSION),
         "layout": layout,
         "cols": cols,
         "sync_x": bool(src.get("sync_x", True)),
+        "last_row_align": last_row_align,
+        "legend": _normalize_legend(src.get("legend")),
         "global": global_style,
         "panels": panels,
     }
+    if rows is not None:
+        out["rows"] = rows
+    if wspace is not None:
+        out["wspace"] = wspace
+    if hspace is not None:
+        out["hspace"] = hspace
+    if cell_aspect is not None and cell_aspect > 0:
+        out["cell_aspect"] = cell_aspect
+    if merged_refs:
+        out["reference_lines"] = merged_refs
+    return out
 
 
 def build_plot_spec_from_series(
