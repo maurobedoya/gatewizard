@@ -380,6 +380,13 @@ class TestSetupAmberEquilibration:
         mini = (result["amber_dir"] / "step0_minimization.mdin").read_text()
         assert "ntr=1" in mini
         assert "ATOM " in mini
+        assert not re.search(r"ATOM\s+\d+-\d+", mini)
+        atom_lines = [ln for ln in mini.splitlines() if ln.startswith("ATOM ")]
+        assert atom_lines
+        for ln in atom_lines:
+            nums = ln.split()[1:]
+            assert nums and len(nums) % 2 == 0, ln
+            assert all(n.isdigit() and int(n) > 0 for n in nums), ln
         assert "protein backbone" in mini.lower() or "Protein" in mini or "protein" in mini
 
         eq1 = (result["amber_dir"] / "step1_equilibration.mdin").read_text()
@@ -401,6 +408,71 @@ class TestSetupAmberEquilibration:
             restraint_block="",
         )
         assert "ntr=0" in content
+
+
+class TestAmberAtomCardFormat:
+    def test_pairs_not_hyphens(self):
+        lines = AmberEquilibrationManager._format_atom_card(
+            [(1, 1), (3, 6), (10, 10)]
+        )
+        assert lines == ["ATOM 1 1 3 6 10 10"]
+        assert all("-" not in line for line in lines)
+
+    def test_wraps_at_seven_pairs(self):
+        ranges = [(i, i) for i in range(1, 9)]
+        lines = AmberEquilibrationManager._format_atom_card(ranges)
+        assert len(lines) == 2
+        assert len(lines[0].split()) == 15  # ATOM + 7 pairs
+        assert lines[1] == "ATOM 8 8"
+
+    @pytest.mark.skipif(not MDA_AVAILABLE, reason="MDAnalysis not installed")
+    def test_contiguous_backbone_is_start_end_pair(self, tmp_path):
+        pdb = tmp_path / "ala.pdb"
+        pdb.write_text(
+            "ATOM      1  N   ALA A   1       0.000   0.000   0.000  1.00  0.00           N\n"
+            "ATOM      2  CA  ALA A   1       1.500   0.000   0.000  1.00  0.00           C\n"
+            "ATOM      3  C   ALA A   1       2.000   1.400   0.000  1.00  0.00           C\n"
+            "ATOM      4  O   ALA A   1       1.200   2.400   0.000  1.00  0.00           O\n"
+            "ATOM      5  CB  ALA A   1       2.000  -0.800   1.200  1.00  0.00           C\n"
+            "END\n"
+        )
+        mgr = _make_manager(tmp_path)
+        block = mgr.build_group_restraint_block(
+            system_pdb=pdb,
+            constraints={"protein_backbone": 0.1},
+        )
+        assert "0.1000" in block
+        assert "ATOM 1 4" in block
+        assert "ATOM 1-4" not in block
+
+    @pytest.mark.skipif(not PRMTOP.is_file(), reason="POPC example files missing")
+    @pytest.mark.skipif(not MDA_AVAILABLE, reason="MDAnalysis not installed")
+    def test_group_restraints_without_pdb_use_prmtop(self, tmp_path):
+        work = tmp_path / "work"
+        work.mkdir()
+        for src in (PRMTOP, INPCRD):
+            (work / src.name).write_bytes(src.read_bytes())
+
+        mgr = _make_manager(work)
+        stages = [
+            EquilibrationStage(
+                name="Equilibration 6",
+                ensemble="NPgT",
+                time_ns=0.01,
+                timestep=2.0,
+                temperature=310.15,
+                constraints={"protein_backbone": 0.1},
+            )
+        ]
+        result = mgr.setup_amber_equilibration(
+            stage_params_list=stages,
+            output_name="eq_nopdb",
+        )
+        mdin = (result["amber_dir"] / "step1_equilibration.mdin").read_text()
+        assert "ntr=1" in mdin
+        assert "ATOM " in mdin
+        assert "0.1000" in mdin
+        assert not re.search(r"ATOM\s+\d+-\d+", mdin)
 
 
 class TestRunScriptResources:

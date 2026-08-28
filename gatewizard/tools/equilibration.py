@@ -7900,7 +7900,9 @@ class AmberEquilibrationManager:
 
     Mirrors :class:`GROMACSEquilibrationManager` / :class:`OpenMMEquilibrationManager`.
     Positional restraints use Amber ``ntr=1`` with a GROUP block (no dihedral /
-    ``nmropt`` / ``DISANG``). Reference coordinates are passed via ``-ref`` in
+    ``nmropt`` / ``DISANG``). ``ATOM`` cards are start/end integer pairs
+    (``ATOM 5 6``), matching ``pmemd`` ``rgroup``; hyphen ranges are not used.
+    Reference coordinates are passed via ``-ref`` in
     ``run_equilibration.sh``.
     """
 
@@ -7993,8 +7995,8 @@ class AmberEquilibrationManager:
             if pdb_files:
                 system_files["pdb"] = str(pdb_files[0])
             else:
-                self.logger.warning(
-                    "No .pdb file found; restraint GROUP generation will be skipped"
+                self.logger.info(
+                    "No .pdb file found; GROUP restraints will use prmtop atom order"
                 )
                 system_files["pdb"] = None
 
@@ -8367,26 +8369,42 @@ class AmberEquilibrationManager:
         return ranges
 
     @staticmethod
-    def _format_atom_card(ranges: List[Tuple[int, int]], per_line: int = 10) -> List[str]:
-        tokens: List[str] = []
+    def _format_atom_card(
+        ranges: List[Tuple[int, int]], pairs_per_line: int = 7
+    ) -> List[str]:
+        """Format Amber GROUP ``ATOM`` cards as start/end integer pairs.
+
+        ``pmemd`` / ``sander`` ``rgroup`` reads each ``ATOM`` line as the
+        keyword plus up to seven *(start, end)* pairs — ``ATOM 5 6`` restrains
+        atoms 5 through 6; ``ATOM 5 5`` restrains atom 5. Hyphen ranges such as
+        ``ATOM 5-6`` are invalid: Amber's ``ch2int`` treats ``5-6`` as ``-5``
+        and then rejects the card (``PROBLEMS WITH GROUP``), so no atoms from
+        that line are restrained.
+        """
+        pairs: List[str] = []
         for a, b in ranges:
-            tokens.append(f"{a}" if a == b else f"{a}-{b}")
+            pairs.append(f"{int(a)} {int(b)}")
+        n = max(1, int(pairs_per_line))
         lines: List[str] = []
-        for i in range(0, len(tokens), per_line):
-            chunk = " ".join(tokens[i : i + per_line])
+        for i in range(0, len(pairs), n):
+            chunk = " ".join(pairs[i : i + n])
             lines.append(f"ATOM {chunk}")
         return lines
 
     def build_group_restraint_block(
         self,
-        system_pdb: Path,
-        constraints: Dict[str, Any],
+        system_pdb: Optional[Path] = None,
+        constraints: Optional[Dict[str, Any]] = None,
         selections: Optional[Dict[str, str]] = None,
+        prmtop: Optional[Path] = None,
+        inpcrd: Optional[Path] = None,
     ) -> str:
         """Build an Amber GROUP positional-restraint block for *constraints*.
 
-        Force constants are kcal/mol/Å² (Amber ``ntr`` units). Returns an empty
-        string when every force constant is zero or MDAnalysis is unavailable.
+        Force constants are kcal/mol/Å² (Amber ``ntr`` units). Atom indices are
+        taken from ``prmtop`` (preferred, matches the simulation) or from
+        ``system_pdb``. Returns an empty string when every force constant is
+        zero, MDAnalysis is unavailable, or no topology can be opened.
         """
         active = {
             k: float(v) for k, v in (constraints or {}).items() if float(v) > 0.0
@@ -8403,12 +8421,29 @@ class AmberEquilibrationManager:
             )
             return ""
 
+        topology: Optional[Path] = None
+        coords: Optional[Path] = None
+        if prmtop is not None and Path(prmtop).exists():
+            topology = Path(prmtop)
+            if inpcrd is not None and Path(inpcrd).exists():
+                coords = Path(inpcrd)
+        elif system_pdb is not None and Path(system_pdb).exists():
+            topology = Path(system_pdb)
+        if topology is None:
+            self.logger.warning(
+                "No Amber prmtop/pdb for GROUP restraints; skipped"
+            )
+            return ""
+
         if selections is None:
-            selections = self.get_default_selections(str(system_pdb))
+            selections = self.get_default_selections(str(topology))
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            u = mda.Universe(str(system_pdb))
+            if coords is not None:
+                u = mda.Universe(str(topology), str(coords))
+            else:
+                u = mda.Universe(str(topology))
 
         groups: List[str] = []
         for key, fc in active.items():
@@ -8820,6 +8855,9 @@ class AmberEquilibrationManager:
             bilayer_pdb=bilayer_dest,
             system_pdb=pdb_path,
         )
+        prmtop_dest = amber_dir / Path(
+            system_files.get("prmtop", "system.prmtop")
+        ).name
         # Packing stages may use NPgT even when the final ensemble is NVT — always
         # stamp IFBOX if any stage (or the protocol scheme) needs a barostat.
         needs_prmtop_box = scheme_type in {"NPT", "NPAT", "NPgT"} or any(
@@ -8829,9 +8867,6 @@ class AmberEquilibrationManager:
             if isinstance(s, dict)
         )
         if needs_prmtop_box:
-            prmtop_dest = amber_dir / Path(
-                system_files.get("prmtop", "system.prmtop")
-            ).name
             self.ensure_prmtop_box(
                 prmtop_path=prmtop_dest,
                 inpcrd_path=inpcrd_dest,
@@ -8839,9 +8874,10 @@ class AmberEquilibrationManager:
                 system_pdb=pdb_path,
             )
 
+        sel_src = prmtop_dest if prmtop_dest.is_file() else pdb_path
         resolved_sels = selections
-        if resolved_sels is None and pdb_path is not None:
-            resolved_sels = self.get_default_selections(str(pdb_path))
+        if resolved_sels is None and sel_src is not None:
+            resolved_sels = self.get_default_selections(str(sel_src))
 
         mdin_files: List[Path] = []
         stage_stems: List[str] = []
@@ -8860,11 +8896,13 @@ class AmberEquilibrationManager:
                     key_idx = 1
 
             restraint_block = ""
-            if pdb_path is not None:
+            if (pdb_path is not None and pdb_path.exists()) or prmtop_dest.is_file():
                 restraint_block = self.build_group_restraint_block(
                     system_pdb=pdb_path,
                     constraints=stage_params.get("constraints", {}) or {},
                     selections=resolved_sels,
+                    prmtop=prmtop_dest if prmtop_dest.is_file() else None,
+                    inpcrd=inpcrd_dest if inpcrd_dest.is_file() else None,
                 )
 
             content = self.generate_mdin_file(

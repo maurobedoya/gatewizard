@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Equilibration (Amber):** GROUP ``ATOM`` cards now use start/end integer pairs (``ATOM 5 6``), not hyphen ranges (``ATOM 5-6``). Amber's ``rgroup``/``ch2int`` treats ``5-6`` as ``-5`` and rejects the card, so backbone restraints (including Eq6 0.1 kcal/mol) were not applied. GROUP generation also uses ``prmtop`` when no PDB is present.
 - **Tools Fix PBC:** Amber/NAMD/OpenMM center recommendation is protein + bilayer. Lipid residue names are read from PSF and PDB (not only Amber prmtop), so a NAMD PSF no longer recommends protein-only.
 - **Equilibration cluster metadata:** writing folder sizes (or a race with submit) no longer replaces the whole `execution` block, so `scheduler_job_id` / `remote_path` cannot be wiped.
 - **Cluster job rediscovery:** parse `#SBATCH -J`, sibling `remote_path`, remote `gw_<id>.log` names, and `sacct` allocation rows so Watch/Reload can restore a wiped Slurm id.
