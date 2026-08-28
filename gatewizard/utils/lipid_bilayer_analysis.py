@@ -1325,6 +1325,13 @@ class BilayerTrajectoryAnalyzer:
             _analysis_result(memb_thickness, "memb_thickness"), dtype=float
         ).ravel()
         box_z = float(self.universe.dimensions[2]) if self.universe.dimensions is not None else 0.0
+        if box_z <= 1.0:
+            raise ValueError(
+                "Trajectory has no periodic box (Box is None). Membrane thickness "
+                "needs unit-cell dimensions from DCD/XTC/TRR. Remove starting PDB/GRO "
+                "files from the trajectory list; to RMSD against a starting structure, "
+                "use the RMSD reference PDB field instead."
+            )
         thickness = _correct_pbc_straddling_thickness(thickness, box_z)
 
         n_frames = thickness.size
@@ -1533,13 +1540,14 @@ def run_bilayer_analysis(
     """
     import gc
     import numpy as np
+    from gatewizard.utils.namd_analysis import prepare_structural_inputs, _lookup_file_map
 
     top = Path(topology_file).expanduser().resolve()
-    trajs = _to_path_list(trajectory_files)
+    trajs, _ = prepare_structural_inputs(
+        trajectory_files, analysis_type=analysis_type
+    )
     effective_step = step
     if file_strides and effective_step is None:
-        from gatewizard.utils.namd_analysis import _lookup_file_map
-
         strides = [
             max(1, int(_lookup_file_map(file_strides, p) or 1)) for p in trajs
         ]

@@ -199,6 +199,51 @@ class TestTrajectoryAnalyzerStride:
         assert u.atoms.n_atoms == n_atoms
 
 
+class TestPrepareStructuralInputs:
+    def test_split_pdb_from_dcd(self):
+        from gatewizard.utils.namd_analysis import (
+            prepare_structural_inputs,
+            split_analysis_trajectories,
+        )
+
+        snaps, trajs = split_analysis_trajectories(
+            ["/tmp/system.pdb", "/tmp/eq.dcd", "/tmp/prod.dcd"]
+        )
+        assert [p.name for p in snaps] == ["system.pdb"]
+        assert [p.name for p in trajs] == ["eq.dcd", "prod.dcd"]
+
+        coord, ref = prepare_structural_inputs(
+            ["/tmp/system.pdb", "/tmp/eq.dcd"],
+            analysis_type="membrane_thickness",
+        )
+        assert [p.name for p in coord] == ["eq.dcd"]
+        assert ref is None
+
+        coord, ref = prepare_structural_inputs(
+            ["/tmp/system.pdb", "/tmp/eq.dcd"],
+            analysis_type="rmsd",
+        )
+        assert [p.name for p in coord] == ["eq.dcd"]
+        assert ref is not None and ref.name == "system.pdb"
+
+        coord, ref = prepare_structural_inputs(
+            ["/tmp/system.pdb", "/tmp/eq.dcd"],
+            analysis_type="rmsd",
+            reference_structure="/tmp/start.pdb",
+        )
+        assert ref is not None and ref.name == "start.pdb"
+
+    def test_fill_missing_box_dimensions(self):
+        import numpy as np
+        from gatewizard.utils.namd_analysis import _fill_missing_box_dimensions
+
+        dims = np.zeros((3, 6), dtype=np.float32)
+        dims[1] = [80.0, 80.0, 120.0, 90.0, 90.0, 90.0]
+        _fill_missing_box_dimensions(dims)
+        assert dims[0, 2] == pytest.approx(120.0)
+        assert dims[2, 2] == pytest.approx(120.0)
+
+
 class TestEnergyAnalyzer:
     """Test the EnergyAnalyzer class."""
 

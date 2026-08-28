@@ -1643,6 +1643,87 @@ def _to_path_list(paths: List[Union[str, Path]]) -> List[Path]:
     return [Path(p).expanduser().resolve() for p in paths]
 
 
+_STRUCTURE_SNAPSHOT_SUFFIXES = frozenset({".pdb", ".ent", ".gro"})
+
+
+def is_structure_snapshot(path: Union[str, Path]) -> bool:
+    """True for static coordinate files (PDB/GRO), not DCD/XTC trajectories."""
+    return Path(path).suffix.lower() in _STRUCTURE_SNAPSHOT_SUFFIXES
+
+
+def split_analysis_trajectories(
+    paths: List[Union[str, Path]],
+) -> tuple[List[Path], List[Path]]:
+    """Split ``paths`` into ``(snapshots, trajectories)``."""
+    snapshots: List[Path] = []
+    trajectories: List[Path] = []
+    for raw in paths or []:
+        p = Path(raw).expanduser()
+        try:
+            p = p.resolve()
+        except OSError:
+            pass
+        if is_structure_snapshot(p):
+            snapshots.append(p)
+        else:
+            trajectories.append(p)
+    return snapshots, trajectories
+
+
+def prepare_structural_inputs(
+    trajectory_files: List[Union[str, Path]],
+    *,
+    analysis_type: str = "",
+    reference_structure: Optional[Union[str, Path]] = None,
+) -> tuple[List[Path], Optional[Path]]:
+    """Drop static PDB/GRO snapshots from the traj chain when real trajs exist.
+
+    Extra PDBs as frame 0 have no periodic box and crash membrane thickness / APL
+    (``Box is None`` / ``NoneType`` subscript). For RMSD, a leftover snapshot or
+    ``reference_structure`` is returned as the reference, not as a time-series frame.
+    """
+    snapshots, trajectories = split_analysis_trajectories(trajectory_files)
+    coord = list(trajectories) if trajectories else list(snapshots)
+    atype = str(analysis_type or "").strip().lower().replace(" ", "_").replace("-", "_")
+    ref: Optional[Path] = None
+    if reference_structure:
+        ref = Path(reference_structure).expanduser()
+        try:
+            ref = ref.resolve()
+        except OSError:
+            pass
+    elif atype in {"rmsd"} and snapshots and trajectories:
+        ref = snapshots[0]
+    if snapshots and trajectories:
+        logger.warning(
+            "Ignoring structure file(s) in the trajectory list (%s). "
+            "PDB/GRO frames usually have no periodic box and break membrane "
+            "thickness / APL. For RMSD vs a starting structure, set "
+            "reference_structure instead of listing the PDB as a trajectory.",
+            ", ".join(p.name for p in snapshots),
+        )
+    return coord, ref
+
+
+def _fill_missing_box_dimensions(dimensions) -> None:
+    """Forward/back-fill zero unit cells so MemoryReader frames keep a box."""
+    n = int(getattr(dimensions, "shape", [0])[0] or 0)
+    if n == 0:
+        return
+    last = None
+    for i in range(n):
+        if float(dimensions[i, 0]) > 0:
+            last = dimensions[i].copy()
+        elif last is not None:
+            dimensions[i] = last
+    nxt = None
+    for i in range(n - 1, -1, -1):
+        if float(dimensions[i, 0]) > 0:
+            nxt = dimensions[i].copy()
+        elif nxt is not None:
+            dimensions[i] = nxt
+
+
 def _lookup_file_map(file_map: Optional[Dict[str, Any]], path: Path) -> Any:
     """Look up a per-file value using basename, with case-insensitive fallback."""
     if not file_map:
@@ -1860,16 +1941,25 @@ def run_structural_analysis(
     file_times: Optional[Dict[str, float]] = None,
     file_strides: Optional[Dict[str, int]] = None,
     rmsf_xaxis_type: str = "residue_number",
+    reference_structure: Optional[Union[str, Path]] = None,
 ) -> Dict[str, Any]:
     """
     Run trajectory structural analysis and return JSON-serializable arrays.
 
     Supported analysis types: `rmsd`, `rmsf`, `distance`, `radius_of_gyration`.
+
+    ``reference_structure`` is an optional PDB/GRO used as the RMSD reference
+    instead of ``reference_frame``. Static PDB files in ``trajectory_files`` are
+    dropped when DCD/XTC files are also present (they have no periodic box).
     """
     import gc
 
     top = Path(topology_file).expanduser().resolve()
-    trajs = _to_path_list(trajectory_files)
+    trajs, ref_struct = prepare_structural_inputs(
+        trajectory_files,
+        analysis_type=analysis_type,
+        reference_structure=reference_structure,
+    )
     analyzer = TrajectoryAnalyzer(
         top, trajs, file_times=file_times, file_strides=file_strides
     )
@@ -1883,6 +1973,7 @@ def run_structural_analysis(
             reference_frame,
             align,
             rmsf_xaxis_type,
+            reference_structure=ref_struct,
         )
     finally:
         analyzer.clear_analysis_cache()
@@ -1898,6 +1989,7 @@ def _run_structural_analysis_body(
     reference_frame: int,
     align: bool,
     rmsf_xaxis_type: str,
+    reference_structure: Optional[Union[str, Path]] = None,
 ) -> Dict[str, Any]:
     """Compute structural analysis arrays (caller owns analyzer lifecycle)."""
     import numpy as np
@@ -1908,6 +2000,7 @@ def _run_structural_analysis_body(
             selection=selection,
             reference_frame=reference_frame,
             align=align,
+            reference_structure=reference_structure,
         )
         y = np.asarray(data["rmsd"], dtype=float)
         return {
@@ -2180,6 +2273,7 @@ class TrajectoryAnalyzer:
                 dims = self.universe.trajectory.ts.dimensions
                 if dims is not None and len(dims) >= 6:
                     dimensions[i] = dims[:6]
+            _fill_missing_box_dimensions(dimensions)
             dt = float(getattr(self.universe.trajectory.ts, "dt", 1.0))
             # Pass the array + format=MemoryReader (order fac = frames, atoms, xyz).
             # Do not pass a pre-built MemoryReader — MDAnalysis wraps it in ChainReader
@@ -2301,34 +2395,46 @@ class TrajectoryAnalyzer:
         selection: str = "protein and backbone",
         reference_frame: int = 0,
         align: bool = True,
+        reference_structure: Optional[Union[str, Path]] = None,
     ) -> Dict[str, "np.ndarray"]:
         """
         Calculate RMSD for selected atoms.
 
         Args:
             selection: MDAnalysis selection string
-            reference_frame: Frame to use as reference (0 = first frame)
+            reference_frame: Frame to use as reference (0 = first trajectory frame)
             align: If True, perform alignment (rotation + translation) before RMSD.
                   If False, calculate raw coordinate RMSD without alignment.
+            reference_structure: Optional PDB/GRO used as the reference instead of
+                ``reference_frame``. Topology atom order must match the trajectories.
 
         Returns:
             Dictionary with 'time' (ns) and 'rmsd' (Angstroms) arrays
         """
         try:
             from MDAnalysis.analysis import rms
+            import MDAnalysis as mda
             import numpy as np
         except ImportError:
             raise ImportError("MDAnalysis and numpy are required")
 
         # Select atoms on the analysis universe (strided in-memory when stride > 1)
         u, ref_local = self._analysis_universe_and_ref(reference_frame)
+        ref = u
+        if reference_structure:
+            ref_path = Path(reference_structure).expanduser()
+            if not ref_path.is_file():
+                raise ValueError(f"RMSD reference structure not found: {ref_path}")
+            ref = mda.Universe(str(self.topology), str(ref_path))
+            ref_local = 0
+            logger.info("RMSD reference structure: %s (not a trajectory frame)", ref_path.name)
 
         if align:
             # Single-pass aligned RMSD (QCP superposition per frame). Faster than
             # AlignTraj(in_memory=True) plus a redundant per-frame rms.rmsd loop.
             rmsd_analysis = rms.RMSD(
                 u,
-                u,
+                ref,
                 select=selection,
                 ref_frame=ref_local,
             )
@@ -2340,8 +2446,16 @@ class TrajectoryAnalyzer:
             )
         else:
             atoms = u.select_atoms(selection)
-            u.trajectory[ref_local]
-            ref_coords = atoms.positions.astype(np.float64, copy=True)
+            ref_atoms = ref.select_atoms(selection)
+            if len(atoms) == 0 or len(ref_atoms) == 0:
+                raise ValueError(f"RMSD selection {selection!r} matched 0 atoms.")
+            if len(atoms) != len(ref_atoms):
+                raise ValueError(
+                    f"RMSD selection {selection!r} has {len(atoms)} atoms in the "
+                    f"trajectory but {len(ref_atoms)} in the reference structure."
+                )
+            ref.trajectory[ref_local]
+            ref_coords = ref_atoms.positions.astype(np.float64, copy=True)
             n_frames = len(u.trajectory)
             n_atoms = atoms.n_atoms
             coords = np.empty((n_frames, n_atoms, 3), dtype=np.float64)

@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **PlotSpec grid:** mosaic layout (`cols`/`rows`, gap, aspect, last-row align), per-panel labels/ticks/legends, line width/style, figure vs panel legend, reference lines, axis box (tick length/width, spines), and extra margins. Matplotlib GridSpec; GUI legend fontsize mapped to print-sized pt. Dashed patterns scale with linewidth.
+- **Structural RMSD:** optional `reference_structure` (PDB/GRO) as the RMSD reference instead of `reference_frame`. Static PDB/GRO files in the trajectory list are dropped when DCD/XTC files are also present (they have no periodic box and broke membrane thickness).
 - **Builder:** bilayer-only packing (omit `pdb_file`, set `distxy_fix` / `dims` for XY size) and free molecules via `solutes` (`--solute` / `--solute_con`, optional `--solute_inmem` / `--solute_prot_dist`). Membrane-protein jobs still pass `--pdb` and are unchanged.
 - **Builder:** `Builder.cancel_preparation` stops a running job via `process.pid` process-group kill and marks `status.json` as `cancelled`.
 - **Tools Fix PBC (GROMACS):** multi-select center/output index groups merge into temporary `GW_CENTER` / `GW_OUTPUT` compound ndx entries; optional `skip_cluster`; smarter lipid multi-group recommendations when `SOLU_MEMB` is absent.
