@@ -27,10 +27,6 @@ from gatewizard.utils.lipid_bilayer_analysis import (  # noqa: E402
     _vtmc_assign_areas,
     run_bilayer_analysis,
 )
-from gatewizard.utils.namd_analysis import (  # noqa: E402
-    BilayerTrajectoryAnalyzer as ExportedBilayerAnalyzer,
-    run_bilayer_analysis as exported_run_bilayer_analysis,
-)
 
 LIPID_SEL = "resname PC and name P31"
 
@@ -56,9 +52,9 @@ def equilibration_bilayer_data():
 
 
 class TestBilayerAnalysisExports:
-    def test_reexported_from_namd_analysis(self):
-        assert ExportedBilayerAnalyzer is BilayerTrajectoryAnalyzer
-        assert exported_run_bilayer_analysis is run_bilayer_analysis
+    def test_canonical_import(self):
+        assert BilayerTrajectoryAnalyzer is not None
+        assert callable(run_bilayer_analysis)
 
 
 class TestVoronoiAplHelpers:

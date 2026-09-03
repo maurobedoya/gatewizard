@@ -1,5 +1,5 @@
 from pathlib import Path
-from gatewizard.utils.namd_analysis import TrajectoryAnalyzer
+from gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer
 
 # Get the directory where this script is located
 script_dir = Path(__file__).parent

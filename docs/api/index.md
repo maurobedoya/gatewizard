@@ -86,7 +86,7 @@ Module for analyzing simulation results and monitoring equilibration progress.
 - Multi-stage log concatenation with per-file time override
 - Comprehensive 2×2 energy summary plots
 
-**Main Classes:** `EnergyAnalyzer`, `TrajectoryAnalyzer`, `BilayerTrajectoryAnalyzer`, `OpenMMLogAnalyzer`
+**Main Classes:** `EnergyAnalyzer` (`namd_analysis`), `TrajectoryAnalyzer` (`trajectory_analysis`), `BilayerTrajectoryAnalyzer` (`lipid_bilayer_analysis`), `OpenMMLogAnalyzer`
 
 ---
 

@@ -965,7 +965,7 @@ class BilayerTrajectoryAnalyzer:
         file_times: Optional[Dict[str, float]] = None,
         file_strides: Optional[Dict[str, int]] = None,
     ):
-        from gatewizard.utils.namd_analysis import TrajectoryAnalyzer
+        from gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer
 
         self._trajectory = TrajectoryAnalyzer(
             topology,
@@ -992,7 +992,7 @@ class BilayerTrajectoryAnalyzer:
     ):
         if self._trajectory._uses_stride():
             return self._trajectory.time_array_for_analysis()
-        from gatewizard.utils.namd_analysis import _align_time_to_frame_count
+        from gatewizard.utils.trajectory_analysis import _align_time_to_frame_count
 
         full = self._calculate_time_array()
         return _align_time_to_frame_count(full, n_frames, start=start, stop=stop, step=step)
@@ -1540,7 +1540,7 @@ def run_bilayer_analysis(
     """
     import gc
     import numpy as np
-    from gatewizard.utils.namd_analysis import prepare_structural_inputs, _lookup_file_map
+    from gatewizard.utils.trajectory_analysis import prepare_structural_inputs, _lookup_file_map
 
     top = Path(topology_file).expanduser().resolve()
     trajs, _ = prepare_structural_inputs(

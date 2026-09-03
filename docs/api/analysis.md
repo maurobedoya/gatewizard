@@ -45,12 +45,11 @@ Amber and GROMACS: `plot_amber_properties()` / `plot_gromacs_properties()`.
 
 
 ```python
-from gatewizard.utils.namd_analysis import (
-    EnergyAnalyzer,
-    TrajectoryAnalyzer,
+from gatewizard.utils.namd_analysis import EnergyAnalyzer, get_equilibration_progress
+from gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer
+from gatewizard.utils.lipid_bilayer_analysis import (
     BilayerTrajectoryAnalyzer,
     run_bilayer_analysis,
-    get_equilibration_progress
 )
 ```
 
@@ -696,7 +695,7 @@ plot_rmsd(
 
 ```python
 from pathlib import Path
-from gatewizard.utils.namd_analysis import TrajectoryAnalyzer
+from gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer
 
 # Get the directory where this script is located
 script_dir = Path(__file__).parent
@@ -772,7 +771,7 @@ calculate_rmsf(
 
 ```python
 from pathlib import Path
-from gatewizard.utils.namd_analysis import TrajectoryAnalyzer
+from gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer
 
 # Get the directory where this script is located
 script_dir = Path(__file__).parent
@@ -898,7 +897,7 @@ plot_rmsf(
 
 ```python
 from pathlib import Path
-from gatewizard.utils.namd_analysis import TrajectoryAnalyzer
+from gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer
 
 # Get the directory where this script is located
 script_dir = Path(__file__).parent
@@ -1060,7 +1059,7 @@ plot_distances(
 
 ```python
 from pathlib import Path
-from gatewizard.utils.namd_analysis import TrajectoryAnalyzer
+from gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer
 
 # Get the directory where this script is located
 script_dir = Path(__file__).parent
@@ -1215,7 +1214,7 @@ plot_radius_of_gyration(
 
 ```python
 from pathlib import Path
-from gatewizard.utils.namd_analysis import TrajectoryAnalyzer
+from gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer
 
 # Get the directory where this script is located
 script_dir = Path(__file__).parent
@@ -1642,7 +1641,7 @@ Complete RMSD customization with dark themes showing **all available plot option
 
 ```python
 from pathlib import Path
-from gatewizard.utils.namd_analysis import TrajectoryAnalyzer
+from gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer
 
 # Get the directory where this script is located
 script_dir = Path(__file__).parent
@@ -2099,7 +2098,7 @@ Calculate and plot the area per lipid using **EVAPL** (Exclusion-aware Voronoi A
 ```python
 from pathlib import Path
 
-from gatewizard.utils.namd_analysis import BilayerTrajectoryAnalyzer, run_bilayer_analysis
+from gatewizard.utils.lipid_bilayer_analysis import BilayerTrajectoryAnalyzer, run_bilayer_analysis
 
 script_dir = Path(__file__).parent
 data_dir = script_dir / "equilibration_folder"
@@ -2171,7 +2170,7 @@ Calculate and plot bilayer thickness as the mean interleaflet headgroup distance
 ```python
 from pathlib import Path
 
-from gatewizard.utils.namd_analysis import BilayerTrajectoryAnalyzer, run_bilayer_analysis
+from gatewizard.utils.lipid_bilayer_analysis import BilayerTrajectoryAnalyzer, run_bilayer_analysis
 
 script_dir = Path(__file__).parent
 data_dir = script_dir / "equilibration_folder"

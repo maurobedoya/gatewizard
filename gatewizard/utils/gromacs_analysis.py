@@ -1,8 +1,8 @@
 """
 GROMACS log analysis utilities for extracting timing and performance information.
 
-Mirrors the namd_analysis interface so the two are interchangeable in the
-get-equilibration-status endpoint.
+Mirrors the NAMD energetic / equilibration-progress API so the two are
+interchangeable in the get-equilibration-status endpoint.
 """
 
 import math

@@ -150,7 +150,7 @@ class TestTrajectoryAnalyzerStride:
     """Per-file stride index selection for structural analysis."""
 
     def test_analysis_frame_indices_per_file(self):
-        from gatewizard.utils.namd_analysis import TrajectoryAnalyzer
+        from gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer
 
         ta = TrajectoryAnalyzer.__new__(TrajectoryAnalyzer)
         ta.file_strides = {"eq.dcd": 2, "prod.dcd": 10}
@@ -163,7 +163,7 @@ class TestTrajectoryAnalyzerStride:
         assert indices[4:] == list(range(16, 106, 10))
 
     def test_uses_stride_false_when_all_one(self):
-        from gatewizard.utils.namd_analysis import TrajectoryAnalyzer
+        from gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer
 
         ta = TrajectoryAnalyzer.__new__(TrajectoryAnalyzer)
         ta.file_strides = {"a.dcd": 1}
@@ -171,7 +171,7 @@ class TestTrajectoryAnalyzerStride:
         assert ta._uses_stride() is False
 
     def test_uses_stride_true_when_any_above_one(self):
-        from gatewizard.utils.namd_analysis import TrajectoryAnalyzer
+        from gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer
 
         ta = TrajectoryAnalyzer.__new__(TrajectoryAnalyzer)
         ta.file_strides = {"a.dcd": 1, "b.dcd": 5}
@@ -201,7 +201,7 @@ class TestTrajectoryAnalyzerStride:
 
 class TestPrepareStructuralInputs:
     def test_split_pdb_from_dcd(self):
-        from gatewizard.utils.namd_analysis import (
+        from gatewizard.utils.trajectory_analysis import (
             prepare_structural_inputs,
             split_analysis_trajectories,
         )
@@ -235,7 +235,7 @@ class TestPrepareStructuralInputs:
 
     def test_fill_missing_box_dimensions(self):
         import numpy as np
-        from gatewizard.utils.namd_analysis import _fill_missing_box_dimensions
+        from gatewizard.utils.trajectory_analysis import _fill_missing_box_dimensions
 
         dims = np.zeros((3, 6), dtype=np.float32)
         dims[1] = [80.0, 80.0, 120.0, 90.0, 90.0, 90.0]

@@ -11,7 +11,7 @@ Prerequisites
 
 from pathlib import Path
 
-from gatewizard.utils.namd_analysis import BilayerTrajectoryAnalyzer, run_bilayer_analysis
+from gatewizard.utils.lipid_bilayer_analysis import BilayerTrajectoryAnalyzer, run_bilayer_analysis
 
 script_dir = Path(__file__).parent
 data_dir = script_dir / "equilibration_folder"

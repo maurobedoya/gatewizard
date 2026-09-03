@@ -651,7 +651,7 @@ def _property_label(key: str, energy_label: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Module-level analysis helpers — mirror namd_analysis interface
+# Module-level analysis helpers — mirror NAMD energetic API
 # ---------------------------------------------------------------------------
 
 # Internal key → human-readable display name

@@ -165,7 +165,7 @@ analyzer.plot_energy(save="energy.png")
 
 ```python
 
-from gatewizard.utils.namd_analysis import TrajectoryAnalyzer
+from gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer
 
 ### Publication-Ready Figures**Structural Analysis Tab:**
 
@@ -251,7 +251,7 @@ This ensures consistent data access and makes examples self-contained.
 
 - ✅ Custom time scaling for multi-file analysis
 
-- ✅ 4-panel summary plotsfrom gatewizard.utils.namd_analysis import TrajectoryAnalyzer4. Click "Auto-Detect Time" to extract from log timestamps
+- ✅ 4-panel summary plotsfrom gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer4. Click "Auto-Detect Time" to extract from log timestamps
 
 - ✅ Selective property plotting
 
@@ -501,7 +501,7 @@ print(f"Analysis complete! Plot saved: output.png")
 
 This pattern ensures examples are:```python
 
-- **Simple** - Minimal code, easy to understandfrom gatewizard.utils.namd_analysis import TrajectoryAnalyzer
+- **Simple** - Minimal code, easy to understandfrom gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer
 
 - **Self-contained** - Uses relative paths, no configuration needed
 
@@ -549,7 +549,7 @@ Examples 14 and 15 use `equilibration_folder/system.pdb` and the first three equ
 ```python
 from pathlib import Path
 
-from gatewizard.utils.namd_analysis import BilayerTrajectoryAnalyzer, run_bilayer_analysis
+from gatewizard.utils.lipid_bilayer_analysis import BilayerTrajectoryAnalyzer, run_bilayer_analysis
 
 script_dir = Path(__file__).parent
 data_dir = script_dir / "equilibration_folder"
@@ -617,7 +617,7 @@ print(f"JSON API mean area: {result['stats']['mean']:.1f} Å²")
 ```python
 from pathlib import Path
 
-from gatewizard.utils.namd_analysis import BilayerTrajectoryAnalyzer, run_bilayer_analysis
+from gatewizard.utils.lipid_bilayer_analysis import BilayerTrajectoryAnalyzer, run_bilayer_analysis
 
 script_dir = Path(__file__).parent
 data_dir = script_dir / "equilibration_folder"
