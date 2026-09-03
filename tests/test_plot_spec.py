@@ -284,6 +284,15 @@ def test_grid_spec_slices_centers_8_in_3_cols():
     assert slices[7] == (2, 3, 5)
 
 
+def test_grid_spec_slices_end_aligns_7_in_4_cols():
+    slices, rows, micro = grid_spec_slices(7, 4, "end")
+    assert micro == 8
+    assert rows == 2
+    assert len(slices) == 7
+    assert slices[4] == (1, 2, 4)
+    assert slices[6] == (1, 6, 8)
+
+
 def test_normalize_reference_lines_accepts_hlines():
     lines = normalize_reference_lines([{"axis": "x", "value": 10, "style": "dotted"}])
     assert lines[0]["axis"] == "x"

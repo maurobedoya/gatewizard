@@ -119,8 +119,9 @@ def grid_spec_slices(
     cols: int,
     last_row_align: str = "start",
 ) -> Tuple[List[Tuple[int, int, int]], int, int]:
-    """Slices into a (rows × cols*2) micro-grid so a short last row can center.
+    """Slices into a (rows × cols*2) micro-grid so a short last row can align.
 
+    ``last_row_align`` is ``start``, ``center``, or ``end`` (right).
     Returns ``(slices, rows, micro_cols)`` where each slice is ``(row, c0, c1)``.
     """
     n_cols = max(1, int(cols))
@@ -136,7 +137,12 @@ def grid_spec_slices(
         slices.append((r, c * 2, c * 2 + 2))
     if rem:
         r = full
-        start = (n_cols - rem) if last_row_align == "center" else 0
+        if last_row_align == "center":
+            start = n_cols - rem
+        elif last_row_align == "end":
+            start = 2 * (n_cols - rem)
+        else:
+            start = 0
         for k in range(rem):
             c0 = start + k * 2
             slices.append((r, c0, c0 + 2))
@@ -261,7 +267,7 @@ def normalize_plot_spec(spec: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         rows = max(1, min(rows, 16))
 
     last_row_align = str(src.get("last_row_align") or "start").lower()
-    if last_row_align not in ("start", "center"):
+    if last_row_align not in ("start", "center", "end"):
         last_row_align = "start"
 
     wspace = _as_float(src.get("wspace"))
