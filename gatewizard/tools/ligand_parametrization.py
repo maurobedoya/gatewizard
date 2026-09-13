@@ -30,45 +30,12 @@ from typing import List, Dict, Any, Optional, Tuple
 
 from gatewizard.utils.logger import get_logger
 from gatewizard.utils.helpers import get_clean_env
+from gatewizard.utils.peptide_residues import PEPTIDE_POLYMER_RESIDUES
 
 logger = get_logger(__name__)
 
-# Standard amino acid residue names (not ligands)
-STANDARD_RESIDUES = {
-    "ALA",
-    "ARG",
-    "ASN",
-    "ASP",
-    "CYS",
-    "GLN",
-    "GLU",
-    "GLY",
-    "HIS",
-    "ILE",
-    "LEU",
-    "LYS",
-    "MET",
-    "PHE",
-    "PRO",
-    "SER",
-    "THR",
-    "TRP",
-    "TYR",
-    "VAL",
-    # Alternative protonation states
-    "HIE",
-    "HID",
-    "HIP",
-    "ASH",
-    "GLH",
-    "CYX",
-    "CYM",
-    "LYN",
-    "TYM",
-    # Capping groups
-    "ACE",
-    "NME",
-    "NHE",
+# Standard amino acid / peptide polymer residue names (not free ligands)
+STANDARD_RESIDUES = set(PEPTIDE_POLYMER_RESIDUES) | {
     # Common solvent/ions
     "WAT",
     "HOH",

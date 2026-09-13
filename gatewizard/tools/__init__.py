@@ -27,6 +27,12 @@ from gatewizard.tools.ligand_parametrization import (
     NON_RECOMMENDED_COMBOS,
     LIGHT_PALETTE,
 )
+from gatewizard.tools.peptide_cap_parametrization import (
+    check_peptide_cap_parametrization,
+    parametrize_all_peptide_caps_from_system_pdb,
+    parametrize_peptide_cap_from_system_pdb,
+    peptide_cap_params_charge_delta,
+)
 from gatewizard.tools.equilibration import EquilibrationStage
 from gatewizard.tools.packmol_hydration import (
     build_hydrate_inp_text,
@@ -63,6 +69,10 @@ __all__ = [
     "RECOMMENDED_COMBOS",
     "NON_RECOMMENDED_COMBOS",
     "LIGHT_PALETTE",
+    "check_peptide_cap_parametrization",
+    "parametrize_all_peptide_caps_from_system_pdb",
+    "parametrize_peptide_cap_from_system_pdb",
+    "peptide_cap_params_charge_delta",
     "build_hydrate_inp_text",
     "check_packmol_available",
     "detect_hydrogen_status",

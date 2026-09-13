@@ -18,6 +18,10 @@ from pathlib import Path
 
 from gatewizard.utils.logger import get_logger
 from gatewizard.utils.helpers import get_clean_env, resolve_conda_executable, subprocess_argv_for_script
+from gatewizard.utils.peptide_residues import (
+    PEPTIDE_POLYMER_RESIDUES,
+    is_peptide_polymer_residue,
+)
 
 logger = get_logger(__name__)
 
@@ -45,48 +49,13 @@ PROTONATION_STATES = {
 
 # Standard / Amber protein residues (+ caps). Used to strip protein H only —
 # ligands, waters, ions, and other hetero residues are left untouched.
-PROTEIN_RESIDUE_NAMES = frozenset(
-    {
-        "ALA",
-        "ARG",
-        "ASN",
-        "ASP",
-        "CYS",
-        "GLN",
-        "GLU",
-        "GLY",
-        "HIS",
-        "ILE",
-        "LEU",
-        "LYS",
-        "MET",
-        "PHE",
-        "PRO",
-        "SER",
-        "THR",
-        "TRP",
-        "TYR",
-        "VAL",
-        # Amber / CHARMM protonation variants
-        "HID",
-        "HIE",
-        "HIP",
-        "HSD",
-        "HSE",
-        "HSP",
-        "ASH",
-        "GLH",
-        "LYN",
-        "CYX",
-        "CYM",
-        "TYM",
-        "ARN",
-        # Terminal caps
-        "ACE",
-        "NME",
-        "NHE",
-    }
-)
+# Extended with D-aa / formyl / ethanolamine via peptide_residues.
+PROTEIN_RESIDUE_NAMES = frozenset(PEPTIDE_POLYMER_RESIDUES)
+
+
+def is_protein_residue_name(res_name: str) -> bool:
+    """Return True if *res_name* is a standard protein / peptide polymer residue."""
+    return is_peptide_polymer_residue(res_name)
 
 
 def is_pdb_hydrogen_atom(line: str) -> bool:
@@ -105,11 +74,6 @@ def is_pdb_hydrogen_atom(line: str) -> bool:
     if name[0] in {"H", "D"}:
         return True
     return len(name) >= 2 and name[0].isdigit() and name[1] in {"H", "D"}
-
-
-def is_protein_residue_name(res_name: str) -> bool:
-    """Return True if *res_name* is a standard protein / cap residue."""
-    return (res_name or "").strip().upper() in PROTEIN_RESIDUE_NAMES
 
 
 def count_protein_hydrogens(pdb_file: str) -> int:
@@ -287,11 +251,26 @@ class PreparationManager:
             logger.info("Propka executed successfully")
             logger.debug(f"Propka output: {result.stdout}")
 
-            # If we used a temp PDB, propka wrote <temp_name>.pka — rename it
+            # If we used a temp PDB, propka wrote <temp_name>.pka — promote it.
+            # Always replace a previous .pka in this job folder (re-run at a new pH).
             if propka_pdb:
                 temp_pka = Path(propka_pdb).with_suffix(".pka")
-                if temp_pka.exists() and not expected_output_file.exists():
+                if temp_pka.exists():
+                    if expected_output_file.exists():
+                        try:
+                            expected_output_file.unlink()
+                        except OSError:
+                            pass
                     shutil.move(str(temp_pka), str(expected_output_file))
+                # Drop stale companion summary so extract_summary rewrites it.
+                stale_summary = expected_output_file.with_name(
+                    f"{expected_output_file.stem}_summary_of_prediction.txt"
+                )
+                if stale_summary.exists():
+                    try:
+                        stale_summary.unlink()
+                    except OSError:
+                        pass
 
             # Verify output file was created
             if not expected_output_file.exists():
@@ -638,10 +617,19 @@ class PreparationManager:
         if residues is None:
             residues = self.protonable_residues
 
+        if residues is None:
+            residues = self.protonable_residues
+
+        # Empty list is valid: peptides with no editable PropKa states (e.g. only
+        # N+/C− termini filtered out) still need a Prepare pass-through.
         if not residues:
-            raise PreparationError(
-                "No residue data available. Run parse_summary first."
+            logger.info(
+                "No editable protonation residues; copying %s → %s unchanged",
+                input_pdb,
+                output_pdb,
             )
+            shutil.copyfile(input_pdb, output_pdb)
+            return {"residue_changes": 0, "record_changes": 0}
 
         logger.info(f"Applying protonation states to {input_pdb} for pH {ph}")
 

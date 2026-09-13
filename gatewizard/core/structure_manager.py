@@ -23,7 +23,13 @@ import numpy as np
 import psique
 
 from gatewizard.utils.helpers import resolve_pdb_chain_id
+from gatewizard.utils.ions import is_ion_resname
 from gatewizard.utils.logger import get_logger
+from gatewizard.utils.peptide_residues import (
+    PEPTIDE_POLYMER_RESIDUES,
+    classify_polymer_kind,
+    is_peptide_polymer_residue,
+)
 
 logger = get_logger(__name__)
 
@@ -374,31 +380,7 @@ RESIDUE_NATURE_LABELS: Dict[str, str] = {
 }
 
 BACKBONE_NAMES = {"CA", "C", "N", "O", "OXT"}
-AA_NAMES = {
-    "ALA",
-    "ARG",
-    "ASN",
-    "ASP",
-    "CYS",
-    "GLN",
-    "GLU",
-    "GLY",
-    "HIS",
-    "ILE",
-    "LEU",
-    "LYS",
-    "MET",
-    "PHE",
-    "PRO",
-    "SER",
-    "THR",
-    "TRP",
-    "TYR",
-    "VAL",
-    "MSE",
-    "SEC",
-    "PYL",
-}
+AA_NAMES = set(PEPTIDE_POLYMER_RESIDUES)
 
 
 # ---------------------------------------------------------------------------
@@ -816,11 +798,25 @@ def _apply_ss_map(struct: ProteinStructure, ss_map: Dict[Tuple[str, int], str]):
 def _assign_secondary_structure(
     struct: ProteinStructure, filepath: Optional[str] = None
 ):
-    """Assign SS using best available method:
-    1) PSIQUE external tool
-    2) PDB HELIX/SHEET records
-    3) CA-angle heuristic (fallback)
+    """Assign SS using best available method.
+
+    Default order: PSIQUE → PDB HELIX/SHEET → CA-angle heuristic.
+
+    For short peptides / D-aa / formyl-capped polymers, prefer PDB HELIX/SHEET
+    first (PSIQUE often undercovers these), then PSIQUE, then heuristic.
     """
+    protein_res = _protein_residues(struct)
+    polymer_kind = classify_polymer_kind(r.name for r in protein_res)
+    prefer_pdb_records = polymer_kind == "peptide" or len(protein_res) <= 40
+
+    if filepath and prefer_pdb_records:
+        ss_map = _read_ss_from_pdb_records(filepath)
+        if ss_map:
+            ss_map = _remap_ss_map_to_struct(struct, ss_map)
+            _apply_ss_map(struct, ss_map)
+            if _structure_has_non_coil_ss(struct):
+                return
+
     if filepath:
         ss_map = _assign_ss_psique(filepath)
         if ss_map:
@@ -829,12 +825,13 @@ def _assign_secondary_structure(
                 _apply_ss_map(struct, ss_map)
                 if _structure_has_non_coil_ss(struct):
                     return
-        ss_map = _read_ss_from_pdb_records(filepath)
-        if ss_map:
-            ss_map = _remap_ss_map_to_struct(struct, ss_map)
-            _apply_ss_map(struct, ss_map)
-            if _structure_has_non_coil_ss(struct):
-                return
+        if not prefer_pdb_records:
+            ss_map = _read_ss_from_pdb_records(filepath)
+            if ss_map:
+                ss_map = _remap_ss_map_to_struct(struct, ss_map)
+                _apply_ss_map(struct, ss_map)
+                if _structure_has_non_coil_ss(struct):
+                    return
     struct.assign_secondary_structure_heuristic()
 
 
@@ -850,8 +847,8 @@ def assign_secondary_structure_map(
         Path to a coordinate file readable by MDAnalysis (typically PDB).
     method : str
         Assignment method. ``'auto'`` tries PSIQUE, then PDB HELIX/SHEET records,
-        then the CA-angle heuristic. Other values match
-        :meth:`StructureManager.assign_secondary_structure`.
+        then the CA-angle heuristic (short peptides prefer PDB records first).
+        Other values match :meth:`StructureManager.assign_secondary_structure`.
 
     Returns
     -------
@@ -1389,7 +1386,11 @@ class StructureManager:
         return []
 
     def auto_detect_molecules(self) -> List[Selection]:
-        """Auto-create selections by molecule type (protein, water, ligands).
+        """Auto-create selections by molecule type (protein/peptide, water, ligands).
+
+        Peptide polymer residues (D-aa, formyl, ethanolamine, …) are folded into
+        **Protein** so Visualize does not create per-resname ligand views for
+        covalently linked HETs (e.g. gramicidin FVA/DLE/DVA/ETA).
 
         Returns
         -------
@@ -1397,19 +1398,29 @@ class StructureManager:
         """
         self._require_structure()
         groups: Dict[str, List[int]] = defaultdict(list)
+        polymer_resnames: list[str] = []
         for i, a in enumerate(self.structure.atoms):
-            if a.res_name in AA_NAMES:
-                groups["Protein"].append(i)
-            elif a.res_name in ("HOH", "WAT", "TIP"):
+            rname = (a.res_name or "").strip().upper()
+            if is_peptide_polymer_residue(rname):
+                groups["Polymer"].append(i)
+                polymer_resnames.append(rname)
+            elif rname in ("HOH", "WAT", "TIP"):
                 groups["Water"].append(i)
+            elif is_ion_resname(a.res_name):
+                groups["Ions"].append(i)
             else:
                 groups[a.res_name].append(i)
         self.selections.clear()
         color_idx = 0
+        polymer_kind = classify_polymer_kind(polymer_resnames)
+        polymer_label = "Peptide" if polymer_kind == "peptide" else "Protein"
         for name, indices in groups.items():
-            if name == "Protein":
+            if name == "Polymer":
                 sel = Selection(
-                    name, indices, representation="tube_ss", color_scheme="ss"
+                    polymer_label,
+                    indices,
+                    representation="tube_ss",
+                    color_scheme="ss",
                 )
             elif name == "Water":
                 sel = Selection(
@@ -1418,6 +1429,13 @@ class StructureManager:
                     representation="vdw",
                     color_scheme="element",
                     visible=False,
+                )
+            elif name == "Ions":
+                sel = Selection(
+                    name,
+                    indices,
+                    representation="vdw",
+                    color_scheme="element",
                 )
             else:
                 c = CHAIN_PALETTE[color_idx % len(CHAIN_PALETTE)]
@@ -1629,6 +1647,10 @@ class StructureManager:
     def rename_residues_by_indices(self, indices: List[int], new_name: str) -> int:
         """Rename the residue name of atoms specified by index list.
 
+        Only selected atoms are renamed. Two fragments that share the same
+        ``(chain_id, res_id)`` stay independent — unselected copies keep their
+        original name. Residue/chain tables are rebuilt afterward.
+
         Parameters
         ----------
         indices : list of int
@@ -1644,17 +1666,12 @@ class StructureManager:
         self._require_structure()
         new_name = new_name.strip().upper()
         idx_set = set(indices)
-        # Collect (chain_id, res_id) pairs that are in the selection
-        sel_keys: set = set()
         count = 0
         for i, atom in enumerate(self.structure.atoms):
             if i in idx_set:
                 atom.res_name = new_name
-                sel_keys.add((atom.chain_id, atom.res_id))
                 count += 1
-        for res in self.structure.residues:
-            if (res.chain_id, res.seq_id) in sel_keys:
-                res.name = new_name
+        self.structure._rebuild_residues_and_chains()
         logger.info(f"Renamed residues for {count} atoms (by indices) -> {new_name}")
         return count
 
@@ -1663,9 +1680,12 @@ class StructureManager:
     ) -> int:
         """Renumber residues that contain atoms in *indices*, starting from *new_start*.
 
-        The unique (chain_id, res_id) pairs found among the selected atoms are
-        sorted by res_id and assigned new sequential IDs beginning at
-        *new_start*.
+        Only atoms in *indices* are updated. Other molecules that happen to share
+        the same ``(chain_id, res_id)`` are left unchanged (common for duplicate
+        ligands both named UNK / 900). Residue tables are rebuilt afterward.
+
+        The unique ``(chain_id, res_id)`` pairs among the *selected* atoms are
+        sorted and assigned sequential IDs beginning at *new_start*.
 
         Parameters
         ----------
@@ -1693,15 +1713,14 @@ class StructureManager:
             pair: new_start + j for j, pair in enumerate(pairs)
         }
         count = 0
-        for atom in self.structure.atoms:
+        for i, atom in enumerate(self.structure.atoms):
+            if i not in idx_set:
+                continue
             key = (atom.chain_id, atom.res_id)
             if key in remap:
                 atom.res_id = remap[key]
                 count += 1
-        for res in self.structure.residues:
-            key = (res.chain_id, res.seq_id)
-            if key in remap:
-                res.seq_id = remap[key]
+        self.structure._rebuild_residues_and_chains()
         logger.info(
             f"Renumbered {len(pairs)} residues (by indices), new_start={new_start} ({count} atoms)"
         )

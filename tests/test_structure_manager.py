@@ -282,6 +282,57 @@ class TestStructureManager:
         seq_ids = [r["seq_id"] for r in res]
         assert 100 in seq_ids
 
+    def test_renumber_by_indices_does_not_touch_sibling_same_resid(self, tmp_path):
+        """Two ligands can share UNK/900; renumber selection must not move the other."""
+        pdb = tmp_path / "dup_unk.pdb"
+        pdb.write_text(
+            "\n".join(
+                [
+                    "HETATM    1  C1  UNK X 900       0.000   0.000   0.000  1.00  0.00           C",
+                    "HETATM    2  C2  UNK X 900       1.000   0.000   0.000  1.00  0.00           C",
+                    "HETATM    3  C1  UNK X 900      10.000   0.000   0.000  1.00  0.00           C",
+                    "HETATM    4  C2  UNK X 900      11.000   0.000   0.000  1.00  0.00           C",
+                    "END",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        v = StructureManager()
+        v.load_structure(str(pdb))
+        assert all(a.res_id == 900 for a in v.structure.atoms)
+        # First ligand only
+        count = v.renumber_residues_by_indices([0, 1], new_start=1)
+        assert count == 2
+        assert v.structure.atoms[0].res_id == 1
+        assert v.structure.atoms[1].res_id == 1
+        assert v.structure.atoms[2].res_id == 900
+        assert v.structure.atoms[3].res_id == 900
+
+    def test_rename_by_indices_does_not_rename_sibling_same_resid(self, tmp_path):
+        pdb = tmp_path / "dup_unk.pdb"
+        pdb.write_text(
+            "\n".join(
+                [
+                    "HETATM    1  C1  UNK X 900       0.000   0.000   0.000  1.00  0.00           C",
+                    "HETATM    2  C2  UNK X 900       1.000   0.000   0.000  1.00  0.00           C",
+                    "HETATM    3  C1  UNK X 900      10.000   0.000   0.000  1.00  0.00           C",
+                    "HETATM    4  C2  UNK X 900      11.000   0.000   0.000  1.00  0.00           C",
+                    "END",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        v = StructureManager()
+        v.load_structure(str(pdb))
+        count = v.rename_residues_by_indices([0, 1], "LIG")
+        assert count == 2
+        assert v.structure.atoms[0].res_name == "LIG"
+        assert v.structure.atoms[1].res_name == "LIG"
+        assert v.structure.atoms[2].res_name == "UNK"
+        assert v.structure.atoms[3].res_name == "UNK"
+
     def test_delete_atoms(self, viewer):
         water = viewer.select_by_criteria("Water")
         n_before = len(viewer.structure.atoms)

@@ -317,6 +317,96 @@ class TestBuilder:
         assert "--distxy_fix" in command
 
 
+class TestCreateJobDirectoryParamCaches:
+    """Parametrize ligands/caps into 02_build_* then Generate Input must reuse it."""
+
+    @pytest.fixture
+    def builder(self):
+        return Builder()
+
+    def test_reuses_folder_with_ligand_params_only(self, builder, tmp_path):
+        preferred = tmp_path / "02_build_1jno_protonated"
+        lig = preferred / "ligand_params" / "LIG"
+        lig.mkdir(parents=True)
+        (lig / "LIG.frcmod").write_text("x\n", encoding="utf-8")
+        (lig / "LIG.lib").write_text("x\n", encoding="utf-8")
+
+        job_dir = builder._create_job_directory(
+            None, str(tmp_path), custom_output_name="02_build_1jno_protonated"
+        )
+        assert job_dir.resolve() == preferred.resolve()
+        assert (job_dir / "ligand_params" / "LIG" / "LIG.frcmod").is_file()
+        assert (job_dir / "logs").is_dir()
+
+    def test_reuses_folder_with_peptide_cap_params_only(self, builder, tmp_path):
+        preferred = tmp_path / "02_build_1jno_protonated"
+        cap = preferred / "peptide_cap_params" / "ETA"
+        cap.mkdir(parents=True)
+        (cap / "ETA.frcmod").write_text("x\n", encoding="utf-8")
+        (cap / "ETA.lib").write_text("x\n", encoding="utf-8")
+
+        job_dir = builder._create_job_directory(
+            None, str(tmp_path), custom_output_name="02_build_1jno_protonated"
+        )
+        assert job_dir.resolve() == preferred.resolve()
+        assert (job_dir / "peptide_cap_params" / "ETA" / "ETA.lib").is_file()
+
+    def test_generate_inputs_reuses_param_staging_folder(self, builder, tmp_path):
+        preferred = tmp_path / "02_build_params_reuse"
+        (preferred / "ligand_params" / "LIG").mkdir(parents=True)
+        (preferred / "ligand_params" / "LIG" / "LIG.frcmod").write_text("x\n")
+        (preferred / "peptide_cap_params" / "ETA").mkdir(parents=True)
+        (preferred / "peptide_cap_params" / "ETA" / "ETA.lib").write_text("x\n")
+
+        success, message, job_dir = builder.generate_preparation_inputs(
+            pdb_file=None,
+            working_dir=str(tmp_path),
+            upper_lipids=["POPC"],
+            lower_lipids=["POPC"],
+            lipid_ratios="1//1",
+            distxy_fix=100,
+            water_model="tip3p",
+            protein_ff="ff19SB",
+            lipid_ff="lipid21",
+            output_folder_name="02_build_params_reuse",
+        )
+        assert success, message
+        assert Path(job_dir).resolve() == preferred.resolve()
+        assert (preferred / "run_preparation.sh").is_file()
+        assert (preferred / "ligand_params" / "LIG" / "LIG.frcmod").is_file()
+        assert (preferred / "peptide_cap_params" / "ETA" / "ETA.lib").is_file()
+
+    def test_prior_preparation_gets_timestamp_and_copies_caches(self, builder, tmp_path):
+        preferred = tmp_path / "02_build_again"
+        preferred.mkdir()
+        (preferred / "run_preparation.sh").write_text("#!/bin/bash\n", encoding="utf-8")
+        (preferred / "status.json").write_text('{"status":"not_started"}\n', encoding="utf-8")
+        lig = preferred / "ligand_params" / "LIG"
+        lig.mkdir(parents=True)
+        (lig / "LIG.frcmod").write_text("cached\n", encoding="utf-8")
+        caps = preferred / "peptide_cap_params" / "FVA"
+        caps.mkdir(parents=True)
+        (caps / "FVA.lib").write_text("cached\n", encoding="utf-8")
+
+        job_dir = builder._create_job_directory(
+            None, str(tmp_path), custom_output_name="02_build_again"
+        )
+        assert job_dir.resolve() != preferred.resolve()
+        assert job_dir.name.startswith("02_build_again_")
+        assert (job_dir / "ligand_params" / "LIG" / "LIG.frcmod").read_text() == "cached\n"
+        assert (job_dir / "peptide_cap_params" / "FVA" / "FVA.lib").read_text() == "cached\n"
+
+    def test_default_stem_reuses_param_only_folder(self, builder, tmp_path):
+        pdb = tmp_path / "1jno_protonated.pdb"
+        pdb.write_text("END\n", encoding="utf-8")
+        preferred = tmp_path / "02_build_1jno_protonated"
+        (preferred / "peptide_cap_params" / "ETA").mkdir(parents=True)
+        (preferred / "peptide_cap_params" / "ETA" / "ETA.frcmod").write_text("x\n")
+
+        job_dir = builder._create_job_directory(str(pdb), str(tmp_path), custom_output_name=None)
+        assert job_dir.resolve() == preferred.resolve()
+
+
 # ============================================================================
 # SECTION 2: FORCE FIELD MANAGEMENT TESTS
 # ============================================================================

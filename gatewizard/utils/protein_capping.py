@@ -21,6 +21,7 @@ import MDAnalysis as mda
 from MDAnalysis.core.universe import Universe as MDAUniverse
 
 from gatewizard.utils.logger import get_logger
+from gatewizard.utils.peptide_residues import detect_peptide_caps_in_pdb
 
 # Suppress MDAnalysis warnings
 warnings.filterwarnings("ignore")
@@ -677,23 +678,13 @@ class ProteinCapper:
 def detect_terminal_caps(pdb_file: Union[str, Path]) -> List[str]:
     """Return sorted unique terminal-cap residue names found in *pdb_file*.
 
-    Looks for ACE / NME / NMA in ATOM and HETATM records.
+    Looks for ACE / NME / NMA and native peptide caps (FVA / FOR / ETA).
     """
-    found: set[str] = set()
-    path = Path(pdb_file)
-    if not path.is_file():
-        return []
-    with open(path, "r", encoding="utf-8", errors="replace") as f:
-        for line in f:
-            if line.startswith(("ATOM", "HETATM")) and len(line) >= 20:
-                resname = line[17:20].strip().upper()
-                if resname in {"ACE", "NME", "NMA"}:
-                    found.add(resname)
-    return sorted(found)
+    return detect_peptide_caps_in_pdb(str(pdb_file))
 
 
 def is_already_capped(pdb_file: Union[str, Path]) -> bool:
-    """True when the PDB already contains ACE and/or NME/NMA caps."""
+    """True when the PDB already contains ACE/NME/NMA or native peptide caps."""
     return bool(detect_terminal_caps(pdb_file))
 
 

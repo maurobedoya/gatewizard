@@ -31,6 +31,14 @@ from gatewizard.tools.ligand_parametrization import (
     build_ligand_param_args,
     build_tleap_ligand_lines,
 )
+from gatewizard.tools.peptide_cap_parametrization import peptide_cap_params_charge_delta
+from gatewizard.utils.ions import tleap_neutralization_lines
+from gatewizard.utils.peptide_residues import (
+    amber_unsupported_peptide_names_in_pdb,
+    d_amino_acid_names_in_pdb,
+    pdb_has_peptide_hetatm_markers,
+    remap_d_amino_acids_for_tleap,
+)
 
 logger = get_logger(__name__)
 
@@ -184,6 +192,7 @@ class Builder:
             "pack_only": False,  # Only perform packing stage
             "parametrize_only": False,  # Only perform parametrization stage
             "ligand_params": {},  # Dict of ligand name -> {frcmod, lib} file paths
+            "peptide_cap_params": {},  # Dict of polymer-cap name -> {frcmod, lib, charge}
             "nloop": 20,  # GENCAN loops for PACKMOL (packmol-memgen default)
             "nloop_all": 100,  # GENCAN loops for all-together packing
             "tolerance": 2.0,  # PACKMOL clash tolerance (radius1+radius2)
@@ -263,6 +272,19 @@ class Builder:
                     "parametrizing. Parametrize each molecule before generating "
                     "inputs, or pass ligand_params / --ligand_param."
                 )
+
+        pdb_for_caps = optional_pdb_path(pdb_file)
+        if pdb_for_caps and kwargs.get("parametrize", True):
+            needed_caps = amber_unsupported_peptide_names_in_pdb(pdb_for_caps)
+            if needed_caps:
+                cap_params = kwargs.get("peptide_cap_params") or {}
+                missing_caps = [n for n in needed_caps if n not in cap_params]
+                if missing_caps:
+                    warnings.append(
+                        "Peptide polymer caps need GAFF libraries before tleap: "
+                        + ", ".join(missing_caps)
+                        + ". Use Builder 'Parametrize caps' (or pass peptide_cap_params)."
+                    )
 
         return True, "\n\n".join(warnings)
 
@@ -697,39 +719,73 @@ class Builder:
         config["_has_protein"] = local_pdb is not None
         return job_dir, local_pdb, config
 
+    # Subdirs written by ligand / peptide-cap parametrization before Generate Input.
+    _PARAM_CACHE_DIRNAMES = ("ligand_params", "peptide_cap_params")
+
+    @staticmethod
+    def _job_dir_has_prior_preparation(job_dir: Path) -> bool:
+        """True when *job_dir* already has Builder inputs (not just GAFF caches)."""
+        if (job_dir / "run_preparation.sh").is_file():
+            return True
+        if (job_dir / "status.json").is_file():
+            return True
+        return False
+
+    @classmethod
+    def _copy_param_caches(cls, src: Path, dst: Path) -> None:
+        """Copy ligand/peptide-cap params from *src* into *dst* when missing."""
+        if not src.is_dir() or src.resolve() == dst.resolve():
+            return
+        for name in cls._PARAM_CACHE_DIRNAMES:
+            source = src / name
+            target = dst / name
+            if source.is_dir() and not target.exists():
+                shutil.copytree(source, target)
+                logger.info("Copied %s → %s", source, target)
+
     def _create_job_directory(
         self,
         pdb_file: Optional[str],
         working_dir: str,
         custom_output_name: Optional[str] = None,
     ) -> Path:
-        """Create unique job directory."""
+        """Create or reuse the Builder job directory.
+
+        Ligand / peptide-cap parametrization writes under the planned build folder
+        (``ligand_params/``, ``peptide_cap_params/``) before Generate Input. That
+        must not force a timestamped sibling — reuse the folder unless a prior
+        preparation (``run_preparation.sh`` / ``status.json``) is already there.
+        """
         work_dir = Path(working_dir).resolve()
         work_dir.mkdir(parents=True, exist_ok=True)
 
         if custom_output_name:
-            # Use custom output name as-is, only add timestamp if directory already exists
-            job_dir = work_dir / custom_output_name
-            if job_dir.exists():
-                # Only add timestamp if directory already exists to ensure uniqueness
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                job_dir = work_dir / f"{custom_output_name}_{timestamp}"
+            preferred = work_dir / str(custom_output_name).strip()
         else:
-            # Use default naming scheme
             pdb_path = optional_pdb_path(pdb_file)
             if pdb_path:
                 pdb_name = os.path.splitext(os.path.basename(pdb_path))[0]
                 stem = f"02_build_{pdb_name}"
             else:
                 stem = "02_build_bilayer"
-            job_dir = work_dir / stem
-            if job_dir.exists():
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                job_dir = work_dir / f"{stem}_{timestamp}"
+            preferred = work_dir / stem
+
+        if not preferred.exists() or not self._job_dir_has_prior_preparation(preferred):
+            job_dir = preferred
+        else:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            job_dir = work_dir / f"{preferred.name}_{timestamp}"
+            logger.info(
+                "Preferred build folder %s already has preparation inputs; "
+                "using %s and copying GAFF param caches if present",
+                preferred.name,
+                job_dir.name,
+            )
 
         job_dir.mkdir(parents=True, exist_ok=True)
+        if job_dir.resolve() != preferred.resolve():
+            self._copy_param_caches(preferred, job_dir)
 
-        # Create logs directory
         (job_dir / "logs").mkdir(exist_ok=True)
 
         logger.info(f"Created job directory: {job_dir}")
@@ -751,6 +807,17 @@ class Builder:
             logger.info(
                 "Removed %s protein hydrogen atom(s) from Builder input PDB",
                 result["removed"],
+            )
+
+        # Staging remap: CCD D-aa → L Amber names for packmol-memgen --parametrize.
+        # Chirality is preserved in coordinates; user original PDB is untouched.
+        d_names = d_amino_acid_names_in_pdb(str(local_pdb))
+        if d_names:
+            info = remap_d_amino_acids_for_tleap(str(local_pdb), str(local_pdb))
+            logger.info(
+                "Remapped D-amino acids for tleap/packmol (%s): %s residue change(s)",
+                ", ".join(d_names),
+                info.get("residue_changes", 0),
             )
 
         logger.info(f"Copied PDB file to: {local_pdb}")
@@ -880,14 +947,30 @@ class Builder:
             if has_protein and prot_dist not in (None, ""):
                 cmd.extend(["--solute_prot_dist", str(prot_dist)])
 
-        # Add ligand parameters (--ligand_param frcmod:lib for each ligand)
-        ligand_params = config.get("ligand_params", {})
-        if ligand_params:
-            ligand_args = build_ligand_param_args(ligand_params)
+        # Add ligand / polymer-cap parameters (--ligand_param frcmod:lib)
+        ligand_params = dict(config.get("ligand_params") or {})
+        peptide_cap_params = dict(config.get("peptide_cap_params") or {})
+        merged_params = {**ligand_params, **peptide_cap_params}
+        if merged_params:
+            ligand_args = build_ligand_param_args(merged_params)
             cmd.extend(ligand_args)
-            # Also add --gaff2 flag when ligands are present
             cmd.append("--gaff2")
-            logger.info(f"Added ligand parameters for: {list(ligand_params.keys())}")
+            logger.info(
+                "Added ligand/cap parameters for: %s",
+                list(merged_params.keys()),
+            )
+
+        charge_delta = peptide_cap_params_charge_delta(peptide_cap_params)
+        if charge_delta != 0 and has_protein:
+            cmd.extend(["--charge_pdb_delta", str(charge_delta)])
+
+        # Keep polymer HETATM (FVA/ETA/D-aa) if MEMEMBED runs (preoriented off).
+        if has_protein and pdb_file is not None:
+            try:
+                if pdb_has_peptide_hetatm_markers(str(pdb_file)):
+                    cmd.append("--keepligs")
+            except OSError:
+                pass
 
         logger.info(f"Built command: {' '.join(cmd)}")
         return cmd
@@ -1396,6 +1479,24 @@ EOF
             prepared_pdb="system_for_tleap.pdb"
             if pdb4amber -i "$bilayer_pdb" -o "$prepared_pdb" 2>&1 | tee -a logs/parametrization.log; then
                 echo "✅ pdb4amber completed successfully" | tee -a logs/preparation.log
+
+                # Safety remap: D CCD names → L Amber partners (coords unchanged)
+                "{sys.executable}" - <<'PY'
+from gatewizard.utils.peptide_residues import (
+    d_amino_acid_names_in_pdb,
+    remap_d_amino_acids_for_tleap,
+)
+path = "system_for_tleap.pdb"
+names = d_amino_acid_names_in_pdb(path)
+if names:
+    info = remap_d_amino_acids_for_tleap(path, path)
+    print(
+        "Remapped D-amino acids for tleap (%s): %s residue change(s)"
+        % (", ".join(names), info.get("residue_changes", 0))
+    )
+else:
+    print("No D-amino acid CCD names to remap before tleap")
+PY
                 
                 # Step 2: Run tleap
                 echo "Running tleap parametrization..." | tee -a logs/preparation.log
@@ -1431,7 +1532,9 @@ EOF
                 
                 case "$lipid_ff" in
                     "lipid21") lipid_leaprc="leaprc.lipid21" ;;
-                    "lipid17") lipid_leaprc="leaprc.lipid17" ;;
+                    "lipid17") lipid_leaprc="oldff/leaprc.lipid17" ;;
+                    "lipid14") lipid_leaprc="oldff/leaprc.lipid14" ;;
+                    "lipid11") lipid_leaprc="oldff/leaprc.lipid11" ;;
                     "GAFF") lipid_leaprc="leaprc.gaff" ;;
                     *) lipid_leaprc="leaprc.lipid21" ;;
                 esac
@@ -1474,9 +1577,7 @@ system = loadPDB "{prepared_pdb_for_leap}"
 # Check total system charge
 charge system
 
-# Neutralize total charge
-addIonsRand system Na+ 0
-addIonsRand system Cl- 0
+{tleap_neutralization_lines(config.get("cation"), config.get("anion"))}
 
 # Save parameter and coordinate files
 saveAmberParm system system.prmtop system.inpcrd
@@ -1780,10 +1881,14 @@ EOF
             "ff03": "leaprc.protein.ff03",
         }
 
-        # Map lipid force fields to leaprc files
+        # Map lipid force fields to leaprc files.
+        # AmberTools keeps older lipid leaprcs under cmd/oldff/ (lipid17/14/11);
+        # sourcing that path avoids copying files next to leaprc.lipid21.
         lipid_leaprc_map = {
             "lipid21": "leaprc.lipid21",
-            "lipid17": "leaprc.lipid17",
+            "lipid17": "oldff/leaprc.lipid17",
+            "lipid14": "oldff/leaprc.lipid14",
+            "lipid11": "oldff/leaprc.lipid11",
             "GAFF": "leaprc.gaff",
         }
 
@@ -1809,16 +1914,17 @@ EOF
 
         flexible_water = tleap_flexible_water_lines(md_engine, water_model)
 
-        # Generate ligand parameter lines if ligands are present
-        ligand_params = config.get("ligand_params", {})
-        # Extract atom type from parametrized ligand info (all ligands share the same type)
+        # Generate ligand / peptide-cap parameter lines
+        ligand_params = dict(config.get("ligand_params") or {})
+        peptide_cap_params = dict(config.get("peptide_cap_params") or {})
+        merged_params = {**ligand_params, **peptide_cap_params}
         ligand_atom_type = "gaff2"
-        for _lig_info in ligand_params.values():
+        for _lig_info in merged_params.values():
             if isinstance(_lig_info, dict) and "atom_type" in _lig_info:
                 ligand_atom_type = _lig_info["atom_type"]
                 break
         ligand_lines = build_tleap_ligand_lines(
-            ligand_params, atom_type=ligand_atom_type
+            merged_params, atom_type=ligand_atom_type
         )
 
         # Generate tleap input content
@@ -1840,9 +1946,7 @@ system = loadPDB {pdb_path}
 # Check total system charge
 charge system
 
-# Neutralize total charge
-addIonsRand system Na+ 0
-addIonsRand system Cl- 0
+{tleap_neutralization_lines(config.get("cation"), config.get("anion"))}
 
 # Save parameter and coordinate files
 saveAmberParm system system.prmtop system.inpcrd
@@ -1857,12 +1961,14 @@ quit
         return leap_content
 
     def _generate_bash_ligand_tleap_lines(self, config: Dict[str, Any]) -> str:
-        """Generate tleap ligand parameter lines for the bash execution script."""
-        ligand_params = config.get("ligand_params", {})
-        if not ligand_params:
+        """Generate tleap ligand/cap parameter lines for the bash execution script."""
+        ligand_params = dict(config.get("ligand_params") or {})
+        peptide_cap_params = dict(config.get("peptide_cap_params") or {})
+        merged = {**ligand_params, **peptide_cap_params}
+        if not merged:
             return ""
-        lines = ["# Load GAFF2 and ligand parameters", "source leaprc.gaff2"]
-        for name, files in ligand_params.items():
+        lines = ["# Load GAFF2 and ligand / peptide-cap parameters", "source leaprc.gaff2"]
+        for name, files in merged.items():
             frcmod = files.get("frcmod", "")
             lib = files.get("lib", "")
             if frcmod:

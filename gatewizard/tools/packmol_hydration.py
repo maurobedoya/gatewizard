@@ -24,6 +24,7 @@ from gatewizard.utils.optional_deps import (
     probe_executable_version,
     resolve_executable,
 )
+from gatewizard.utils.peptide_residues import PEPTIDE_POLYMER_RESIDUES
 
 logger = get_logger(__name__)
 
@@ -71,43 +72,7 @@ _HEAVY_INFLATION: Dict[str, float] = {
     "P": 1.0,
 }
 
-PROTEIN_RESIDUES = frozenset(
-    {
-        "ALA",
-        "ARG",
-        "ASN",
-        "ASP",
-        "CYS",
-        "GLN",
-        "GLU",
-        "GLY",
-        "HIS",
-        "ILE",
-        "LEU",
-        "LYS",
-        "MET",
-        "PHE",
-        "PRO",
-        "SER",
-        "THR",
-        "TRP",
-        "TYR",
-        "VAL",
-        "HID",
-        "HIE",
-        "HIP",
-        "CYX",
-        "ASH",
-        "GLH",
-        "LYN",
-        "ARN",
-        "TYM",
-        "CYM",
-        "HSD",
-        "HSE",
-        "HSP",
-    }
-)
+PROTEIN_RESIDUES = frozenset(PEPTIDE_POLYMER_RESIDUES)
 
 HydrogenStatus = str  # "full" | "partial" | "none"
 ExclusionMode = str  # "heavy_atom_safe" | "explicit"
