@@ -23,7 +23,7 @@ p_type      = membrane                              # MonteCarloBarostat type
 p_XYMode    = XYIsotropic                           # For MonteCarloMembraneBarostat
 p_ZMode     = ZFree                                 # For MonteCarloMembraneBarostat
 p_tens      = 0                                     # Surface tension for MonteCarloMembraneBarostat (dyne/cm)
-p_freq      = 100                                   # Pressure coupling frequency (steps)
+p_freq      = 15                                    # Pressure coupling frequency (steps; soft pack)
 
 cons        = HBonds                                # Constraints method
 

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Equilibration (OpenMM):** keep CutoffPeriodic 9 Å + LRC (aligned with Amber/NAMD/GROMACS). `omm_readinputs.py` defaults match that (no Force-switch 1.2 nm trap). Equilibration membrane barostat uses `p_freq=15`; production keeps `p_freq=100`. Mini is folded into Eq1 (**NVT, fixed box → GPU**); **all** eq/production stages default to **CPU×1 + GPU×1** (including first packing Eq3). Run scripts set `--platform` per stage. Amber still forces first packing to CPU.
+- **Equilibration resources (Amber / OpenMM):** Amber minimization and first packing barostat use **CPU×1**; OpenMM keeps GPU on Eq1 (mini folded in) and on first packing. Later MD stages stay on GPU for both engines.
 - **Secondary structure (auto):** short peptides / D-aa / formyl-capped polymers prefer PDB HELIX/SHEET records before PSIQUE (better mid-chain coverage for entries like gramicidin).
 - **PlotSpec grid:** `last_row_align` accepts **`end`** (right-align a short last row) in addition to `start` / `center`.
 - **Analysis module layout:** engine-agnostic trajectory / structural analysis (`TrajectoryAnalyzer`, `run_structural_analysis`, helpers) moved from `gatewizard.utils.namd_analysis` to `gatewizard.utils.trajectory_analysis`. NAMD log / ENERGY / equilibration progress remain in `namd_analysis`. Bilayer analysis stays in `lipid_bilayer_analysis`.

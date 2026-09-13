@@ -30,10 +30,12 @@ class _OpenMMReadInputs:
 
         self.coulomb = PME  # Electrostatic cut-off method
         self.ewald_Tol = 0.0005  # Ewald error tolerance
-        self.vdw = "Force-switch"  # vdW cut-off method
-        self.r_on = 1.0  # Switch-on distance (nm)
-        self.r_off = 1.2  # Switch-off distance (nm)
-        self.lj_lrc = "no"  # Turn on/off LJ long-range correction
+        # GateWizard Amber-path defaults (match Amber/NAMD/GROMACS 9 Å + LRC).
+        # Templates set these explicitly; defaults must not revive Force-switch 1.2 nm.
+        self.vdw = "CutoffPeriodic"  # vdW cut-off method
+        self.r_on = 1.0  # Switch-on distance (nm); used only with Force-switch
+        self.r_off = 0.9  # Switch-off / cutoff distance (nm)
+        self.lj_lrc = "yes"  # Turn on/off LJ long-range correction
         self.e14scale = 1.0  # 1-4 electrostatic interaction scaling
 
         self.temp = 300.0  # Temperature (K)
@@ -50,7 +52,7 @@ class _OpenMMReadInputs:
             MonteCarloMembraneBarostat.ZFree
         )  # For MonteCarloMembraneBarostat
         self.p_tens = 0.0  # Sulface tension for MonteCarloMembraneBarostat (dyne/cm)
-        self.p_freq = 15  # Pressure coupling frequency (steps)
+        self.p_freq = 15  # Pressure coupling frequency (steps); eq soft-pack default
 
         self.cons = HBonds  # Constraints method
 

@@ -462,7 +462,95 @@ class TestOpenMMRunScript:
         )
         content = script.read_text()
         assert 'PLATFORM="${PLATFORM:-CPU}"' in content
+        assert "--platform CPU" in content
         assert "DEVICE_INDEX=" not in content
+
+    def test_run_script_per_stage_cpu_then_gpu(self, manager, tmp_path):
+        names = [
+            "step1_equilibration",
+            "step2_equilibration",
+            "step3_equilibration",
+            "step4_equilibration",
+        ]
+        script = manager.generate_run_script(
+            names,
+            tmp_path,
+            "system.prmtop",
+            "system.inpcrd",
+            cpu_cores=1,
+            use_gpu=True,
+            gpu_id=0,
+            num_gpus=1,
+            stage_resources=[
+                {"use_gpu": False, "cpu_cores": 1},
+                {"use_gpu": True, "cpu_cores": 1},
+                {"use_gpu": False, "cpu_cores": 1},
+                {"use_gpu": True, "cpu_cores": 1},
+            ],
+        )
+        content = script.read_text()
+        assert "step1_equilibration.inp" in content
+        assert content.count("--platform CPU") >= 2
+        assert "--threads 1" in content
+        assert "DEVICE_INDEX=" in content
+        # Mixed per-stage resources: echo notes the heterogeneous schedule
+        assert "step2_equilibration" in content
+        assert "per-stage CPU/GPU from stage_resources" in content
+
+    def test_run_script_all_gpu_echo(self, manager, tmp_path):
+        names = [
+            "step1_equilibration",
+            "step2_equilibration",
+            "step3_equilibration",
+            "step4_equilibration",
+        ]
+        script = manager.generate_run_script(
+            names,
+            tmp_path,
+            "system.prmtop",
+            "system.inpcrd",
+            cpu_cores=1,
+            use_gpu=True,
+            gpu_id=0,
+            num_gpus=1,
+            stage_resources=[
+                {"use_gpu": True, "cpu_cores": 1, "num_gpus": 1},
+                {"use_gpu": True, "cpu_cores": 1, "num_gpus": 1},
+                {"use_gpu": True, "cpu_cores": 1, "num_gpus": 1},
+                {"use_gpu": True, "cpu_cores": 1, "num_gpus": 1},
+            ],
+        )
+        content = script.read_text()
+        assert "1 CPU + 1 GPU for ALL stages (incl. first packing barostat)" in content
+        # Stage invocations must not force CPU (comments may still mention --platform CPU)
+        for line in content.splitlines():
+            if "openmm_run.py" in line:
+                assert "--platform CPU" not in line
+
+
+    def test_production_p_freq_stiffer_than_eq(self, manager):
+        """OpenMM: eq soft-pack p_freq=15; production uses p_freq=100."""
+        base = {
+            "time_ns": 0.5,
+            "timestep": 2.0,
+            "temperature": 303.15,
+            "dcd_freq": 5000,
+            "constraints": {},
+        }
+        for ensemble in ("NPT", "NPAT", "NPgT", "NVT"):
+            params = {
+                **base,
+                "ensemble": ensemble,
+                "name": "Production",
+                "stage_kind": "production",
+            }
+            content = manager.generate_openmm_config("prod", params, 7, ensemble)
+            if "p_freq" in content:
+                assert "p_freq      = 100" in content
+            content_eq3 = manager.generate_openmm_config(
+                "eq3", base, 3, ensemble if ensemble != "NVT" else "NPgT"
+            )
+            assert "p_freq      = 15" in content_eq3
 
 
 # ============================================================================

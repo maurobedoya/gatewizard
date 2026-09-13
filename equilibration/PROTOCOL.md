@@ -42,6 +42,7 @@ Eq stages always load `eq/`. Production loads `production/{ensemble}/`. Filename
 - NVT and NPAT production keep the packed XY box. There is no extra step that eases into that ensemble after Eq6, so the barostat can jump.
 - Judge thickness and area per lipid on late production, not the whole trajectory. Packing frames make APL look too high (and the membrane too thin) because the box is still wide.
 - packmol-memgen POPC often starts around 90 Å²/lipid. Long NPT with Lipid21 or CHARMM36 is often in the low-to-mid 60s. Getting to ~65 Å² is not guaranteed just by packing longer.
-- Amber Eq3 (first barostat) should run on CPU `pmemd`. GPU PME often dies with “box dimensions changed too much” while the box first collapses. Later stages, including Eq6, can use `pmemd.cuda`.
+- Amber Eq3 (first barostat) should run on CPU `pmemd` (1 core is enough). GPU PME often dies with “box dimensions changed too much” while the box first collapses. Later stages, including Eq6, can use `pmemd.cuda`.
+- OpenMM folds minimization into Eq1 (NVT, fixed box), so that combined stage runs on **GPU**. **All** equilibration and production stages use **CPU×1 + GPU×1**, including Eq3 (first membrane barostat). Equilibration barostat stages use `p_freq=15`; production uses `p_freq=100`. Nonbonded stays CutoffPeriodic 9 Å + LRC (same as Amber/NAMD/GROMACS).
 - For Amber, set `IFBOX=1` if any stage uses a barostat — even if production is NVT. Trajectory write interval is `ntwx` from `dcd_freq`; format is NetCDF (`ioutfm=1`).
 - Eq6 is long (~48 ns). Production length is separate.

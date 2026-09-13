@@ -34,6 +34,7 @@ from gatewizard.utils.equilibration_resume import (
     OPENMM_RESUME_SHELL,
 )
 from gatewizard.utils.equilibration_resources import resolve_compute_resources_from_stages
+from gatewizard.utils.peptide_residues import PEPTIDE_POLYMER_RESIDUES
 from gatewizard.tools.namd_water import namd_water_model_config_block
 
 logger = get_logger(__name__)
@@ -56,49 +57,8 @@ def _is_production_stage(stage_params: Dict[str, Any]) -> bool:
 
 _PROTEIN_CONSTRAINT_KEYS = frozenset({"protein_backbone", "protein_sidechain"})
 
-# Standard amino-acid / cap residue names used when MDAnalysis is unavailable.
-_STANDARD_PROTEIN_RESNAMES = frozenset(
-    {
-        "ALA",
-        "ARG",
-        "ASN",
-        "ASP",
-        "CYS",
-        "GLN",
-        "GLU",
-        "GLY",
-        "HIS",
-        "ILE",
-        "LEU",
-        "LYS",
-        "MET",
-        "PHE",
-        "PRO",
-        "SER",
-        "THR",
-        "TRP",
-        "TYR",
-        "VAL",
-        "HSE",
-        "HSD",
-        "HSP",
-        "CYX",
-        "HIE",
-        "HID",
-        "HIP",
-        "ASH",
-        "GLH",
-        "LYN",
-        "TYM",
-        "CYM",
-        "SEP",
-        "T2P",
-        "ACE",
-        "NHE",
-        "NME",
-        "COO",
-    }
-)
+# Standard amino-acid / peptide-polymer / cap residue names (L + D + formyl/ETA).
+_STANDARD_PROTEIN_RESNAMES = frozenset(PEPTIDE_POLYMER_RESIDUES)
 
 
 def _structure_path_for_protein_detect(
@@ -2062,50 +2022,8 @@ class NAMDEquilibrationManager:
             Tuple of (restraint_force, atom_type)
         """
 
-        # Standard protein residues (including protonation states from AMBER)
-        protein_residues = {
-            # Standard amino acids
-            "ALA",
-            "ARG",
-            "ASN",
-            "ASP",
-            "CYS",
-            "GLN",
-            "GLU",
-            "GLY",
-            "HIS",
-            "ILE",
-            "LEU",
-            "LYS",
-            "MET",
-            "PHE",
-            "PRO",
-            "SER",
-            "THR",
-            "TRP",
-            "TYR",
-            "VAL",
-            "HSE",
-            "HSD",
-            "HSP",
-            "CYX",
-            # Protonation states from AMBER/propka (based on PROTONATION_STATES dict)
-            "ASH",  # Protonated aspartic acid
-            "GLH",  # Protonated glutamic acid
-            "HIE",  # Histidine with proton on epsilon nitrogen
-            "HID",  # Histidine with proton on delta nitrogen
-            "HIP",  # Histidine with both nitrogens protonated
-            "LYN",  # Neutral lysine (deprotonated)
-            "TYM",  # Deprotonated tyrosine
-            "CYM",  # Deprotonated cysteine
-            "SEP",  # Phosphorylated serine
-            "T2P",  # Phosphorylated threonine
-            # Terminal caps
-            "ACE",
-            "NHE",
-            "NME",
-            "COO",
-        }
+        # Standard protein / peptide polymer residues (incl. D-aa and formyl/ETA)
+        protein_residues = set(_STANDARD_PROTEIN_RESNAMES)
 
         # Lipid residues (include common AMBER/CHARMM lipid names)
         lipid_residues = {
@@ -4603,7 +4521,27 @@ class OpenMMEquilibrationManager:
         inpcrd_name = Path(system_files.get("inpcrd", "system.inpcrd")).name
         bilayer_pdb_src = system_files.get("bilayer_pdb")
         bilayer_pdb_name = Path(bilayer_pdb_src).name if bilayer_pdb_src else None
-        compute = resolve_compute_resources_from_stages(stage_params_list)
+        from gatewizard.utils.equilibration_resources import (
+            resolve_all_stage_resources,
+        )
+
+        compute = resolve_compute_resources_from_stages(
+            stage_params_list, engine="openmm"
+        )
+        resolved_stages = resolve_all_stage_resources(
+            stage_params_list, engine="openmm"
+        )
+        # Align resources with written .inp stages (Minimization is folded into Eq1).
+        # Eq1 is NVT (fixed box) → keep its GPU settings; do not inherit mini's CPU-only
+        # profile just because minimize_steps were folded into the same .inp.
+        script_resources: List[Dict[str, Any]] = []
+        for stage, res in zip(stage_params_list, resolved_stages):
+            if not isinstance(stage, dict):
+                continue
+            if _is_minimization_stage(stage):
+                continue
+            script_resources.append(dict(res))
+
         run_script_path = self.generate_run_script(
             stage_config_names=stage_config_names,
             openmm_dir=openmm_dir,
@@ -4614,6 +4552,7 @@ class OpenMMEquilibrationManager:
             use_gpu=compute["use_gpu"],
             gpu_id=compute["gpu_id"],
             num_gpus=compute["num_gpus"] or 1,
+            stage_resources=script_resources,
         )
         self.logger.info(f"Run script: {run_script_path.name}")
         try:
@@ -4636,6 +4575,7 @@ class OpenMMEquilibrationManager:
                 num_gpus=compute["num_gpus"] or 1,
                 python_executable=cluster_py,
                 script_filename=CLUSTER_RUN_SCRIPT,
+                stage_resources=script_resources,
             )
             cluster_path.write_text(
                 stamp_cluster_run_script_header(
@@ -4992,6 +4932,7 @@ class OpenMMEquilibrationManager:
         platform: Optional[str] = None,
         python_executable: str = "python",
         script_filename: str = "run_equilibration.sh",
+        stage_resources: Optional[List[Dict[str, Any]]] = None,
     ) -> Path:
         """
         Generate a bash script that runs all equilibration stages sequentially.
@@ -5004,19 +4945,24 @@ class OpenMMEquilibrationManager:
         the periodic box dimensions from the CRYST1 record when the prmtop has
         IFBOX=0 (common in membrane-system preparations).
 
+        Per-stage ``stage_resources`` selects CPU vs GPU platforms (default:
+        CPU×1 + GPU for all OpenMM stages, including first packing).
+
         Args:
             stage_config_names: List of config base names (without .inp extension).
             openmm_dir: Directory where the script is written.
             prmtop_name: Filename of the AMBER topology.
             inpcrd_name: Filename of the AMBER coordinates.
             bilayer_pdb_name: Filename of bilayer PDB with CRYST1 box record (optional).
-            cpu_cores: CPU thread count (``Threads`` property / ``--threads``).
+            cpu_cores: Default CPU thread count (``Threads`` / ``--threads``).
             use_gpu: Prefer GPU platforms when True; force CPU when False.
             gpu_id: First GPU device index for ``--device``.
             num_gpus: Number of consecutive GPU devices starting at ``gpu_id``.
             platform: Explicit OpenMM platform name (CUDA / OpenCL / CPU / Metal).
             python_executable: Default Python interpreter for the script.
             script_filename: Output basename (local or cluster runner).
+            stage_resources: Optional per-stage resource dicts aligned with
+                ``stage_config_names`` (``use_gpu``, ``cpu_cores``, …).
 
         Returns:
             Path to the generated run script.
@@ -5033,6 +4979,10 @@ class OpenMMEquilibrationManager:
             default_platform
             and default_platform.upper() not in {"", "AUTO", "CPU", "REFERENCE"}
         )
+        if stage_resources:
+            wants_gpu = wants_gpu or any(
+                bool(r.get("use_gpu")) for r in stage_resources if isinstance(r, dict)
+            )
         if wants_gpu:
             ngpu = max(1, int(num_gpus or 1))
             gid = int(gpu_id or 0)
@@ -5041,13 +4991,31 @@ class OpenMMEquilibrationManager:
         threads = int(cpu_cores) if cpu_cores and int(cpu_cores) > 0 else None
         py_cmd = (python_executable or "python").strip() or "python"
 
+        def _stage_uses_gpu(idx: int) -> bool:
+            if default_platform.upper() == "CPU" and use_gpu is False:
+                return False
+            if stage_resources and idx < len(stage_resources):
+                stage_res = stage_resources[idx] or {}
+                if "use_gpu" in stage_res and stage_res.get("use_gpu") is not None:
+                    return bool(stage_res.get("use_gpu"))
+            return use_gpu is not False and default_platform.upper() != "CPU"
+
+        def _stage_threads(idx: int) -> Optional[int]:
+            if stage_resources and idx < len(stage_resources):
+                stage_res = stage_resources[idx] or {}
+                n = int(stage_res.get("cpu_cores") or 0)
+                if n > 0:
+                    return n
+            return None
+
         lines = [
             "#!/bin/bash",
             "## OpenMM Equilibration Run Script",
             "## Generated by GateWizard - run from the directory containing this file",
             "",
             "# --- Platform selection ---",
-            "# Auto-detects CUDA > OpenCL > CPU by default when PLATFORM is empty.",
+            "# Default PLATFORM used for GPU stages when empty → openmm_run auto-picks",
+            "# CUDA > OpenCL > CPU. CPU stages force --platform CPU.",
             "# Override with: PLATFORM=CPU bash run_equilibration.sh",
             "# Override with: PLATFORM=OpenCL bash run_equilibration.sh",
             f'PLATFORM="${{PLATFORM:-{default_platform}}}"',
@@ -5061,7 +5029,7 @@ class OpenMMEquilibrationManager:
             ]
         if threads is not None:
             lines += [
-                "# CPU thread count (used when PLATFORM=CPU)",
+                "# Default CPU thread count (per-stage may override)",
                 f'THREADS="${{THREADS:-{threads}}}"',
                 "",
             ]
@@ -5077,9 +5045,15 @@ class OpenMMEquilibrationManager:
             )
         resource_bits = []
         if threads is not None:
-            resource_bits.append(f"{threads} CPU threads")
+            resource_bits.append(f"{threads} CPU threads (default)")
         if device_index:
             resource_bits.append(f"GPU device(s) {device_index}")
+        if stage_resources and all(
+            isinstance(r, dict) and r.get("use_gpu") is not False for r in stage_resources
+        ):
+            resource_bits.append("1 CPU + 1 GPU for ALL stages (incl. first packing barostat)")
+        else:
+            resource_bits.append("per-stage CPU/GPU from stage_resources")
         resource_echo = ", ".join(resource_bits) if resource_bits else "auto"
         lines += [
             "",
@@ -5096,23 +5070,54 @@ class OpenMMEquilibrationManager:
             rst_out = f"{config_name}.rst"
             dcd_out = f"{config_name}.dcd"
             log_out = f"{config_name}.log"
+            stage_gpu = _stage_uses_gpu(i)
+            stage_nthread = _stage_threads(i)
+            if stage_gpu:
+                stage_plat = (
+                    default_platform
+                    if default_platform.upper() not in {"", "AUTO", "CPU", "REFERENCE"}
+                    else ""
+                )
+            else:
+                stage_plat = "CPU"
 
             lines.append(f"# Stage {stage_num}: {config_name}")
-            lines.append(f'if [ "$RESUME" = "1" ] && _gw_openmm_stage_done "{config_name}"; then')
+            lines.append(
+                f'if [ "$RESUME" = "1" ] && _gw_openmm_stage_done "{config_name}"; then'
+            )
             lines.append(f'  echo "RESUME: skipping stage {stage_num} ({config_name})"')
             lines.append("else")
+            if stage_gpu:
+                plat_note = f" ({stage_plat})" if stage_plat else " (auto)"
+                lines.append(
+                    f'  echo "Stage {stage_num} ({config_name}): GPU platform{plat_note}"'
+                )
+            else:
+                thread_note = (
+                    f", {stage_nthread} threads" if stage_nthread else ""
+                )
+                lines.append(
+                    f'  echo "Stage {stage_num} ({config_name}): CPU platform{thread_note}"'
+                )
             cmd = f"$PYTHON openmm_run.py -i {inp_file} -ff amber -p $PRMTOP -c $INPCRD"
             if bilayer_pdb_name:
                 cmd += " -b $BILAYER_PDB"
             if i > 0:
                 prev_rst = f"{stage_config_names[i - 1]}.rst"
                 cmd += f" -irst {prev_rst}"
-            cmd += (
-                f" -orst {rst_out} -odcd {dcd_out} ${{PLATFORM:+--platform $PLATFORM}}"
-            )
-            if device_index:
+            cmd += f" -orst {rst_out} -odcd {dcd_out}"
+            if stage_plat:
+                cmd += f" --platform {stage_plat}"
+            elif stage_gpu:
+                # Honour global PLATFORM override when set by the user.
+                cmd += " ${PLATFORM:+--platform $PLATFORM}"
+            else:
+                cmd += " --platform CPU"
+            if stage_gpu and device_index:
                 cmd += " ${DEVICE_INDEX:+--device $DEVICE_INDEX}"
-            if threads is not None:
+            if stage_nthread is not None:
+                cmd += f" --threads {stage_nthread}"
+            elif threads is not None:
                 cmd += " ${THREADS:+--threads $THREADS}"
             lines.append(f"  ({cmd}) 2>&1 | tee {log_out}")
             lines.append(

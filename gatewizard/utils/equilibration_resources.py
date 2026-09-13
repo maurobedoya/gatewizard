@@ -40,10 +40,11 @@ def engine_resource_profile(engine: str) -> Dict[str, Any]:
     """Per-engine default compute settings for minimization, MD, and production.
 
     GROMACS: CPU minimization; equilibration and production use CPU×6 + GPU×1.
-    Amber: CPU minimization; MD/production use CPU×1 + GPU×1 (pmemd.cuda), except the
-    first packing barostat stage which defaults to CPU×6 (see
+    Amber: CPU×1 minimization; MD/production use CPU×1 + GPU×1 (pmemd.cuda), except the
+    first packing barostat stage which defaults to CPU×1 (see
     :func:`resolve_all_stage_resources`).
-    OpenMM: single host thread (CPU×1) + GPU×1 for minimization, equilibration, and production.
+    OpenMM: CPU×1 + GPU×1 for minimization (folded into Eq1), all equilibration
+    stages including first packing (Eq3), and production.
     NAMD: CPU minimization; equilibration and production use CPU×6 + GPU×1.
     """
     engine = (engine or "").strip().lower()
@@ -59,7 +60,20 @@ def engine_resource_profile(engine: str) -> Dict[str, Any]:
         "num_gpus": 1,
         "use_gpu": True,
     }
-    openmm_stage = {
+    openmm_md = {
+        "cpu_cores": 1,
+        "gpu_id": 0,
+        "num_gpus": 1,
+        "use_gpu": True,
+    }
+    amber_openmm_mini = {
+        "cpu_cores": 1,
+        "gpu_id": 0,
+        "num_gpus": 0,
+        "use_gpu": False,
+    }
+    openmm_mini = {
+        # Folded into Eq1 (NVT, fixed box) at setup — same GPU resources as MD.
         "cpu_cores": 1,
         "gpu_id": 0,
         "num_gpus": 1,
@@ -71,7 +85,7 @@ def engine_resource_profile(engine: str) -> Dict[str, Any]:
     if engine == "amber":
         return {
             "compute_defaults": {**amber_md, "compute_target": "auto"},
-            "minimization": mini,
+            "minimization": dict(amber_openmm_mini),
             "equilibration": amber_md,
             "production": dict(amber_md),
         }
@@ -84,10 +98,10 @@ def engine_resource_profile(engine: str) -> Dict[str, Any]:
         }
     if engine == "openmm":
         return {
-            "compute_defaults": {**openmm_stage, "compute_target": "auto"},
-            "minimization": dict(openmm_stage),
-            "equilibration": dict(openmm_stage),
-            "production": dict(openmm_stage),
+            "compute_defaults": {**openmm_md, "compute_target": "auto"},
+            "minimization": dict(openmm_mini),
+            "equilibration": dict(openmm_md),
+            "production": dict(openmm_md),
         }
     # NAMD and unknown engines: GPU for MD + production with CPU×6 host threads
     return {
@@ -208,7 +222,7 @@ def resolve_stage_resources(
             if key in stage and stage[key] is not None:
                 resolved[key] = stage[key]
 
-    # OpenMM can minimize on GPU; other engines keep CPU-only minimization.
+    # Minimization is CPU-only except OpenMM (mini is folded into GPU Eq1).
     if kind == "minimization" and (engine or "").strip().lower() != "openmm":
         resolved["use_gpu"] = False
         resolved["num_gpus"] = 0
@@ -231,16 +245,22 @@ def _is_barostat_ensemble(ensemble: Any) -> bool:
     return ens in {"npt", "npat", "npgt"}
 
 
-def _apply_amber_first_barostat_cpu_default(
+def _force_stage_cpu(item: Dict[str, Any], *, min_cores: int = 1) -> None:
+    """Set a resolved stage item to CPU-only with at least ``min_cores`` threads."""
+    item["use_gpu"] = False
+    item["num_gpus"] = 0
+    item["cpu_cores"] = max(int(item.get("cpu_cores") or 1), min_cores)
+
+
+def _apply_first_barostat_cpu_default(
     stages: List[Dict[str, Any]],
     resolved: List[Dict[str, Any]],
 ) -> None:
-    """Force the first packing barostat stage onto CPU ``pmemd`` by default.
+    """Force Amber's first packing barostat stage onto CPU by default.
 
-    ``pmemd.cuda`` aborts when packmol membranes shrink the box too quickly
-    ("Periodic box dimensions have changed too much"). Running only that first
-    NPT/NPAT/NPgT packing stage on CPU (with several OpenMP threads) avoids the
-    GPU grid rebuild limit; later stages stay on GPU.
+    Amber ``pmemd.cuda`` aborts when packmol membranes shrink too quickly
+    ("Periodic box dimensions have changed too much"). OpenMM keeps GPU on
+    first packing (Eq3) along with all other MD stages.
 
     Explicit override: if that stage has ``resources_inherit=False`` and
     ``use_gpu=True``, the GPU request is kept.
@@ -255,9 +275,7 @@ def _apply_amber_first_barostat_cpu_default(
         inherit = stage.get("resources_inherit")
         if inherit is False and stage.get("use_gpu") is True:
             break
-        item["use_gpu"] = False
-        item["num_gpus"] = 0
-        item["cpu_cores"] = max(int(item.get("cpu_cores") or 1), 6)
+        _force_stage_cpu(item)
         break
 
 
@@ -279,8 +297,9 @@ def resolve_all_stage_resources(
         if idx < len(stems):
             item["stem"] = stems[idx]
         resolved.append(item)
-    if (engine or "").strip().lower() == "amber":
-        _apply_amber_first_barostat_cpu_default(stages, resolved)
+    eng = (engine or "").strip().lower()
+    if eng == "amber":
+        _apply_first_barostat_cpu_default(stages, resolved)
     return resolved
 
 
