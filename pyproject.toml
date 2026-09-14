@@ -45,10 +45,12 @@ md = [
     "parmed>=4.3.0",
     "openmm>=8.0",
 ]
-# MemPrO cannot be listed here: PyPI rejects VCS/direct URL dependencies in metadata.
-# Install from GitHub after gatewizard[orientation] or gatewizard[full]:
+# MemPrO / lipyphilic-git cannot be listed here: PyPI rejects VCS/direct URL
+# dependencies in metadata. Install from GitHub after the empty extras:
 #   pip install -r requirements-orientation.txt
+#   pip install -r requirements-lipyphilic-git.txt   # AreaPerLipid exclude_sel
 orientation = []
+lipyphilic-git = []
 full = [
     "parmed>=4.3.0",
     "openmm>=8.0",

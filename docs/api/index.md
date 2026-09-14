@@ -81,7 +81,7 @@ Module for analyzing simulation results and monitoring equilibration progress.
 - NAMD log file parsing and energy analysis
 - OpenMM StateDataReporter log parsing
 - MDAnalysis-based trajectory analysis (RMSD, RMSF, distances, radius of gyration)
-- Lipid bilayer analysis: **EVAPL** (Exclusion-aware Voronoi Area Per Lipid); lipyphilic for leaflets and membrane thickness
+- Lipid bilayer analysis: **FATSLiM** CLI default (`apl_method='fatslim'`); EVAPL experimental; official lipyphilic `AreaPerLipid` when `apl_method='lipyphilic'`; lipyphilic for leaflets and membrane thickness
 - Dark-theme matplotlib plots
 - Multi-stage log concatenation with per-file time override
 - Comprehensive 2×2 energy summary plots

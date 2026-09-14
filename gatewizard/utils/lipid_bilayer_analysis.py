@@ -1,12 +1,21 @@
 """
 Lipid bilayer trajectory analysis.
 
-Area per lipid uses MDAnalysis + freud Voronoi (periodic XY). The default
-method is **EVAPL** (Exclusion-aware Voronoi Area Per Lipid): one periodic
-tessellation, then exclude atoms (protein, peptide, DNA, ligands, …) assigned
-to the nearest lipid cell shrink that cell with one in-cell COM half-plane
-clip. Other methods: ``lipyphilic``, ``gridmat``, ``vtmc``. Leaflet assignment
-and membrane thickness still use lipyphilic.
+Area per lipid methods:
+- **FATSLiM** (default): external archived ``fatslim apl`` CLI (GPLv3 companion
+  env; see ``gatewizard.utils.fatslim_apl`` / ``scripts/install_fatslim_env.sh``).
+- **EVAPL** (experimental / not yet validated): freud Voronoi + half-plane clips
+  for occupants whose Z lies in the leaflet headgroup Z-range.
+- **lipyphilic**: official ``lipyphilic.analysis.area_per_lipid.AreaPerLipid``
+  (exclude_sel when the installed lipyphilic supports it — see
+  ``requirements-lipyphilic-git.txt`` until a PyPI release includes PR #164).
+- **gridmat** (experimental): GateWizard in-process GridMAT-style grid
+  assignment, aligned toward GridMAT-MD.pl (not bit-identical).
+- **gridmat_md**: external ``GridMAT-MD.pl`` via subprocess (literature-faithful;
+  see ``gatewizard.utils.gridmat_md_apl`` / ``scripts/install_gridmat_md.sh``).
+- **vtmc**: Voronoi + Monte Carlo reference.
+
+Leaflet assignment and membrane thickness always use lipyphilic.
 """
 
 from pathlib import Path
@@ -17,6 +26,10 @@ from gatewizard.utils.logger import get_logger
 logger = get_logger(__name__)
 
 _LIPYPHILIC_INSTALL = "pip install lipyphilic  # or: pip install -e . from the gatewizard repo"
+_LIPYPHILIC_GIT_INSTALL = (
+    "pip install -r requirements-lipyphilic-git.txt  "
+    "# AreaPerLipid exclude_sel (PR #164) until PyPI ships it"
+)
 _FREUD_INSTALL = "pip install freud-analysis  # or: pip install -e . from the gatewizard repo"
 
 
@@ -40,6 +53,15 @@ def _require_freud():
             "freud is required for area-per-lipid analysis. "
             f"Install with: {_FREUD_INSTALL}"
         ) from exc
+
+
+def _lipyphilic_areaperlipid_supports_exclude() -> bool:
+    """True when installed lipyphilic AreaPerLipid accepts ``exclude_sel`` (PR #164+)."""
+    import inspect
+
+    from lipyphilic.analysis.area_per_lipid import AreaPerLipid
+
+    return "exclude_sel" in inspect.signature(AreaPerLipid.__init__).parameters
 
 
 def _to_path_list(paths: List[Union[str, Path]]) -> List[Path]:
@@ -210,8 +232,8 @@ def _clip_polygon_halfplane(
 ) -> "np.ndarray":
     """Clip a polygon with the perpendicular bisector of ``ref`` and ``clip``.
 
-    Keeps the half-plane containing ``ref``. EVAPL treats the in-cell occupant
-    COM as one extra Voronoi site *for this lipid only* (neighbors are not
+    Keeps the half-plane containing ``ref``. EVAPL treats each in-cell exclude
+    atom as an extra Voronoi site *for this lipid only* (neighbors are not
     re-tessellated).
     """
     import numpy as np
@@ -260,21 +282,19 @@ def _clip_polygon_halfplane(
 def _evapl_clip_areas(
     lipid_positions: "np.ndarray",
     exclude_xyz: "np.ndarray",
-    exclude_cutoff: float,
     lx: float,
     ly: float,
-    lipid_z: Optional["np.ndarray"] = None,
 ) -> "np.ndarray":
-    """EVAPL occupant clip on a global periodic Voronoi.
+    """EVAPL multi-atom clip on a global periodic Voronoi.
 
-    Exclude atoms (protein, peptide, DNA, ligands, …) are assigned to the
-    nearest lipid (Voronoi membership, PBC). Each occupied cell is clipped by
-    the perpendicular bisector of the lipid and the (optionally z-weighted)
-    in-cell occupant COM. Neighbors are not re-tessellated.
+    Exclude atoms (already gated to the leaflet headgroup Z-range) are assigned
+    to the nearest lipid (Voronoi membership, PBC). Each occupied cell is
+    successively clipped by the perpendicular bisector of the lipid and each
+    in-cell exclude atom (points closer to the lipid than to any such atom).
+    Neighbors are not re-tessellated.
 
-    Unclipped cells are a periodic-box Voronoi in XY, so they tile ``Lx × Ly``
-    exactly and the occupant footprint is ``box − sum(clipped areas)`` per
-    leaflet.
+    Unclipped cells tile ``Lx × Ly`` exactly; the occupant footprint is
+    ``box − sum(clipped areas)`` per leaflet.
     """
     import numpy as np
     from scipy.spatial import cKDTree
@@ -300,40 +320,30 @@ def _evapl_clip_areas(
     _, nn = tree.query(exclude_xy, k=1)
     owners = np.asarray(nn, dtype=int) % n_lipid
 
-    cutoff = float(exclude_cutoff or 0.0)
-    z_lipid = None
-    if lipid_z is not None:
-        z_arr = np.asarray(lipid_z, dtype=float).reshape(-1)
-        if z_arr.shape[0] == n_lipid:
-            z_lipid = z_arr
-    has_z = exclude.shape[1] >= 3 and z_lipid is not None
-
     polytopes = base.polytopes
     for lipid_index in np.unique(owners):
         mask = owners == lipid_index
         pts = exclude[mask]
-        ref = lipid_xy[lipid_index]
+        ref = lipid_xy[int(lipid_index)]
         unwrapped = _unwrap_xy_to_ref(pts[:, :2], ref, lx, ly)
-        if has_z and cutoff > 0:
-            weights = 1.0 - np.abs(pts[:, 2] - z_lipid[lipid_index]) / cutoff
-            weights = np.clip(weights, 0.0, 1.0)
-            if float(np.sum(weights)) <= 0.0:
-                continue
-            com = np.average(unwrapped, axis=0, weights=weights)
-        else:
-            com = np.mean(unwrapped, axis=0)
 
         verts = np.asarray(polytopes[int(lipid_index)], dtype=float)
         if verts.ndim != 2 or verts.shape[0] < 3:
             continue
         verts_xy = _unwrap_xy_to_ref(verts[:, :2], ref, lx, ly)
-        clipped = _clip_polygon_halfplane(verts_xy, ref, com)
-        if clipped.shape[0] < 3:
-            continue
-        new_area = _polygon_area_xy(clipped)
         old_area = float(areas[lipid_index])
-        if np.isfinite(new_area) and 0.0 < new_area <= old_area + 1e-6:
-            areas[lipid_index] = new_area
+
+        for atom_xy in unwrapped:
+            clipped = _clip_polygon_halfplane(verts_xy, ref, atom_xy)
+            if clipped.shape[0] < 3:
+                areas[lipid_index] = 0.0
+                verts_xy = clipped
+                break
+            verts_xy = clipped
+        else:
+            new_area = _polygon_area_xy(verts_xy)
+            if np.isfinite(new_area) and 0.0 <= new_area <= old_area + 1e-6:
+                areas[lipid_index] = new_area
     return areas
 
 
@@ -341,7 +351,6 @@ def _clip_lipid_area_evapl(
     lipid_positions: "np.ndarray",
     ref_index: int,
     exclude_xy: "np.ndarray",
-    exclude_cutoff: float,
     lx: float,
     ly: float,
 ) -> float:
@@ -349,29 +358,129 @@ def _clip_lipid_area_evapl(
     pos = _normalize_xy_positions(lipid_positions)
     if pos.shape[0] == 0 or ref_index < 0 or ref_index >= pos.shape[0]:
         return float("nan")
-    areas = _evapl_clip_areas(pos, exclude_xy, exclude_cutoff, lx, ly)
+    areas = _evapl_clip_areas(pos, exclude_xy, lx, ly)
     if areas.size <= ref_index:
         return float("nan")
     return float(areas[ref_index])
 
 
+def _leaflet_headgroup_z_range(leaflet_atoms) -> tuple:
+    """Return ``(z_min, z_max)`` of leaflet headgroup atoms."""
+    import numpy as np
 
-def _gridmat_build_xy_grid(lx: float, ly: float, grid_n: int, conserve_ratio: bool) -> "np.ndarray":
-    """Return N×2 grid point coordinates in Å (GridMAT-MD style)."""
+    z = np.asarray(leaflet_atoms.positions[:, 2], dtype=float)
+    if z.size == 0:
+        return (0.0, 0.0)
+    return (float(np.min(z)), float(np.max(z)))
+
+
+def _exclude_atoms_in_z_range(
+    universe,
+    exclude_sel: str,
+    z_min: float,
+    z_max: float,
+    keep_z: bool = True,
+) -> "np.ndarray":
+    """Exclude-atom positions with Z in ``[z_min, z_max]`` (heavy atoms preferred)."""
+    import numpy as np
+
+    sel = (exclude_sel or "").strip()
+    if not sel:
+        return np.empty((0, 3), dtype=float)
+    try:
+        exclude_ag = universe.select_atoms(sel)
+    except Exception as exc:
+        logger.warning("Invalid exclude selection %r (%s); skipping exclusion", sel, exc)
+        return np.empty((0, 3), dtype=float)
+    if len(exclude_ag) == 0:
+        return np.empty((0, 3), dtype=float)
+    try:
+        heavy = exclude_ag.select_atoms("not name H*")
+        if len(heavy) > 0:
+            exclude_ag = heavy
+    except Exception:
+        pass
+    z = exclude_ag.positions[:, 2]
+    mask = (z >= float(z_min)) & (z <= float(z_max))
+    if not np.any(mask):
+        return np.empty((0, 3), dtype=float)
+    exclude_ag = exclude_ag[mask]
+    exclude_ag.wrap(inplace=True)
+    pos = exclude_ag.positions.copy()
+    if not keep_z:
+        pos[:, 2] = 0.0
+    return pos
+
+
+def _evapl_leaflet_exclude_xyz(universe, leaflet_atoms, exclude_sel: str) -> "np.ndarray":
+    """Protein/exclude XYZ in the leaflet headgroup Z-range for EVAPL."""
+    z_min, z_max = _leaflet_headgroup_z_range(leaflet_atoms)
+    return _exclude_atoms_in_z_range(universe, exclude_sel, z_min, z_max, keep_z=True)
+
+
+
+def _gridmat_round_coord(value: float) -> float:
+    """Round Å coords to Perl nm-at-3-decimals precision (0.01 Å)."""
+    return round(float(value) / 0.01) * 0.01
+
+
+def _gridmat_build_xy_grid(
+    lx: float,
+    ly: float,
+    grid_n: int,
+    conserve_ratio: bool,
+    *,
+    x_max: Optional[float] = None,
+    y_max: Optional[float] = None,
+) -> "np.ndarray":
+    """Return N×2 grid points in Å (GridMAT-MD.pl-style frame when maxima given).
+
+    Perl anchors the conserve-ratio grid on lipid-reference XY maxima so the
+    span is ``[x_max−Lx, x_max] × [y_max−Ly, y_max]``. When maxima are omitted,
+    defaults to ``x_max=Lx``, ``y_max=Ly`` (origin at zero).
+    """
     import numpy as np
 
     n = max(2, int(grid_n))
+    xmax = float(lx) if x_max is None else float(x_max)
+    ymax = float(ly) if y_max is None else float(y_max)
+    xmin = xmax - float(lx)
+    ymin = ymax - float(ly)
     if conserve_ratio:
         interval_x = float(lx) / (n - 1)
         grid_y = max(2, int(round(float(ly) / interval_x) + 1))
-        interval_y = float(ly) / (grid_y - 1)
-        xs = np.linspace(0.0, float(lx), n)
-        ys = np.linspace(0.0, float(ly), grid_y)
+        xs = np.linspace(xmin, xmax, n)
+        ys = np.linspace(ymin, ymax, grid_y)
     else:
-        xs = np.linspace(0.0, float(lx), n)
-        ys = np.linspace(0.0, float(ly), n)
+        xs = np.linspace(xmin, xmax, n)
+        ys = np.linspace(ymin, ymax, n)
+    xs = np.asarray([_gridmat_round_coord(v) for v in xs], dtype=float)
+    ys = np.asarray([_gridmat_round_coord(v) for v in ys], dtype=float)
     gx, gy = np.meshgrid(xs, ys)
     return np.column_stack([gx.ravel(), gy.ravel()])
+
+
+def _gridmat_lipid_xy_site(positions: "np.ndarray") -> "np.ndarray":
+    """Reference XY for one lipid: single atom or unweighted mean (Perl)."""
+    import numpy as np
+
+    pos = np.asarray(positions, dtype=float)
+    if pos.ndim != 2 or pos.shape[0] == 0:
+        return np.array([np.nan, np.nan], dtype=float)
+    if pos.shape[0] == 1:
+        return pos[0, :2].copy()
+    return np.mean(pos[:, :2], axis=0)
+
+
+def _gridmat_midplane_leaflets(z_values: "np.ndarray") -> "np.ndarray":
+    """Leaflet signs from global Z midplane: ``z > mid → +1`` else ``-1``."""
+    import numpy as np
+
+    z = np.asarray(z_values, dtype=float)
+    if z.size == 0:
+        return np.empty(0, dtype=int)
+    mid = float(np.mean(z))
+    return np.where(z > mid, 1, -1).astype(int)
 
 
 def _gridmat_protein_sites(
@@ -490,44 +599,73 @@ def _area_per_lipid_frame_gridmat(
     out_areas: "np.ndarray",
     frame_index: int,
 ) -> None:
-    """GridMAT-MD-style grid assignment APL (see Allen, Lemkul, Bevan 2009)."""
+    """Experimental in-process GridMAT (aligned toward GridMAT-MD.pl).
+
+    Uses global lipid-reference Z midplane for leaflet ownership (not
+    ``AssignLeaflets``), Perl-style grid anchoring on XY maxima, and
+    unweighted multi-atom XY sites. Not bit-identical to ``GridMAT-MD.pl``;
+    use ``apl_method='gridmat_md'`` for the original tool.
+    """
     import numpy as np
 
+    del frame_leaflets  # GridMAT cell ownership uses midplane, not AssignLeaflets
     lx, ly = box_xy
     universe = membrane_atoms.universe
-    grid_xy = _gridmat_build_xy_grid(lx, ly, gridmat_n, conserve_ratio=True)
     exclude_sel = (exclude_sel or "").strip()
 
-    resindices_all = membrane_atoms.residues.resindices
-    for leaflet_sign in (-1, 1):
-        leaflet_res = membrane_atoms.residues[frame_leaflets == leaflet_sign]
-        if len(leaflet_res) == 0:
-            continue
-        leaflet_atoms = leaflet_res.atoms.intersection(membrane_atoms)
-        if len(leaflet_atoms) == 0:
-            continue
-        leaflet_atoms.wrap(inplace=True)
-        pos = leaflet_atoms.positions
-        z_min = float(np.min(pos[:, 2]))
-        z_max = float(np.max(pos[:, 2]))
+    # Optional centering (matches analysis_03 / GridMAT-MD CLI prep).
+    dims = universe.dimensions
+    if len(membrane_atoms) > 0 and dims is not None and len(dims) >= 3:
+        com = membrane_atoms.center_of_mass()
+        box_center = np.asarray(dims[:3], dtype=float) * 0.5
+        universe.atoms.translate(box_center - com)
+        universe.atoms.wrap(inplace=True)
 
-        lipid_xy = []
-        lipid_resindices = []
-        for res in leaflet_res:
-            ra = res.atoms.intersection(membrane_atoms)
-            # GridMAT uses headgroup/reference atoms, not lipid COM.
-            pos_hg = ra.positions
-            if pos_hg.shape[0] == 1:
-                xy = pos_hg[0, :2]
-            else:
-                xy = ra.center_of_mass()[:2]
-            lipid_xy.append(xy)
-            lipid_resindices.append(int(res.resindex))
-        lipid_xy = np.asarray(lipid_xy, dtype=float)
-        lipid_resindices = np.asarray(lipid_resindices, dtype=int)
+    membrane_atoms.wrap(inplace=True)
+    resindices_all = membrane_atoms.residues.resindices
+
+    # One reference site per residue (unweighted XY / Z for midplane).
+    lipid_xy_all = []
+    lipid_z_all = []
+    lipid_resindices_all = []
+    for res in membrane_atoms.residues:
+        ra = res.atoms.intersection(membrane_atoms)
+        if len(ra) == 0:
+            continue
+        pos = ra.positions
+        lipid_xy_all.append(_gridmat_lipid_xy_site(pos))
+        lipid_z_all.append(float(np.mean(pos[:, 2])))
+        lipid_resindices_all.append(int(res.resindex))
+
+    if not lipid_resindices_all:
+        return
+
+    lipid_xy_all = np.asarray(lipid_xy_all, dtype=float)
+    lipid_z_all = np.asarray(lipid_z_all, dtype=float)
+    lipid_resindices_all = np.asarray(lipid_resindices_all, dtype=int)
+    midplane_signs = _gridmat_midplane_leaflets(lipid_z_all)
+
+    x_max = float(np.max(lipid_xy_all[:, 0]))
+    y_max = float(np.max(lipid_xy_all[:, 1]))
+    grid_xy = _gridmat_build_xy_grid(
+        lx, ly, gridmat_n, conserve_ratio=True, x_max=x_max, y_max=y_max
+    )
+
+    for leaflet_sign in (-1, 1):
+        mask = midplane_signs == leaflet_sign
+        if not np.any(mask):
+            continue
+        leaflet_xy = lipid_xy_all[mask]
+        leaflet_res = lipid_resindices_all[mask]
+        leaflet_z = lipid_z_all[mask]
+        z_min = float(np.min(leaflet_z))
+        z_max = float(np.max(leaflet_z))
+
+        leaf_atom_mask = np.isin(membrane_atoms.resindices, leaflet_res)
+        leaflet_atoms = membrane_atoms[leaf_atom_mask]
 
         protein_xy = np.empty((0, 2), dtype=float)
-        if exclude_sel:
+        if exclude_sel and len(leaflet_atoms) > 0:
             prot = _gridmat_protein_sites(
                 universe,
                 leaflet_atoms,
@@ -542,12 +680,12 @@ def _area_per_lipid_frame_gridmat(
                 protein_xy = prot[:, :2]
 
         areas = _gridmat_assign_areas(
-            grid_xy, lipid_xy, lipid_resindices, protein_xy, lx, ly
+            grid_xy, leaflet_xy, leaflet_res, protein_xy, lx, ly
         )
         for resindex, area in areas.items():
-            mask = resindices_all == resindex
-            if np.any(mask):
-                out_areas[mask, frame_index] = area
+            m = resindices_all == resindex
+            if np.any(m):
+                out_areas[m, frame_index] = area
 
 
 def _vtmc_leaflet_protein_xy(
@@ -560,24 +698,11 @@ def _vtmc_leaflet_protein_xy(
     """Protein XY sites in the leaflet Z slab for VTMC disk sampling."""
     import numpy as np
 
-    try:
-        protein = universe.select_atoms(exclude_sel)
-    except Exception:
+    del leaflet_atoms  # Z range is passed explicitly (same as EVAPL gate)
+    pos = _exclude_atoms_in_z_range(universe, exclude_sel, z_min, z_max, keep_z=False)
+    if pos.shape[0] == 0:
         return np.empty((0, 2), dtype=float)
-    if len(protein) == 0:
-        return np.empty((0, 2), dtype=float)
-    # Prefer heavy atoms when the selection is broad (e.g. ``protein``).
-    try:
-        heavy = protein.select_atoms("not name H*")
-        if len(heavy) > 0:
-            protein = heavy
-    except Exception:
-        pass
-    z = protein.positions[:, 2]
-    mask = (z >= float(z_min)) & (z <= float(z_max))
-    if not np.any(mask):
-        return np.empty((0, 2), dtype=float)
-    return np.asarray(protein.positions[mask, :2], dtype=float)
+    return np.asarray(pos[:, :2], dtype=float)
 
 
 def _vtmc_assign_areas(
@@ -709,23 +834,31 @@ def _area_per_lipid_frame_vtmc(
                 out_areas[mask, frame_index] = area
 
 
-def _resolve_apl_method(apl_method: Optional[str], exclude_sel: Optional[str]) -> str:
-    """Normalize APL backend. Canonical default with exclude atoms is ``evapl``."""
+def _resolve_apl_method(apl_method: Optional[str], exclude_sel: Optional[str] = None) -> str:
+    """Normalize APL backend. Default (including ``auto``) is ``fatslim``.
+
+    ``exclude_sel`` is accepted for call-site compatibility; it does not change
+    resolution (unlike the former EVAPL-on-exclude auto rule).
+    """
+    _ = exclude_sel
     method = (apl_method or "auto").strip().lower().replace("-", "_")
-    has_exclude = bool((exclude_sel or "").strip())
     if method in {"", "auto"}:
-        return "evapl" if has_exclude else "lipyphilic"
+        return "fatslim"
+    if method in {"fatslim", "fatslim_cli"}:
+        return "fatslim"
     if method in {"lipyphilic", "voronoi", "standard"}:
         return "lipyphilic"
     if method == "evapl":
         return "evapl"
-    if method in {"gridmat", "gridmat_md", "grid"}:
+    if method in {"gridmat", "grid"}:
         return "gridmat"
+    if method in {"gridmat_md", "gridmat_pl", "gridmat_cli"}:
+        return "gridmat_md"
     if method in {"vtmc", "voronoi_mc", "mori"}:
         return "vtmc"
     raise ValueError(
         f"Unsupported apl_method {apl_method!r}. "
-        "Supported: auto, lipyphilic, evapl, gridmat, vtmc"
+        "Supported: auto, fatslim, evapl, lipyphilic, gridmat, gridmat_md, vtmc"
     )
 
 
@@ -739,9 +872,9 @@ def _exclude_atom_positions(
 ) -> "np.ndarray":
     """Positions of exclude atoms near a leaflet (empty if none).
 
-    ``keep_z=False`` (default) zeros Z for 2D Voronoi sites. EVAPL clipping
-    keeps Z so in-cell occupant COMs can be weighted as
-    ``1 - |Δz| / cutoff``.
+    ``keep_z=False`` (default) zeros Z for 2D Voronoi sites. EVAPL does not
+    use this helper for clipping; it selects exclude atoms by leaflet
+    headgroup Z-range via ``_evapl_leaflet_exclude_xyz``.
     """
     import numpy as np
     from MDAnalysis.lib.distances import distance_array
@@ -839,40 +972,10 @@ def _area_per_lipid_frame(
         )
         return
 
-    import numpy as np
-
-    lx, ly = box_xy
-    for leaflet_sign in (-1, 1):
-        leaflet_res = membrane_atoms.residues[frame_leaflets == leaflet_sign]
-        if len(leaflet_res) == 0:
-            continue
-        leaflet_atoms = leaflet_res.atoms.intersection(membrane_atoms)
-        if len(leaflet_atoms) == 0:
-            continue
-        leaflet_atoms.wrap(inplace=True)
-        lipid_pos = leaflet_atoms.positions.copy()
-        lipid_pos[:, 2] = 0.0
-        n_lipid = len(leaflet_atoms)
-        atom_areas = _voronoi_atom_areas(lipid_pos, lx, ly)
-        lipid_areas = atom_areas[:n_lipid]
-
-        for species in lipid_species:
-            species_indices = leaflet_atoms.resnames == species
-            if not np.any(species_indices):
-                continue
-            species_apl = lipid_areas[species_indices]
-            species_atoms = leaflet_atoms[species_indices]
-            seeds = int(num_seeds[species])
-            species_apl = np.sum(
-                species_apl.reshape(species_atoms.n_residues, seeds),
-                axis=1,
-            )
-            species_resindices = np.isin(
-                membrane_atoms.residues.resindices,
-                species_atoms.residues.resindices,
-                assume_unique=True,
-            )
-            out_areas[species_resindices, frame_index] = species_apl
+    raise ValueError(
+        f"Unknown apl_method for freud frame loop: {apl_method!r}. "
+        "Use evapl, gridmat, or vtmc here; lipyphilic uses AreaPerLipid."
+    )
 
 
 def _area_per_lipid_frame_evapl(
@@ -887,9 +990,14 @@ def _area_per_lipid_frame_evapl(
     out_areas: "np.ndarray",
     frame_index: int,
 ) -> None:
-    """EVAPL per-lipid APL with in-cell exclude COM clipping."""
+    """EVAPL per-lipid APL with multi-atom headgroup-Z clips.
+
+    ``exclude_cutoff`` / ``exclude_dim`` are accepted for API symmetry with other
+    APL methods; EVAPL selects exclude atoms by leaflet headgroup Z-range only.
+    """
     import numpy as np
 
+    del exclude_cutoff, exclude_dim  # unused; headgroup Z-range instead
     lx, ly = box_xy
     universe = membrane_atoms.universe
     exclude_sel = (exclude_sel or "").strip()
@@ -908,22 +1016,10 @@ def _area_per_lipid_frame_evapl(
         if not exclude_sel:
             atom_areas = _voronoi_atom_areas(lipid_pos, lx, ly)
         else:
-            leaflet_exclude = _exclude_atom_positions(
-                universe,
-                leaflet_atoms,
-                exclude_sel,
-                exclude_cutoff,
-                exclude_dim,
-                keep_z=True,
+            leaflet_exclude = _evapl_leaflet_exclude_xyz(
+                universe, leaflet_atoms, exclude_sel
             )
-            atom_areas = _evapl_clip_areas(
-                lipid_pos,
-                leaflet_exclude,
-                exclude_cutoff,
-                lx,
-                ly,
-                lipid_z=raw_pos[:, 2],
-            )
+            atom_areas = _evapl_clip_areas(lipid_pos, leaflet_exclude, lx, ly)
 
         for species in lipid_species:
             species_indices = leaflet_atoms.resnames == species
@@ -1072,18 +1168,21 @@ class BilayerTrajectoryAnalyzer:
         exclude_sel: Optional[str] = "protein",
         exclude_cutoff: float = 30.0,
         exclude_dim: int = 3,
-        apl_method: Optional[str] = "auto",
+        apl_method: Optional[str] = "fatslim",
         gridmat_n: int = 20,
         gridmat_precision: float = 13.0,
         vtmc_n_samples: int = 50_000,
         vtmc_protein_radius: float = 1.7,
+        fatslim_nthreads: int = 1,
+        fatslim_jobs: int = 1,
+        gridmat_md_jobs: Optional[int] = None,
         start: Optional[int] = None,
         stop: Optional[int] = None,
         step: Optional[int] = None,
         verbose: bool = False,
     ) -> Dict[str, Any]:
         """
-        Calculate area per lipid via periodic 2D Voronoi tessellation (freud).
+        Calculate area per lipid (default: external FATSLiM CLI).
 
         Args:
             lipid_sel: Atom selection for Voronoi tessellation (e.g. MARTINI
@@ -1092,19 +1191,34 @@ class BilayerTrajectoryAnalyzer:
                 ``lipid_sel``.
             exclude_sel: Atoms treated as membrane occupants / intercalators
                 (e.g. ``protein``, a peptide, DNA, ligands). Empty/None
-                disables exclusion. With ``apl_method='evapl'`` (the default
-                when this is set), atoms inside each lipid's Voronoi cell
-                reduce that lipid's area via one in-cell COM half-plane clip.
-                Ignored by ``lipyphilic`` (pure-lipid box Voronoi).
-            exclude_cutoff: Å cutoff for exclude atoms relative to each lipid or
-                leaflet (0 = no distance filter). Default 30 Å (3.0 nm).
-            exclude_dim: ``3`` = full 3D distance to leaflet atoms; ``1`` = only
-                |z − leaflet midplane|.
-            apl_method: ``auto`` (EVAPL when ``exclude_sel`` is set, else
-                lipyphilic), ``evapl`` (Exclusion-aware Voronoi Area Per Lipid),
-                ``lipyphilic`` (pure lipids only — not for systems with
-                occupants), ``gridmat`` (``gridmat_n`` / ``gridmat_precision``),
-                or ``vtmc`` (``vtmc_n_samples`` / ``vtmc_protein_radius``).
+                disables exclusion. With ``apl_method='fatslim'`` (default),
+                mapped to FATSLiM ``--interacting-group``. With
+                ``apl_method='evapl'`` (experimental / not yet validated),
+                exclude atoms whose Z lies in the leaflet headgroup Z-range
+                shrink each owning lipid's Voronoi cell via successive
+                half-plane clips. With ``apl_method='lipyphilic'``, passed to
+                upstream ``AreaPerLipid`` when the installed lipyphilic supports
+                ``exclude_sel`` (PR #164+); otherwise raises.
+            exclude_cutoff: Å cutoff for exclude atoms (lipyphilic AreaPerLipid,
+                VTMC). **Ignored by FATSLiM, EVAPL, and both GridMAT paths**.
+                Default 30 Å.
+            exclude_dim: ``3`` = full 3D distance; ``1`` = |z − leaflet
+                midplane|. Used by lipyphilic AreaPerLipid and VTMC.
+                **Ignored by FATSLiM, EVAPL, and GridMAT.**
+            apl_method: ``fatslim`` / ``auto`` (default; external FATSLiM CLI),
+                ``evapl`` (experimental Exclusion-aware Voronoi),
+                ``lipyphilic`` (official ``lipyphilic.AreaPerLipid``),
+                ``gridmat`` (experimental GW GridMAT; ``gridmat_n`` /
+                ``gridmat_precision``), ``gridmat_md`` (external GridMAT-MD.pl),
+                or ``vtmc`` (experimental GW VTMC; ``vtmc_n_samples`` /
+                ``vtmc_protein_radius``).
+            fatslim_nthreads: FATSLiM ``--nthreads`` per process (``-1`` = all
+                CPUs). Prefer 1–4 when using ``fatslim_jobs`` > 1.
+            fatslim_jobs: Parallel FATSLiM frame chunks (``--begin-frame`` /
+                ``--end-frame``). Prefer several jobs with small nthreads over
+                one job with all CPUs.
+            gridmat_md_jobs: Parallel Perl workers for ``gridmat_md`` (default
+                ``min(8, cpu_count)``).
             start, stop, step: Trajectory frame range.
             verbose: Show a progress bar while iterating frames.
 
@@ -1112,22 +1226,16 @@ class BilayerTrajectoryAnalyzer:
             Dict with time (ns), per-lipid areas, leaflet means, and statistics.
 
         Note:
-            Pure bilayers (no matching exclude atoms) behave like lipyphilic /
-            classic box Voronoi regardless of ``apl_method``.
+            Pure bilayers (no matching exclude atoms) behave like classic box
+            Voronoi for in-process methods. FATSLiM requires the companion
+            ``fatslim`` binary (see ``scripts/install_fatslim_env.sh``).
+            ``gridmat_md`` requires ``GridMAT-MD.pl`` (see
+            ``scripts/install_gridmat_md.sh``).
         """
         import numpy as np
-        from MDAnalysis.lib.log import ProgressBar
+        from gatewizard.utils.fatslim_apl import run_fatslim_apl
 
         resolved_method = _resolve_apl_method(apl_method, exclude_sel)
-        if resolved_method == "lipyphilic" and (exclude_sel or "").strip():
-            logger.warning(
-                "apl_method='lipyphilic' ignores exclude_sel=%r — it is a pure-lipid "
-                "box Voronoi (mean ≈ Lx·Ly / n_leaflet) and is not recommended for "
-                "membrane–protein systems. Use apl_method='evapl' (default).",
-                exclude_sel,
-            )
-        if resolved_method not in {"gridmat", "vtmc"}:
-            _require_freud()
         _require_lipyphilic()
         leaflet_sel = leaflet_lipid_sel or lipid_sel
         self._ensure_membrane_centered_in_z(leaflet_sel)
@@ -1153,55 +1261,202 @@ class BilayerTrajectoryAnalyzer:
                 f"matches {membrane.n_residues}"
             )
 
-        lipid_species = np.unique(membrane.resnames)
-        num_lipids = {
-            lipid: int(np.sum(membrane.residues.resnames == lipid)) for lipid in lipid_species
-        }
-        num_seeds = {
-            lipid: int(np.sum(membrane.resnames == lipid) // num_lipids[lipid])
-            for lipid in lipid_species
-        }
-
         traj = u.trajectory
-        frame_slice = traj[start:stop:step]
-        n_frames = len(frame_slice)
+        n_traj = len(traj)
+        frame_indices = list(range(*slice(start, stop, step).indices(n_traj)))
+        n_frames = len(frame_indices)
         if leaflet_data.ndim == 2 and leaflet_data.shape[1] != n_frames:
             raise ValueError(
                 "The frames to analyse must be identical to those used in assigning "
                 "lipids to leaflets."
             )
 
-        area_array = np.full((membrane.n_residues, n_frames), np.nan, dtype=float)
-        iterator = ProgressBar(frame_slice) if verbose else frame_slice
-        for frame_index, ts in enumerate(iterator):
-            frame_leaflets = (
-                leaflet_data[:, frame_index] if leaflet_data.ndim == 2 else leaflet_data
+        if resolved_method == "fatslim":
+            import tempfile
+
+            work_dir = Path(tempfile.mkdtemp(prefix="gatewizard_fatslim_"))
+            logger.info("FATSLiM export directory: %s", work_dir)
+            fatslim_out = run_fatslim_apl(
+                u,
+                lipid_sel=lipid_sel,
+                exclude_sel=exclude_sel,
+                frame_indices=frame_indices,
+                work_dir=work_dir,
+                fatslim_nthreads=fatslim_nthreads,
+                fatslim_jobs=fatslim_jobs,
             )
-            lx = float(ts.dimensions[0])
-            ly = float(ts.dimensions[1])
-            _area_per_lipid_frame(
-                membrane,
-                frame_leaflets,
-                (lx, ly),
-                exclude_sel,
-                exclude_cutoff,
-                exclude_dim,
-                lipid_species,
-                num_seeds,
-                area_array,
-                frame_index,
-                apl_method=resolved_method,
+            area_array = np.asarray(fatslim_out["areas"], dtype=float)
+            if area_array.shape[1] != n_frames:
+                n_frames = int(area_array.shape[1])
+                if leaflet_data.ndim == 2:
+                    leaflet_data = leaflet_data[:, :n_frames]
+        elif resolved_method == "gridmat_md":
+            import tempfile
+
+            from gatewizard.utils.gridmat_md_apl import run_gridmat_md_apl
+
+            work_dir = Path(tempfile.mkdtemp(prefix="gatewizard_gridmat_md_"))
+            logger.info("GridMAT-MD.pl export directory: %s", work_dir)
+            gridmat_out = run_gridmat_md_apl(
+                u,
+                lipid_sel=lipid_sel,
+                exclude_sel=exclude_sel,
+                frame_indices=frame_indices,
+                work_dir=work_dir,
                 gridmat_n=gridmat_n,
                 gridmat_precision=gridmat_precision,
-                vtmc_n_samples=vtmc_n_samples,
-                vtmc_protein_radius=vtmc_protein_radius,
+                gridmat_md_jobs=gridmat_md_jobs,
+                leaflet_data=leaflet_data,
             )
+            area_array = np.asarray(gridmat_out["areas"], dtype=float)
+            if area_array.shape[1] != n_frames:
+                n_frames = int(area_array.shape[1])
+                if leaflet_data.ndim == 2:
+                    leaflet_data = leaflet_data[:, :n_frames]
+        elif resolved_method == "lipyphilic":
+            area_array = self._area_per_lipid_via_areaperlipid(
+                lipid_sel=lipid_sel,
+                leaflet_data=leaflet_data,
+                exclude_sel=exclude_sel,
+                exclude_cutoff=exclude_cutoff,
+                exclude_dim=exclude_dim,
+                start=start,
+                stop=stop,
+                step=step,
+                verbose=verbose,
+            )
+        else:
+            if resolved_method == "evapl":
+                _require_freud()
+            lipid_species = np.unique(membrane.resnames)
+            num_lipids = {
+                lipid: int(np.sum(membrane.residues.resnames == lipid))
+                for lipid in lipid_species
+            }
+            num_seeds = {
+                lipid: int(np.sum(membrane.resnames == lipid) // num_lipids[lipid])
+                for lipid in lipid_species
+            }
+            area_array = np.full((membrane.n_residues, n_frames), np.nan, dtype=float)
+            from MDAnalysis.lib.log import ProgressBar
+
+            frame_slice = traj[start:stop:step]
+            iterator = ProgressBar(frame_slice) if verbose else frame_slice
+            for frame_index, ts in enumerate(iterator):
+                frame_leaflets = (
+                    leaflet_data[:, frame_index] if leaflet_data.ndim == 2 else leaflet_data
+                )
+                lx = float(ts.dimensions[0])
+                ly = float(ts.dimensions[1])
+                _area_per_lipid_frame(
+                    membrane,
+                    frame_leaflets,
+                    (lx, ly),
+                    exclude_sel,
+                    exclude_cutoff,
+                    exclude_dim,
+                    lipid_species,
+                    num_seeds,
+                    area_array,
+                    frame_index,
+                    apl_method=resolved_method,
+                    gridmat_n=gridmat_n,
+                    gridmat_precision=gridmat_precision,
+                    vtmc_n_samples=vtmc_n_samples,
+                    vtmc_protein_radius=vtmc_protein_radius,
+                )
+
+        return self._finalize_area_per_lipid_result(
+            area_array=area_array,
+            leaflet_data=leaflet_data,
+            lipid_sel=lipid_sel,
+            exclude_sel=exclude_sel,
+            exclude_cutoff=exclude_cutoff,
+            resolved_method=resolved_method,
+            n_frames=n_frames,
+            start=start,
+            stop=stop,
+            step=step,
+        )
+
+    def _area_per_lipid_via_areaperlipid(
+        self,
+        *,
+        lipid_sel: str,
+        leaflet_data: "np.ndarray",
+        exclude_sel: Optional[str],
+        exclude_cutoff: float,
+        exclude_dim: int,
+        start: Optional[int],
+        stop: Optional[int],
+        step: Optional[int],
+        verbose: bool,
+    ) -> "np.ndarray":
+        """Run official ``lipyphilic.AreaPerLipid`` and return (n_lipids, n_frames)."""
+        import numpy as np
+        from lipyphilic.analysis.area_per_lipid import AreaPerLipid
+
+        excl = (exclude_sel or "").strip()
+        kwargs: Dict[str, Any] = {
+            "universe": self.universe,
+            "lipid_sel": lipid_sel,
+            "leaflets": leaflet_data,
+        }
+        if excl:
+            if not _lipyphilic_areaperlipid_supports_exclude():
+                raise ValueError(
+                    f"apl_method='lipyphilic' with exclude_sel={exclude_sel!r} requires "
+                    "lipyphilic AreaPerLipid exclude support (PR #164). "
+                    f"Install with: {_LIPYPHILIC_GIT_INSTALL} — "
+                    "or use apl_method='fatslim' (default) or 'evapl' (experimental)."
+                )
+            kwargs["exclude_sel"] = excl
+            kwargs["exclude_cutoff"] = float(exclude_cutoff)
+            kwargs["exclude_dim"] = int(exclude_dim)
+        elif _lipyphilic_areaperlipid_supports_exclude():
+            kwargs["exclude_sel"] = ""
+            kwargs["exclude_cutoff"] = float(exclude_cutoff)
+            kwargs["exclude_dim"] = int(exclude_dim)
+
+        apl = AreaPerLipid(**kwargs)
+        apl.run(start=start, stop=stop, step=step, verbose=verbose)
+        areas = np.asarray(_analysis_result(apl, "areas"), dtype=float)
+        if areas.ndim != 2:
+            raise RuntimeError(
+                f"lipyphilic AreaPerLipid returned unexpected areas shape {areas.shape}"
+            )
+        return areas
+
+    def _finalize_area_per_lipid_result(
+        self,
+        *,
+        area_array: "np.ndarray",
+        leaflet_data: "np.ndarray",
+        lipid_sel: str,
+        exclude_sel: Optional[str],
+        exclude_cutoff: float,
+        resolved_method: str,
+        n_frames: int,
+        start: Optional[int],
+        stop: Optional[int],
+        step: Optional[int],
+    ) -> Dict[str, Any]:
+        """Shared stats / logging / return dict for all APL backends."""
+        import numpy as np
 
         leaflet_means = _leaflet_means_per_frame(area_array, leaflet_data)
-        mean_per_frame = np.nanmean(area_array, axis=0)
+        # GridMAT (GW + .pl): headline mean matches Perl Ave APL aggregation.
+        if resolved_method in {"gridmat", "gridmat_md"}:
+            mean_per_frame = 0.5 * (
+                np.asarray(leaflet_means["upper"], dtype=float)
+                + np.asarray(leaflet_means["lower"], dtype=float)
+            )
+        else:
+            mean_per_frame = np.nanmean(area_array, axis=0)
         time_ns = self._align_time_ns(n_frames, start=start, stop=stop, step=step)
         metadata = self._lipid_residue_metadata(lipid_sel)
         n_lipids = int(area_array.shape[0])
+        u = self.universe
 
         box_areas = []
         sample_idx = list(dict.fromkeys([0, max(0, n_frames // 2), max(0, n_frames - 1)]))
@@ -1219,7 +1474,6 @@ class BilayerTrajectoryAnalyzer:
         min_apl = float(np.nanmin(mean_per_frame)) if n_frames else float("nan")
         max_apl = float(np.nanmax(mean_per_frame)) if n_frames else float("nan")
         box_mean = float(np.mean(box_areas)) if box_areas else float("nan")
-        # Pure-bilayer reference is box XY / lipids-per-leaflet, not box / all lipids.
         expected = (
             (2.0 * box_mean / n_lipids) if n_lipids and np.isfinite(box_mean) else float("nan")
         )
@@ -1227,7 +1481,12 @@ class BilayerTrajectoryAnalyzer:
             np.isfinite(std_apl) and std_apl < max(1e-6, 0.01 * abs(mean_apl))
         )
         excl_note = (
-            f" method={resolved_method} exclude={exclude_sel!r} cutoff={exclude_cutoff}"
+            f" method={resolved_method} exclude={exclude_sel!r}"
+            + (
+                f" cutoff={exclude_cutoff}"
+                if resolved_method not in {"evapl", "vtmc", "fatslim"}
+                else ""
+            )
             if (exclude_sel or "").strip()
             else f" method={resolved_method} exclude=off"
         )
@@ -1521,11 +1780,14 @@ def run_bilayer_analysis(
     exclude_sel: Optional[str] = "protein",
     exclude_cutoff: float = 30.0,
     exclude_dim: int = 3,
-    apl_method: Optional[str] = "auto",
+    apl_method: Optional[str] = "fatslim",
     gridmat_n: int = 20,
     gridmat_precision: float = 13.0,
     vtmc_n_samples: int = 50_000,
     vtmc_protein_radius: float = 1.7,
+    fatslim_nthreads: int = 1,
+    fatslim_jobs: int = 1,
+    gridmat_md_jobs: Optional[int] = None,
     file_times: Optional[Dict[str, float]] = None,
     file_strides: Optional[Dict[str, int]] = None,
     start: Optional[int] = None,
@@ -1575,6 +1837,9 @@ def run_bilayer_analysis(
                 gridmat_precision=gridmat_precision,
                 vtmc_n_samples=vtmc_n_samples,
                 vtmc_protein_radius=vtmc_protein_radius,
+                fatslim_nthreads=fatslim_nthreads,
+                fatslim_jobs=fatslim_jobs,
+                gridmat_md_jobs=gridmat_md_jobs,
                 start=start,
                 stop=stop,
                 step=effective_step,

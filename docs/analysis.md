@@ -111,22 +111,110 @@ Both types support multiple files, custom time assignment, and flexible unit sel
 - Increasing Rg: Unfolding or expansion
 - Decreasing Rg: Compaction or folding
 
-### Bilayer Analysis (lipyphilic)
+### Bilayer Analysis (lipyphilic + FATSLiM)
 
-Lipid bilayer properties are calculated via the `BilayerTrajectoryAnalyzer` class. Area per lipid uses **EVAPL** (Exclusion-aware Voronoi Area Per Lipid): one periodic XY Voronoi, then non-lipid occupants (protein, peptide, DNA, ligands, …) shrink the lipid cells they sit in. Leaflet assignment and membrane thickness use [lipyphilic](https://lipyphilic.readthedocs.io/). Dependencies install with gatewizard (`pip install -e .` or `pip install gatewizard`).
+Lipid bilayer properties are calculated via the `BilayerTrajectoryAnalyzer` class. Leaflet assignment and membrane thickness always use [lipyphilic](https://lipyphilic.readthedocs.io/). Area per lipid methods:
+
+| `apl_method` | Backend |
+|--------------|---------|
+| `fatslim` / `auto` (**default**) | Original archived [FATSLiM](https://github.com/FATSLiM/fatslim) CLI (`fatslim apl`) via subprocess |
+| `evapl` | **EVAPL** (experimental / **not yet validated**): freud Voronoi + half-plane clips for occupants |
+| `lipyphilic` | Official [`lipyphilic.AreaPerLipid`](https://lipyphilic.readthedocs.io/) |
+| `gridmat` | **GridMAT (GW, experimental)** — in-process reimplementation closer to GridMAT-MD.pl (not bit-identical) |
+| `gridmat_md` | Original [GridMAT-MD.pl](https://github.com/jalemkul/gridmat-md) via Perl (external; literature-faithful) |
+| `vtmc` | **VTMC (GW, experimental)** — GateWizard reimplementation of Voronoi + Monte Carlo protein disks (Mori et al.) |
+
+#### Where the install scripts live (read this first)
+
+Two different “GateWizard” installs are easy to mix up:
+
+| What you have | What it is | Has `scripts/install_*.sh`? |
+|---------------|------------|------------------------------|
+| **gatewizard** Python package (`pip install gatewizard` / `pip install -e .`) | The library the GUI and CLI import | **No** — only the importable `gatewizard/` package |
+| **gatewizard** GitHub source tree | [maurobedoya/gatewizard](https://github.com/maurobedoya/gatewizard) clone with `pyproject.toml` + top-level `scripts/` | **Yes** |
+| **gatewizard-gui** (`.deb`, AppImage, `npm run dev`, `/usr/bin/gatewizard-gui`, …) | Desktop app | **No** — it depends on the Python package; it does **not** ship these helper scripts |
+
+So: installing or launching the **GUI** does **not** put `scripts/install_fatslim_env.sh` next to the executable. A normal `pip install gatewizard` also does **not** install those scripts into `site-packages`. You need a **checkout of the API repository** (or download the script file itself) only to *run the installer*. After that, FATSLiM / GridMAT live in their own locations (`fatslim-py38` conda env, `~/gridmat-md/`, …) and GateWizard finds them via env vars / `PATH` — they never have to sit beside the GUI binary.
+
+**If you only use the GUI**, still run the steps below in the same **WSL / Linux** environment that runs the analysis backend (not Windows PowerShell, and not the GUI’s embedded Python).
+
+**Get the scripts (pick one):**
+
+```bash
+# A) Shallow clone of the API repo (recommended — also has docs and both installers)
+git clone --depth 1 https://github.com/maurobedoya/gatewizard.git
+cd gatewizard
+
+# B) Or download one script without a full clone, e.g.:
+# curl -fsSL -o install_fatslim_env.sh \
+#   https://raw.githubusercontent.com/maurobedoya/gatewizard/main/scripts/install_fatslim_env.sh
+# bash install_fatslim_env.sh
+```
+
+If you already develop against a local clone (e.g. `~/gatewizard`, `/mnt/d/github/gatewizard`), use that folder — it is the directory that contains **both** `pyproject.toml` and `scripts/`.
+
+#### Installing FATSLiM (required for the default APL method)
+
+FATSLiM is **GPLv3** and needs **Python ≤3.8**. GateWizard is MIT and never imports FATSLiM — it only calls the `fatslim` **binary**. Install a **companion** conda env (not the GateWizard analysis env, not the GUI mamba-env).
+
+```bash
+# from the API repo checkout (see above)
+bash scripts/install_fatslim_env.sh
+
+# point GateWizard at the binary (put this in ~/.bashrc on the WSL/Linux side)
+export GATEWIZARD_FATSLIM="$(conda run -n fatslim-py38 which fatslim)"
+```
+
+The installer creates/updates conda env `fatslim-py38` and prints the full path to `fatslim`. You only needed the repo (or the script file) to run the installer; you can delete the clone afterward if you want.
+
+Discovery order: `GATEWIZARD_FATSLIM` → `PATH` → conda env `fatslim-py38`.
+
+| Surface | Notes |
+|---------|--------|
+| **API / scripts** | Linux, WSL, or macOS (best-effort). Set `GATEWIZARD_FATSLIM` in the shell that runs GateWizard. |
+| **GUI** | Analysis runs under **WSL / Linux**. Export `GATEWIZARD_FATSLIM` there **before** starting the backend (or add it permanently to that user’s shell profile). Do **not** `pip install fatslim` into the embedded GUI Python. The Analysis sidebar only warns when FATSLiM is selected and the CLI is missing. |
+| **Missing binary** | `apl_method='fatslim'` fails with an install hint — it does **not** silently fall back to EVAPL. |
+| **Parallelism** | `fatslim_nthreads` (per-process `--nthreads`; `-1` = all CPUs) and `fatslim_jobs` (frame chunks via `--begin-frame` / `--end-frame`). Prefer **small nthreads (1–4) + more jobs** for better wall-clock time than one job with all CPUs. GUI exposes both when FATSLiM is selected. |
+
+Upstream FATSLiM is archived/unmaintained; GateWizard centers the bilayer before export to reduce leaflet-ID failures. Prefer orthorhombic boxes and a correct `lipid_sel` / NDX headgroups group.
+
+#### Installing GridMAT-MD.pl (optional external APL)
+
+Same idea as FATSLiM: the helper script lives in the **API source tree**, not in the GUI install. It clones [jalemkul/gridmat-md](https://github.com/jalemkul/gridmat-md) (default `~/gridmat-md`) and prints an export for the `.pl` file.
+
+```bash
+# from the API repo checkout (see “Where the install scripts live”)
+bash scripts/install_gridmat_md.sh
+
+# default clone path — adjust if you set GRIDMAT_MD_DIR
+export GATEWIZARD_GRIDMAT_MD="$HOME/gridmat-md/GridMAT-MD.pl"
+```
+
+Requires **perl** on PATH when you run analysis (or set `GATEWIZARD_PERL`). Discovery: `GATEWIZARD_GRIDMAT_MD` → `PATH` → common clone locations. GateWizard stays MIT (subprocess only). Use `apl_method='gridmat'` for the experimental in-process path, or `gridmat_md` for the original `.pl`. Parallelism: `gridmat_md_jobs` (default `min(8, cpu_count)`).
+
+With `apl_method="lipyphilic"` and a non-empty `exclude_sel`, the installed lipyphilic must accept `exclude_sel` (upstream PR #164). PyPI 0.12.x does not; from an API checkout run:
+
+```bash
+pip install -r requirements-lipyphilic-git.txt
+```
+
+(That requirements file is also only in the API source tree / sdist layout — not inside the GUI package.)
+
+Otherwise use `apl_method="fatslim"` (default) or `apl_method="evapl"` (experimental). Other dependencies install with the Python package (`pip install gatewizard` or `pip install -e .` from a clone).
 
 Working examples: **Example 14** (area per lipid) and **Example 15** (membrane thickness) in `tests/analysis_examples/`, using `equilibration_folder/system.pdb` and equilibration DCD trajectories. See [Analysis Module API](api/analysis.md).
 
 #### Area per Lipid
 
-**Purpose**: Measure the lateral area occupied by each lipid via 2D Voronoi tessellation (**EVAPL**). Exclude atoms (default `protein`; also peptide, DNA, ligands) that fall in a lipid cell reduce that lipid's area instead of inflating the leaflet mean.
+**Purpose**: Measure the lateral area occupied by each lipid. Default **FATSLiM** maps `exclude_sel` to FATSLiM’s interacting group (default `protein`). `apl_method="evapl"` is GateWizard’s experimental freud path (not yet validated). `apl_method="lipyphilic"` runs upstream `AreaPerLipid`.
 
 **Usage**:
 ```
-1. Load bilayer topology and trajectories from equilibration_folder (Example 14 / 15)
-2. Set lipid headgroup selection (e.g. "resname PC and name P31" for AMBER POPC)
-3. Optionally set exclude_sel="protein" (default) and exclude_cutoff (Å)
-4. Run area-per-lipid analysis
+1. Install companion FATSLiM env (scripts/install_fatslim_env.sh) and set GATEWIZARD_FATSLIM
+2. Load bilayer topology and trajectories from equilibration_folder (Example 14 / 15)
+3. Set lipid headgroup selection (e.g. "resname PC and name P31" for AMBER POPC)
+4. Optionally set exclude_sel="protein" (default)
+5. Run area-per-lipid analysis (default apl_method → fatslim)
 ```
 
 **Output**:

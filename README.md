@@ -70,7 +70,7 @@ Installed automatically:
 | NumPy | Numerical arrays |
 | Matplotlib | Plots and analysis figures |
 | MDAnalysis | Trajectories and topologies |
-| lipyphilic | Membrane / lipid analysis |
+| lipyphilic | Membrane / lipid analysis (`AreaPerLipid`, leaflets, thickness; git extra for exclude until PyPI) |
 | PROPKA | pKa and protonation |
 | RDKit | Ligand 2D structures |
 | Pillow | Image I/O |
@@ -86,6 +86,8 @@ Installed automatically:
 | MemPrO | Membrane orientation ([GitHub](https://github.com/pstansfeld/MemPrO)) |
 
 Install: `pip install "gatewizard[full]"` then `pip install -r requirements-orientation.txt` for MemPrO.
+
+For protein-aware **upstream** `AreaPerLipid` (`exclude_sel` before a PyPI release with PR #164): `pip install -r requirements-lipyphilic-git.txt`. GateWizard’s default APL with occupants remains **EVAPL**.
 
 ### Python — GUI backend · *[gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui)*
 

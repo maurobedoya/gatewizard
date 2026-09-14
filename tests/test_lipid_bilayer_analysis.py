@@ -15,12 +15,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 pytest.importorskip("lipyphilic")
 pytest.importorskip("freud")
 
+from gatewizard.utils.fatslim_apl import FatslimError  # noqa: E402
 from gatewizard.utils.lipid_bilayer_analysis import (  # noqa: E402
     BilayerTrajectoryAnalyzer,
     _clip_polygon_halfplane,
     _evapl_clip_areas,
     _gridmat_assign_areas,
     _gridmat_build_xy_grid,
+    _lipyphilic_areaperlipid_supports_exclude,
     _polygon_area_xy,
     _resolve_apl_method,
     _voronoi_atom_areas,
@@ -151,7 +153,7 @@ class TestVoronoiAplHelpers:
             ],
             dtype=float,
         )
-        empty = _evapl_clip_areas(lipid, np.empty((0, 3)), 30.0, 20.0, 20.0)
+        empty = _evapl_clip_areas(lipid, np.empty((0, 3)), 20.0, 20.0)
         np.testing.assert_allclose(empty, 100.0, rtol=1e-4)
 
         # Protein cluster inside the first lipid's cell only.
@@ -159,18 +161,147 @@ class TestVoronoiAplHelpers:
             [[6.0, 5.0, 0.0], [5.5, 5.2, 0.0], [5.2, 4.7, 0.0]],
             dtype=float,
         )
-        clipped = _evapl_clip_areas(lipid, protein, 30.0, 20.0, 20.0)
+        clipped = _evapl_clip_areas(lipid, protein, 20.0, 20.0)
         assert clipped[0] < empty[0] - 1.0
         np.testing.assert_allclose(clipped[1:], empty[1:], rtol=1e-4)
+
+    def test_evapl_multiatom_excludes_both_sides(self):
+        """Two atoms on opposite sides of a lipid must both cut the cell."""
+        import numpy as np
+
+        lipid = np.array(
+            [
+                [5.0, 5.0, 0.0],
+                [15.0, 5.0, 0.0],
+                [5.0, 15.0, 0.0],
+                [15.0, 15.0, 0.0],
+            ],
+            dtype=float,
+        )
+        empty = _evapl_clip_areas(lipid, np.empty((0, 3)), 20.0, 20.0)
+        # COM of these two is at the lipid → old single-COM clip would barely cut.
+        protein = np.array(
+            [[3.0, 5.0, 0.0], [7.0, 5.0, 0.0]],
+            dtype=float,
+        )
+        com_only = _evapl_clip_areas(
+            lipid, np.array([[5.0, 5.0, 0.0]], dtype=float), 20.0, 20.0
+        )
+        multi = _evapl_clip_areas(lipid, protein, 20.0, 20.0)
+        # Atom at the lipid site is degenerate (no cut); multi-atom must shrink more.
+        assert multi[0] < empty[0] - 10.0
+        assert multi[0] < com_only[0] - 5.0
+        np.testing.assert_allclose(multi[1:], empty[1:], rtol=1e-4)
+
+    def test_evapl_atom_on_lipid_side_of_com_is_clipped(self):
+        """An atom closer to the lipid than the COM must still remove area."""
+        import numpy as np
+        from gatewizard.utils.lipid_bilayer_analysis import (
+            _clip_polygon_halfplane,
+            _normalize_xy_positions,
+            _unwrap_xy_to_ref,
+            _voronoi_compute,
+        )
+
+        lipid = np.array(
+            [
+                [5.0, 5.0, 0.0],
+                [15.0, 5.0, 0.0],
+                [5.0, 15.0, 0.0],
+                [15.0, 15.0, 0.0],
+            ],
+            dtype=float,
+        )
+        # Far atom + near atom: COM sits between lipid and far atom; near atom
+        # is on the lipid side of the COM bisector.
+        near = np.array([5.8, 5.0, 0.0])
+        far = np.array([8.5, 5.0, 0.0])
+        protein = np.vstack([near, far])
+        areas = _evapl_clip_areas(lipid, protein, 20.0, 20.0)
+
+        pos = _normalize_xy_positions(lipid)
+        base = _voronoi_compute(pos, 20.0, 20.0)
+        ref = pos[0, :2]
+        verts = _unwrap_xy_to_ref(
+            np.asarray(base.polytopes[0], dtype=float)[:, :2], ref, 20.0, 20.0
+        )
+        com = 0.5 * (near[:2] + far[:2])
+        com_clip = _clip_polygon_halfplane(verts, ref, com)
+        # Near atom is on the lipid side of the COM cut → still inside COM polygon.
+        mid = 0.5 * (ref + com)
+        normal = ref - com
+        assert float(np.dot(near[:2] - mid, normal)) >= -1e-9
+        # Multi-atom EVAPL area must be strictly smaller than COM-only area.
+        com_area = _polygon_area_xy(com_clip)
+        assert areas[0] < com_area - 1.0
+
+    def test_evapl_soluble_head_outside_z_range_ignored(self):
+        """Atoms far above the headgroup Z-range must not change APL."""
+        import numpy as np
+
+        lipid = np.array(
+            [
+                [5.0, 5.0, 0.0],
+                [15.0, 5.0, 0.0],
+                [5.0, 15.0, 0.0],
+                [15.0, 15.0, 0.0],
+            ],
+            dtype=float,
+        )
+        empty = _evapl_clip_areas(lipid, np.empty((0, 3)), 20.0, 20.0)
+        # Frame path gates by Z before calling _evapl_clip_areas; simulate that
+        # by not passing out-of-range atoms (helper returns empty).
+        from gatewizard.utils.lipid_bilayer_analysis import _exclude_atoms_in_z_range
+
+        class _FakeAtomGroup:
+            def __init__(self, positions, names=None):
+                self.positions = np.asarray(positions, dtype=float)
+                self._names = names or ["C"] * len(positions)
+
+            def __len__(self):
+                return len(self.positions)
+
+            def __getitem__(self, mask):
+                idx = np.where(mask)[0] if mask.dtype == bool else mask
+                return _FakeAtomGroup(self.positions[idx], [self._names[i] for i in idx])
+
+            def select_atoms(self, sel):
+                if "H*" in sel:
+                    return _FakeAtomGroup(self.positions, self._names)
+                return self
+
+            def wrap(self, inplace=True):
+                return None
+
+        class _FakeUniverse:
+            def select_atoms(self, sel):
+                # Large XY footprint far above phosphates (z≈30 vs headgroup z∈[0,0]).
+                return _FakeAtomGroup(
+                    [[5.0, 5.0, 30.0], [6.0, 5.0, 31.0], [4.0, 6.0, 29.0], [7.0, 4.0, 32.0]]
+                )
+
+        gated = _exclude_atoms_in_z_range(_FakeUniverse(), "protein", 0.0, 0.0, keep_z=True)
+        assert gated.shape[0] == 0
+        clipped = _evapl_clip_areas(lipid, gated, 20.0, 20.0)
+        np.testing.assert_allclose(clipped, empty, rtol=1e-5)
+
+        # Same XY but inside the headgroup Z-range must reduce area.
+        in_range = np.array([[5.0, 5.5, 0.0], [6.0, 5.0, 0.0]], dtype=float)
+        reduced = _evapl_clip_areas(lipid, in_range, 20.0, 20.0)
+        assert reduced[0] < empty[0] - 1.0
 
     def test_unknown_apl_method_is_rejected(self):
         with pytest.raises(ValueError, match="Unsupported apl_method"):
             _resolve_apl_method("not_a_real_method", "protein")
 
-    def test_resolve_apl_method_evapl_is_default_with_exclude(self):
-        assert _resolve_apl_method("auto", "protein") == "evapl"
+    def test_resolve_apl_method_fatslim_is_default(self):
+        assert _resolve_apl_method("auto", "protein") == "fatslim"
+        assert _resolve_apl_method("auto", "") == "fatslim"
+        assert _resolve_apl_method(None, "protein") == "fatslim"
+        assert _resolve_apl_method("fatslim", "protein") == "fatslim"
+        assert _resolve_apl_method("fatslim_cli", "") == "fatslim"
         assert _resolve_apl_method("evapl", "protein") == "evapl"
-        assert _resolve_apl_method("auto", "") == "lipyphilic"
+        assert _resolve_apl_method("lipyphilic", "") == "lipyphilic"
 
     def test_exclude_sites_reduce_lipid_share(self):
         import numpy as np
@@ -196,11 +327,22 @@ class TestVoronoiAplHelpers:
 
 
 class TestAreaPerLipid:
+    def test_default_fatslim_missing_raises(self, equilibration_bilayer_data, monkeypatch):
+        monkeypatch.setattr(
+            "gatewizard.utils.fatslim_apl.resolve_fatslim_executable", lambda: None
+        )
+        topology, trajectories, file_times = equilibration_bilayer_data
+        analyzer = BilayerTrajectoryAnalyzer(topology, trajectories, file_times=file_times)
+        with pytest.raises(FatslimError, match="GATEWIZARD_FATSLIM|install_fatslim_env"):
+            analyzer.calculate_area_per_lipid(
+                lipid_sel=LIPID_SEL, exclude_sel="", start=0, stop=2
+            )
+
     def test_calculate_area_per_lipid(self, equilibration_bilayer_data):
         topology, trajectories, file_times = equilibration_bilayer_data
         analyzer = BilayerTrajectoryAnalyzer(topology, trajectories, file_times=file_times)
         data = analyzer.calculate_area_per_lipid(
-            lipid_sel=LIPID_SEL, exclude_sel="", start=0, stop=2
+            lipid_sel=LIPID_SEL, exclude_sel="", apl_method="lipyphilic", start=0, stop=2
         )
 
         assert len(data["resids"]) == 122
@@ -208,6 +350,63 @@ class TestAreaPerLipid:
         assert data["areas"].shape[1] >= 1
         mean_area = float(data["mean_area_per_lipid"].mean())
         assert 40.0 < mean_area < 120.0
+
+    def test_lipyphilic_method_uses_areaperlipid(self, equilibration_bilayer_data, monkeypatch):
+        """apl_method=lipyphilic must call lipyphilic.AreaPerLipid, not freud frame loop."""
+        import lipyphilic.analysis.area_per_lipid as apl_mod
+
+        calls = []
+        Real = apl_mod.AreaPerLipid
+
+        class Spy(Real):
+            def __init__(self, *args, **kwargs):
+                calls.append(kwargs)
+                super().__init__(*args, **kwargs)
+
+        monkeypatch.setattr(apl_mod, "AreaPerLipid", Spy)
+        topology, trajectories, file_times = equilibration_bilayer_data
+        analyzer = BilayerTrajectoryAnalyzer(topology, trajectories, file_times=file_times)
+        data = analyzer.calculate_area_per_lipid(
+            lipid_sel=LIPID_SEL, exclude_sel="", apl_method="lipyphilic", start=0, stop=2
+        )
+        assert calls, "AreaPerLipid was not constructed"
+        assert float(data["mean_area_per_lipid"].mean()) > 40.0
+
+    def test_lipyphilic_exclude_requires_upstream_support(self, equilibration_bilayer_data):
+        if _lipyphilic_areaperlipid_supports_exclude():
+            pytest.skip("installed lipyphilic already supports exclude_sel")
+        topology, trajectories, file_times = equilibration_bilayer_data
+        analyzer = BilayerTrajectoryAnalyzer(topology, trajectories, file_times=file_times)
+        with pytest.raises(ValueError, match="exclude support|requirements-lipyphilic-git|fatslim|evapl"):
+            analyzer.calculate_area_per_lipid(
+                lipid_sel=LIPID_SEL,
+                exclude_sel="protein",
+                apl_method="lipyphilic",
+                start=0,
+                stop=2,
+            )
+
+    @pytest.mark.skipif(
+        not _lipyphilic_areaperlipid_supports_exclude(),
+        reason="needs lipyphilic from requirements-lipyphilic-git.txt (PR #164)",
+    )
+    def test_lipyphilic_exclude_lowers_mean_when_supported(self, equilibration_bilayer_data):
+        topology, trajectories, file_times = equilibration_bilayer_data
+        analyzer = BilayerTrajectoryAnalyzer(topology, trajectories, file_times=file_times)
+        no_excl = analyzer.calculate_area_per_lipid(
+            lipid_sel=LIPID_SEL, exclude_sel="", apl_method="lipyphilic", start=0, stop=2
+        )
+        with_prot = analyzer.calculate_area_per_lipid(
+            lipid_sel=LIPID_SEL,
+            exclude_sel="protein",
+            apl_method="lipyphilic",
+            exclude_cutoff=30.0,
+            start=0,
+            stop=2,
+        )
+        mean_no = float(no_excl["mean_area_per_lipid"].mean())
+        mean_prot = float(with_prot["mean_area_per_lipid"].mean())
+        assert mean_prot < mean_no - 0.5
 
     def test_evapl_protein_exclude_lowers_mean_apl(self, equilibration_bilayer_data):
         topology, trajectories, file_times = equilibration_bilayer_data
@@ -219,7 +418,6 @@ class TestAreaPerLipid:
         evapl = analyzer2.calculate_area_per_lipid(
             lipid_sel=LIPID_SEL,
             exclude_sel="protein",
-            exclude_cutoff=10.0,
             apl_method="evapl",
             start=0,
             stop=2,
@@ -281,6 +479,7 @@ class TestAreaPerLipid:
             analysis_type="area_per_lipid",
             lipid_sel=LIPID_SEL,
             exclude_sel="",
+            apl_method="lipyphilic",
             file_times=file_times,
             start=0,
             stop=2,

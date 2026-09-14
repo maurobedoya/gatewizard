@@ -98,6 +98,11 @@ INSTALL_GROUPS: Dict[str, str] = {
 }
 
 EXTERNAL_TOOL_REGISTRY: Dict[str, ExternalToolSpec] = {
+    "fatslim": (("fatslim",), "FATSLiM area-per-lipid CLI (legacy; companion Python ≤3.8 env)"),
+    "gridmat-md": (
+        ("GridMAT-MD.pl",),
+        "Original GridMAT-MD.pl (Perl; set GATEWIZARD_GRIDMAT_MD)",
+    ),
     "mempro": (("mempro",), "Membrane protein orientation CLI (MemPrO)"),
     "packmol": (("packmol",), "Molecule packing (AmberTools)"),
     "packmol-memgen": (
@@ -118,6 +123,7 @@ _VERSION_PROBE_ARGS: Dict[str, List[List[str]]] = {
     "packmol": [["--version"]],
     "packmol-memgen": [["--version"], ["-h"], ["--help"]],
     "mempro": [["--version"]],
+    "fatslim": [["--version"], ["-h"]],
     "tleap": [["-h"]],
     "antechamber": [["-L"], ["-h"]],
     "pdb4amber": [["-h"]],
@@ -140,6 +146,10 @@ _VERSION_PATTERNS: Dict[str, List[re.Pattern[str]]] = {
     "mempro": [
         re.compile(r"mempro[^\d]*([0-9]+\.[0-9]+\.[0-9]+)", re.I),
         re.compile(r"version\s+([0-9]+\.[0-9]+\.[0-9]+)", re.I),
+    ],
+    "fatslim": [
+        re.compile(r"fatslim[^\d]*([0-9]+\.[0-9]+(?:\.[0-9]+)?)", re.I),
+        re.compile(r"version\s+([0-9]+\.[0-9]+(?:\.[0-9]+)?)", re.I),
     ],
     "tleap": [
         re.compile(r"AmberTools\s+([\d.]+)", re.I),
@@ -465,7 +475,18 @@ def _external_tool_entry(name: str, spec: ExternalToolSpec) -> Dict[str, Any]:
     path = resolve_executable(candidates)
     version = None
 
-    if name == "mempro":
+    if name == "fatslim":
+        from gatewizard.utils.fatslim_apl import resolve_fatslim_executable
+
+        path = resolve_fatslim_executable()
+        if path:
+            version = probe_executable_version(path, "fatslim")
+    elif name == "gridmat-md":
+        from gatewizard.utils.gridmat_md_apl import resolve_gridmat_md_script
+
+        path = resolve_gridmat_md_script()
+        version = None
+    elif name == "mempro":
         version = get_package_version("mempro", distribution_name="mempro")
         if not version and path:
             version = probe_executable_version(path, "mempro")

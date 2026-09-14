@@ -8,7 +8,7 @@ The analysis module provides three main trajectory/energy classes:
 
 - **`EnergyAnalyzer`** - Parse and plot NAMD energy data with full customization
 - **`TrajectoryAnalyzer`** - Calculate and plot RMSD, RMSF, distances, and radius of gyration with complete control
-- **`BilayerTrajectoryAnalyzer`** - Calculate area per lipid (**EVAPL**: Exclusion-aware Voronoi Area Per Lipid) and membrane thickness (lipyphilic)
+- **`BilayerTrajectoryAnalyzer`** - Calculate area per lipid (**FATSLiM** CLI default; EVAPL experimental; official lipyphilic `AreaPerLipid` via `apl_method='lipyphilic'`) and membrane thickness (lipyphilic)
 
 **Key Features:**
 
@@ -1507,7 +1507,14 @@ Same topology/trajectory interface as `TrajectoryAnalyzer`. Leaflet assignment i
 
 ### Method: `calculate_area_per_lipid()`
 
-Calculate the area per lipid via periodic 2D Voronoi tessellation ([freud](https://freud.readthedocs.io/)). Leaflet assignment still uses [lipyphilic `AssignLeaflets`](https://lipyphilic.readthedocs.io/). The default algorithm is **EVAPL** (Exclusion-aware Voronoi Area Per Lipid): one periodic XY Voronoi, then atoms in `exclude_sel` (protein, peptide, DNA, ligands, …) that fall in a lipid cell shrink that cell with one in-cell COM half-plane clip. Default `exclude_sel` is `"protein"`.
+Calculate the area per lipid. Leaflet assignment uses [lipyphilic `AssignLeaflets`](https://lipyphilic.readthedocs.io/).
+
+- **`fatslim` / `auto` (default):** original archived [FATSLiM](https://github.com/FATSLiM/fatslim) CLI via subprocess. Requires a companion conda env — run [`scripts/install_fatslim_env.sh`](https://github.com/maurobedoya/gatewizard/blob/main/scripts/install_fatslim_env.sh) from an API **source checkout** (not from a GUI `/usr/bin` install or a plain `pip install gatewizard`), then set `GATEWIZARD_FATSLIM`. Full GUI-vs-API notes: [analysis.md](../analysis.md#where-the-install-scripts-live-read-this-first). `exclude_sel` → FATSLiM interacting group. GateWizard remains MIT (no FATSLiM import).
+- **`evapl`:** GateWizard **EVAPL** via [freud](https://freud.readthedocs.io/) — periodic XY Voronoi, then `exclude_sel` atoms in the leaflet headgroup Z-range shrink lipid cells with successive half-plane clips. **Experimental / not yet validated.** Default `exclude_sel` is `"protein"`.
+- **`lipyphilic`:** official [`lipyphilic.AreaPerLipid`](https://lipyphilic.readthedocs.io/). Empty `exclude_sel` works on PyPI 0.12.x. Non-empty `exclude_sel` requires upstream exclude support (PR #164); install `pip install -r requirements-lipyphilic-git.txt` or use `fatslim` / `evapl`.
+- **`gridmat`:** GateWizard **GW experimental** GridMAT-style grid (closer to GridMAT-MD.pl, not bit-identical).
+- **`gridmat_md`:** original [GridMAT-MD.pl](https://github.com/jalemkul/gridmat-md) via Perl (external).
+- **`vtmc`:** GateWizard **GW experimental** Voronoi + Monte Carlo (Mori et al.).
 
 ```python
 calculate_area_per_lipid(
@@ -1516,7 +1523,9 @@ calculate_area_per_lipid(
     exclude_sel: Optional[str] = "protein",
     exclude_cutoff: float = 30.0,
     exclude_dim: int = 3,
-    apl_method: Optional[str] = "auto",
+    apl_method: Optional[str] = "fatslim",
+    fatslim_nthreads: int = 1,
+    fatslim_jobs: int = 1,
     start: Optional[int] = None,
     stop: Optional[int] = None,
     step: Optional[int] = None,
@@ -1528,12 +1537,14 @@ calculate_area_per_lipid(
 
 | Parameter | Description |
 |-----------|-------------|
-| `lipid_sel` | Atoms used for Voronoi tessellation. MARTINI: `"name GL1 GL2 ROH"`. All-atom: `"name PO4"` or phosphate selections. |
+| `lipid_sel` | Atoms used for Voronoi tessellation / FATSLiM headgroups. MARTINI: `"name GL1 GL2 ROH"`. All-atom: `"name PO4"` or phosphate selections. |
 | `leaflet_lipid_sel` | Selection for leaflet assignment. Defaults to `lipid_sel`. |
 | `exclude_sel` | Non-lipid occupant atoms (e.g. `"protein"`, a peptide, DNA). Empty/`None` disables exclusion. |
-| `exclude_cutoff` | Å cutoff for exclude atoms near the leaflet (`0` = all exclude atoms). Default `30` Å (3.0 nm). |
+| `exclude_cutoff` | Å cutoff for exclude atoms near the leaflet (`0` = all exclude atoms). Default `30` Å (3.0 nm). Used by lipyphilic AreaPerLipid (when supported), GridMAT, VTMC. **Ignored by FATSLiM and EVAPL.** |
 | `exclude_dim` | `3` = 3D distance to leaflet atoms; `1` = \|z − leaflet midplane\|. |
-| `apl_method` | `auto` (EVAPL when `exclude_sel` is set, else lipyphilic), `evapl`, `lipyphilic` (pure lipids only), `gridmat`, or `vtmc`. |
+| `apl_method` | `fatslim` / `auto` (default; external FATSLiM CLI), `evapl` (experimental), `lipyphilic` (official `AreaPerLipid`), `gridmat` (GW experimental), `gridmat_md` (external `.pl`), or `vtmc` (GW experimental). |
+| `fatslim_nthreads` | FATSLiM `--nthreads` per process (`-1` = all CPUs). Default `1`. Prefer 1–4 when `fatslim_jobs` > 1. |
+| `fatslim_jobs` | Parallel frame chunks (`--begin-frame` / `--end-frame`, half-open). Default `1`. Prefer several jobs with small nthreads over one job with all CPUs. |
 | `start`, `stop`, `step` | Trajectory frame range. |
 
 **Returns:** `time` (ns), `areas` (n_lipids × n_frames, Å²), `mean_area_per_lipid`, `mean_upper_leaflet`, `mean_lower_leaflet`, `resids`, `resnames`.
@@ -2093,7 +2104,7 @@ print("Separate figures saved: temp_density_example_13_temp.png, temp_density_ex
 
 ### Example 14: Area per Lipid
 
-Calculate and plot the area per lipid using **EVAPL** (Exclusion-aware Voronoi Area Per Lipid; default `exclude_sel="protein"`) on the membrane-protein equilibration trajectories in `equilibration_folder`.
+Calculate and plot the area per lipid using the default **FATSLiM** CLI (`exclude_sel="protein"` → interacting group). Requires companion `fatslim` — see `scripts/install_fatslim_env.sh`. For the experimental freud path use `apl_method="evapl"`.
 
 ```python
 from pathlib import Path

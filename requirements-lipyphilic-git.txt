@@ -1,0 +1,5 @@
+# LiPyphilic with AreaPerLipid exclude_sel (PR #164) — not yet on PyPI 0.12.x.
+# PyPI rejects VCS deps in package metadata, so install this file separately:
+#   pip install -r requirements-lipyphilic-git.txt
+# Pin to the PR #164 merge commit (also current main tip when this file was written).
+lipyphilic @ git+https://github.com/p-j-smith/lipyphilic.git@11c7c15b4d0c1aac87484a0f2775eb7d8ebbc46f
