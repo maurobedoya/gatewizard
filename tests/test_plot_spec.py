@@ -8,6 +8,7 @@ from gatewizard.utils.plot_spec import (
     build_plot_spec_from_series,
     grid_spec_slices,
     normalize_plot_spec,
+    normalize_reference_bands,
     normalize_reference_lines,
     panel_effective_limits,
     plot_spec_from_plot_properties_kwargs,
@@ -275,6 +276,74 @@ def test_normalize_legend_clamps_gui_pixel_fontsize():
     assert spec["panels"][0]["legend_loc"] == "upper left"
 
 
+def test_normalize_legend_accepts_manual_items():
+    spec = normalize_plot_spec(
+        {
+            "layout": "grid",
+            "legend": {
+                "mode": "outside",
+                "entries": "manual",
+                "align": "start",
+                "manual_items": [
+                    {
+                        "id": "amber",
+                        "label": "Amber",
+                        "color": "#f59e0b",
+                        "marker": "circle",
+                        "marker_size": 10,
+                    },
+                    {"id": "namd", "label": "NAMD", "color": "#22c55e", "marker": "none"},
+                    {"id": "hid", "label": "Hidden", "color": "#fff", "visible": False},
+                    {"id": "amber", "label": "dup"},
+                ],
+            },
+            "panels": [{"key": "p0"}],
+        }
+    )
+    assert spec["legend"]["entries"] == "manual"
+    assert spec["legend"]["align"] == "start"
+    items = spec["legend"]["manual_items"]
+    assert len(items) == 2
+    assert items[0]["label"] == "Amber"
+    assert items[0]["marker"] == "circle"
+    assert items[0]["marker_size"] == 10.0
+    assert items[1]["marker"] == "none"
+
+
+def test_render_outside_manual_legend(sample_data):
+    spec = {
+        "layout": "grid",
+        "cols": 2,
+        "legend": {
+            "mode": "outside",
+            "loc": "bottom",
+            "entries": "manual",
+            "title": "Engines",
+            "manual_items": [
+                {"id": "e1", "label": "Engine A", "color": "#f59e0b", "marker": "circle"},
+                {"id": "e2", "label": "Engine B", "color": "#22c55e", "marker": "none"},
+            ],
+        },
+        "panels": [
+            {"key": "temp", "title": "T"},
+            {"key": "press", "title": "P"},
+        ],
+    }
+    fig = render_energetic(sample_data, spec)
+    try:
+        plot_axes = [ax for ax in fig.axes if ax.lines]
+        assert len(plot_axes) == 2
+        assert all(ax.get_legend() is None for ax in plot_axes)
+        legend_axes = [ax for ax in fig.axes if ax.get_legend() is not None]
+        assert len(legend_axes) == 1
+        texts = [t.get_text() for t in legend_axes[0].get_legend().get_texts()]
+        assert texts == ["Engine A", "Engine B"]
+    finally:
+        import matplotlib.pyplot as plt
+
+        plt.close(fig)
+
+
 def test_grid_spec_slices_centers_8_in_3_cols():
     slices, rows, micro = grid_spec_slices(8, 3, "center")
     assert micro == 6
@@ -297,6 +366,51 @@ def test_normalize_reference_lines_accepts_hlines():
     lines = normalize_reference_lines([{"axis": "x", "value": 10, "style": "dotted"}])
     assert lines[0]["axis"] == "x"
     assert lines[0]["style"] == "dotted"
+    assert lines[0]["opacity"] == 1.0
+    assert lines[0]["z_order"] == "back"
+
+
+def test_normalize_reference_lines_opacity_and_z_order():
+    lines = normalize_reference_lines(
+        [{"axis": "y", "value": 1.5, "opacity": 0.35, "zOrder": "forward"}]
+    )
+    assert lines[0]["opacity"] == 0.35
+    assert lines[0]["z_order"] == "forward"
+
+
+def test_normalize_reference_bands():
+    bands = normalize_reference_bands(
+        [
+            {
+                "axis": "x",
+                "min": 20,
+                "max": 10,
+                "opacity": 0.4,
+                "border": True,
+                "border_style": "dashed",
+                "z_order": "forward",
+            }
+        ]
+    )
+    assert bands[0]["min"] == 10
+    assert bands[0]["max"] == 20
+    assert bands[0]["axis"] == "x"
+    assert bands[0]["border"] is True
+    assert bands[0]["border_style"] == "dashed"
+    assert bands[0]["z_order"] == "forward"
+
+
+def test_normalize_plot_spec_keeps_reference_bands():
+    spec = normalize_plot_spec(
+        {
+            "layout": "overlay",
+            "reference_lines": [{"axis": "y", "value": 1, "opacity": 0.5}],
+            "reference_bands": [{"axis": "y", "min": 0, "max": 2, "opacity": 0.2}],
+            "panels": [{"key": "a", "name": "A"}],
+        }
+    )
+    assert spec["reference_lines"][0]["opacity"] == 0.5
+    assert spec["reference_bands"][0]["max"] == 2.0
 
 
 def test_render_grid_grouped_series_keys_and_reference_line():

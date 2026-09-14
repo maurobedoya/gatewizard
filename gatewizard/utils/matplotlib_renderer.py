@@ -36,6 +36,25 @@ def _pyplot():
     return plt
 
 
+def _apply_plot_font(g: Dict[str, Any]) -> None:
+    """Prefer GUI font family (e.g. Roboto) when available."""
+    raw = str(g.get("font_family") or "").strip()
+    if not raw:
+        return
+    family = raw.split(",")[0].strip().strip("'\"")
+    if not family:
+        return
+    try:
+        import matplotlib as mpl
+
+        mpl.rcParams["font.family"] = "sans-serif"
+        # Keep fallbacks so missing Roboto does not blank text.
+        existing = list(mpl.rcParams.get("font.sans-serif") or [])
+        mpl.rcParams["font.sans-serif"] = [family] + [f for f in existing if f != family]
+    except Exception:
+        pass
+
+
 def _auto_text_color(bg_color: str, text_color: str) -> str:
     if text_color and text_color != "Auto":
         return text_color
@@ -130,11 +149,33 @@ def _style_axes(
     tick_len = _num("tick_length", 4.0, 0.0, 16.0)
     tick_w = _num("tick_width", 1.0, 0.2, 8.0)
     show_ticks = _flag("show_ticks", True)
-    ax.tick_params(
-        colors=text_color,
-        length=0 if not show_ticks else tick_len,
-        width=tick_w,
-    )
+    axis_fs_raw = p.get("axis_fontsize")
+    if axis_fs_raw is None:
+        axis_fs_raw = g.get("axis_fontsize")
+    try:
+        axis_fs = float(axis_fs_raw) if axis_fs_raw not in (None, "") else None
+    except (TypeError, ValueError):
+        axis_fs = None
+    if axis_fs is not None and axis_fs <= 0:
+        axis_fs = None
+    axis_bold = _flag("axis_font_bold", False)
+    tick_kw: Dict[str, Any] = {
+        "colors": text_color,
+        "length": 0 if not show_ticks else tick_len,
+        "width": tick_w,
+    }
+    if axis_fs is not None:
+        tick_kw["labelsize"] = axis_fs
+    ax.tick_params(**tick_kw)
+    label_weight = "bold" if axis_bold else "normal"
+    for lbl in list(ax.get_xticklabels()) + list(ax.get_yticklabels()):
+        lbl.set_fontweight(label_weight)
+        if axis_fs is not None:
+            lbl.set_fontsize(axis_fs)
+    for axis in (ax.xaxis, ax.yaxis):
+        axis.label.set_fontweight(label_weight)
+        if axis_fs is not None:
+            axis.label.set_fontsize(axis_fs)
     for lbl in ax.get_xticklabels():
         lbl.set_horizontalalignment("center")
     if bg_color != "none":
@@ -306,6 +347,126 @@ def _series_plot_style(series: Dict[str, Any], panel: Dict[str, Any]) -> Dict[st
     return out
 
 
+def _draw_panel_letter(ax, panel: Dict[str, Any], text_color: str) -> None:
+    """Paper-style A/B/C label at a corner of the axes."""
+    letter = str(panel.get("panel_letter") or "").strip()
+    if not letter:
+        return
+    loc = str(panel.get("panel_letter_loc") or "outside-tl").lower()
+    try:
+        fs = float(panel.get("panel_letter_fontsize") or 14)
+    except (TypeError, ValueError):
+        fs = 14.0
+    try:
+        dx = float(panel.get("panel_letter_dx") or 0) / 100.0
+    except (TypeError, ValueError):
+        dx = 0.0
+    try:
+        dy = float(panel.get("panel_letter_dy") or 0) / 100.0
+    except (TypeError, ValueError):
+        dy = 0.0
+    weight = "bold" if panel.get("panel_letter_bold", True) is not False else "normal"
+    color = str(panel.get("panel_letter_color") or "").strip() or text_color
+    # Axes fraction; dx/dy are GUI px ≈ hundredths of axes.
+    if loc == "outside-tr":
+        x, y, ha, va = 1.04 + dx, 1.02 - dy, "left", "bottom"
+    elif loc == "inside-tl":
+        x, y, ha, va = 0.02 + dx, 0.98 - dy, "left", "top"
+    elif loc == "inside-tr":
+        x, y, ha, va = 0.98 + dx, 0.98 - dy, "right", "top"
+    else:  # outside-tl
+        x, y, ha, va = -0.04 + dx, 1.02 - dy, "right", "bottom"
+    ax.text(
+        x,
+        y,
+        letter,
+        transform=ax.transAxes,
+        fontsize=fs,
+        fontweight=weight,
+        color=color,
+        ha=ha,
+        va=va,
+        clip_on=False,
+        zorder=10,
+    )
+
+
+def _ref_artist_zorder(item: Dict[str, Any], *, forward: float = 3.5, back: float = 1.2) -> float:
+    zo = str(item.get("z_order") or item.get("zOrder") or "back").lower()
+    return forward if zo == "forward" else back
+
+
+def _draw_reference_bands(ax, bands: Optional[Sequence[Dict[str, Any]]], text_color: str) -> None:
+    if not bands:
+        return
+    for band in bands:
+        if not isinstance(band, dict):
+            continue
+        try:
+            lo = float(band.get("min"))
+            hi = float(band.get("max"))
+        except (TypeError, ValueError):
+            continue
+        if hi < lo:
+            lo, hi = hi, lo
+        color = str(band.get("color") or "#888888")
+        try:
+            alpha = float(band.get("opacity") if band.get("opacity") is not None else 0.2)
+        except (TypeError, ValueError):
+            alpha = 0.2
+        alpha = max(0.0, min(1.0, alpha))
+        zorder = _ref_artist_zorder(band)
+        axis = str(band.get("axis") or "y").lower()
+        border = band.get("border") in (True, 1, "1", "true", "True")
+        edge = str(band.get("border_color") or band.get("borderColor") or color) if border else "none"
+        try:
+            ewidth = float(band.get("border_width") or band.get("borderWidth") or 1.0) if border else 0.0
+        except (TypeError, ValueError):
+            ewidth = 1.0 if border else 0.0
+        els = (
+            scaled_linestyle(str(band.get("border_style") or band.get("borderStyle") or "solid"), ewidth or 1.0)
+            if border
+            else "solid"
+        )
+        span_kw = {
+            "facecolor": color,
+            "alpha": alpha,
+            "zorder": zorder,
+            "linewidth": ewidth,
+            "edgecolor": edge,
+            "linestyle": els,
+        }
+        label = str(band.get("label") or "")
+        if axis == "x":
+            ax.axvspan(lo, hi, **span_kw)
+            if label:
+                ax.text(
+                    (lo + hi) / 2.0,
+                    0.98,
+                    label,
+                    transform=ax.get_xaxis_transform(),
+                    color=text_color,
+                    fontsize=8,
+                    ha="center",
+                    va="top",
+                    zorder=zorder + 0.1,
+                )
+        else:
+            ax.axhspan(lo, hi, **span_kw)
+            if label:
+                ax.text(
+                    0.02,
+                    (lo + hi) / 2.0,
+                    label,
+                    transform=ax.get_yaxis_transform(),
+                    color=text_color,
+                    fontsize=8,
+                    ha="left",
+                    va="center",
+                    zorder=zorder + 0.1,
+                )
+
+
 def _draw_reference_lines(ax, lines: Optional[Sequence[Dict[str, Any]]], text_color: str) -> None:
     if not lines:
         return
@@ -321,12 +482,26 @@ def _draw_reference_lines(ax, lines: Optional[Sequence[Dict[str, Any]]], text_co
             width = float(line.get("width") or 1.2)
         except (TypeError, ValueError):
             width = 1.2
+        try:
+            alpha = float(line.get("opacity") if line.get("opacity") is not None else 1.0)
+        except (TypeError, ValueError):
+            alpha = 1.0
+        alpha = max(0.0, min(1.0, alpha))
         ls = scaled_linestyle(str(line.get("style") or "dashed"), width)
         caps = _line_cap_kwargs(ls)
         axis = str(line.get("axis") or "y").lower()
         label = str(line.get("label") or "")
+        zorder = _ref_artist_zorder(line)
         if axis == "x":
-            ax.axvline(value, color=color, linewidth=width, linestyle=ls, zorder=2, **caps)
+            ax.axvline(
+                value,
+                color=color,
+                linewidth=width,
+                linestyle=ls,
+                alpha=alpha,
+                zorder=zorder,
+                **caps,
+            )
             if label:
                 ax.text(
                     value,
@@ -337,9 +512,18 @@ def _draw_reference_lines(ax, lines: Optional[Sequence[Dict[str, Any]]], text_co
                     fontsize=8,
                     ha="left",
                     va="top",
+                    zorder=zorder + 0.1,
                 )
         else:
-            ax.axhline(value, color=color, linewidth=width, linestyle=ls, zorder=2, **caps)
+            ax.axhline(
+                value,
+                color=color,
+                linewidth=width,
+                linestyle=ls,
+                alpha=alpha,
+                zorder=zorder,
+                **caps,
+            )
             if label:
                 ax.text(
                     0.02,
@@ -350,7 +534,19 @@ def _draw_reference_lines(ax, lines: Optional[Sequence[Dict[str, Any]]], text_co
                     fontsize=8,
                     ha="left",
                     va="bottom",
+                    zorder=zorder + 0.1,
                 )
+
+
+def _draw_references(
+    ax,
+    lines: Optional[Sequence[Dict[str, Any]]],
+    bands: Optional[Sequence[Dict[str, Any]]],
+    text_color: str,
+) -> None:
+    """Draw bands then lines so line borders sit above fills at the same z tier."""
+    _draw_reference_bands(ax, bands, text_color)
+    _draw_reference_lines(ax, lines, text_color)
 
 
 def _panel_show_legend(spec: Dict[str, Any], panel: Dict[str, Any], index: int, n_labels: int) -> bool:
@@ -373,6 +569,7 @@ def _figure_legend_entries(
     panels: Sequence[Dict[str, Any]],
     lookup: Dict[str, Dict[str, Any]],
     entries: str,
+    manual_items: Optional[Sequence[Dict[str, Any]]] = None,
 ):
     handles = []
     labels = []
@@ -384,6 +581,40 @@ def _figure_legend_entries(
         seen.add(key)
         handles.append(handle)
         labels.append(label)
+
+    if entries == "manual":
+        from matplotlib.lines import Line2D
+        from matplotlib.patches import Patch
+
+        marker_map = {
+            "circle": "o",
+            "square": "s",
+            "diamond": "D",
+            "triangle": "^",
+            "cross": "x",
+        }
+        for item in manual_items or []:
+            if not isinstance(item, dict):
+                continue
+            color = str(item.get("color") or "#888888")
+            label = str(item.get("label") or item.get("id") or "")
+            key = str(item.get("id") or label)
+            marker_name = str(item.get("marker") or "none").lower()
+            if marker_name == "none" or marker_name not in marker_map:
+                handle = Patch(facecolor=color, edgecolor=color)
+            else:
+                ms = float(item.get("marker_size") or 8.0)
+                handle = Line2D(
+                    [0],
+                    [0],
+                    color=color,
+                    marker=marker_map[marker_name],
+                    markersize=max(3.0, min(12.0, ms * 0.7)),
+                    linestyle="-",
+                    linewidth=1.5,
+                )
+            add(handle, label, f"manual:{key}")
+        return handles, labels
 
     def walk(kind: str) -> None:
         for ax, panel in zip(axes, panels):
@@ -433,6 +664,7 @@ def render_energetic(
     figsize = tuple(g.get("figsize") or (10, 6))
     bg_color = g.get("plot_bg", "#2b2b2b")
     fig_bg = g.get("fig_bg", "#212121")
+    _apply_plot_font(g)
 
     layout = spec["layout"]
     if layout == "overlay" or len(panels) == 1:
@@ -501,7 +733,11 @@ def render_energetic(
             ax.set_xlim(xlim)
         if ylim:
             ax.set_ylim(ylim)
-        _draw_reference_lines(ax, spec.get("reference_lines"), text_color)
+        _draw_references(ax, spec.get("reference_lines"), spec.get("reference_bands"), text_color)
+        for panel in panels:
+            if str(panel.get("panel_letter") or "").strip():
+                _draw_panel_letter(ax, panel, text_color)
+                break
         plt.tight_layout()
         _apply_extra_figure_margins(fig, g)
         return fig
@@ -525,9 +761,12 @@ def render_energetic(
     wspace = spec.get("wspace")
     hspace = spec.get("hspace")
     if wspace is None:
-        wspace = 0.25
+        wspace = 0.32
     if hspace is None:
-        hspace = 0.35
+        hspace = 0.38
+    # Keep neighbouring tick labels from colliding on dense mosaics.
+    wspace = max(0.22, min(0.65, float(wspace)))
+    hspace = max(0.28, min(0.7, float(hspace)))
 
     gs_rows = rows + extra_row
     gs_cols = micro + extra_col
@@ -538,7 +777,7 @@ def render_energetic(
     legend_row = None
     legend_col = None
     if extra_row:
-        strip = 0.22
+        strip = 0.28
         if legend_loc == "bottom":
             height_ratios = [1] * rows + [strip]
             legend_row = rows
@@ -547,7 +786,9 @@ def render_energetic(
             panel_row_offset = 1
             legend_row = 0
     if extra_col:
-        strip = 0.22
+        # Wide enough for a vertical outside legend (title + swatches) without
+        # spilling into the last plot column.
+        strip = 0.55
         if legend_loc == "right":
             width_ratios = [1] * micro + [strip]
             legend_col = micro
@@ -555,6 +796,12 @@ def render_energetic(
             width_ratios = [strip] + [1] * micro
             panel_col_offset = 1
             legend_col = 0
+
+    # Room for outside-tl panel letters on the left / top edge.
+    left_pad = 0.09 if any(str(p.get("panel_letter") or "").strip() for p in panels) else 0.04
+    top_pad = 0.08 if g.get("title") else 0.04
+    if any(str(p.get("panel_letter") or "").strip() for p in panels):
+        top_pad = max(top_pad, 0.09)
 
     fig = plt.figure(figsize=(fig_w, fig_h))
     if fig_bg != "none":
@@ -566,6 +813,10 @@ def render_energetic(
         hspace=float(hspace),
         height_ratios=height_ratios,
         width_ratios=width_ratios,
+        left=left_pad,
+        right=0.98 if not extra_col else 0.99,
+        top=1.0 - top_pad,
+        bottom=0.08,
     )
 
     shared_xlim = None
@@ -626,13 +877,20 @@ def render_energetic(
             ax.set_ylabel(panel.get("ylabel") or (f"{name} ({unit})" if unit else name), color=text_color)
         else:
             ax.set_ylabel("")
-        ax.set_title(name, color=text_color, fontweight="bold")
+        title = str(panel.get("title") or "").strip()
+        if title:
+            ax.set_title(title, color=text_color, fontweight="semibold", pad=8)
+        else:
+            ax.set_title("")
         if not show_ticks:
             ax.tick_params(length=0)
         if panel.get("show_xticklabels") is False:
             ax.tick_params(labelbottom=False)
         if panel.get("show_yticklabels") is False:
             ax.tick_params(labelleft=False)
+        # Keep tick numbers inside their axes so neighbours do not ghost-overlap.
+        for lbl in list(ax.get_xticklabels()) + list(ax.get_yticklabels()):
+            lbl.set_clip_on(True)
         if _panel_show_legend(spec, panel, i, len(legend_labels)):
             legend = ax.legend(
                 fontsize=_legend_fontsize(
@@ -650,11 +908,17 @@ def render_energetic(
         if ylim:
             ax.set_ylim(ylim)
         refs = list(spec.get("reference_lines") or []) + list(panel.get("reference_lines") or [])
-        _draw_reference_lines(ax, refs, text_color)
+        bands = list(spec.get("reference_bands") or []) + list(panel.get("reference_bands") or [])
+        _draw_references(ax, refs, bands, text_color)
+        _draw_panel_letter(ax, panel, text_color)
 
     if outside and axes:
         handles, labels = _figure_legend_entries(
-            axes, panels, lookup, str(legend_cfg.get("entries") or "sets")
+            axes,
+            panels,
+            lookup,
+            str(legend_cfg.get("entries") or "sets"),
+            legend_cfg.get("manual_items") or [],
         )
         if handles:
             if extra_row and legend_row is not None:
@@ -662,19 +926,59 @@ def render_energetic(
             else:
                 lax = fig.add_subplot(gs[:, legend_col])
             lax.axis("off")
+            align = str(legend_cfg.get("align") or "center").lower()
+            if legend_loc in ("left", "right"):
+                loc_map = {
+                    "start": "upper center",
+                    "center": "center",
+                    "end": "lower center",
+                }
+            else:
+                loc_map = {
+                    "start": "center left",
+                    "center": "center",
+                    "end": "center right",
+                }
+            border_w = float(legend_cfg.get("border_width") or 0)
+            title_fs = _legend_fontsize(
+                legend_cfg.get("title_fontsize")
+                if legend_cfg.get("title_fontsize") not in (None, "")
+                else legend_cfg.get("fontsize") or 8
+            )
             leg = lax.legend(
                 handles,
                 labels,
-                loc="center",
+                loc=loc_map.get(align, "center"),
                 ncol=int(legend_cfg.get("ncol") or 1),
                 fontsize=_legend_fontsize(legend_cfg.get("fontsize") or 8),
                 title=legend_cfg.get("title") or None,
-                frameon=False,
+                title_fontsize=title_fs,
+                borderpad=max(0.1, float(legend_cfg.get("title_gap") or 8.0) / 16.0),
+                labelspacing=max(0.2, float(legend_cfg.get("title_gap") or 8.0) / 20.0),
+                frameon=border_w > 0,
+                fancybox=bool(legend_cfg.get("box_round", True)),
+                edgecolor=str(legend_cfg.get("border_color") or text_color or "0.5"),
+                framealpha=1.0 if border_w > 0 else 0.0,
+                handlelength=max(
+                    0.6, float(legend_cfg.get("swatch_width") or 12.0) / 10.0
+                ),
+                handleheight=max(
+                    0.4, float(legend_cfg.get("swatch_height") or 12.0) / 10.0
+                ),
             )
             if leg:
                 plt.setp(leg.get_texts(), color=text_color)
                 if leg.get_title():
-                    plt.setp(leg.get_title(), color=text_color)
+                    plt.setp(leg.get_title(), color=text_color, fontsize=title_fs)
+                if border_w > 0:
+                    frame = leg.get_frame()
+                    frame.set_linewidth(border_w)
+                    border_color = str(legend_cfg.get("border_color") or "").strip()
+                    if border_color:
+                        frame.set_edgecolor(border_color)
+                    else:
+                        frame.set_edgecolor(text_color or "0.5")
+                    frame.set_facecolor("none")
 
     if g.get("title"):
         fig.suptitle(g["title"], color=text_color, fontweight="bold")
