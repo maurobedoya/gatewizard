@@ -198,6 +198,79 @@ class TestTrajectoryAnalyzerStride:
         assert len(u.trajectory) == n_frames
         assert u.atoms.n_atoms == n_atoms
 
+    def test_rmsd_empty_selection_raises(self):
+        """Aligned RMSD must error on 0 atoms (not return silent NaNs)."""
+        pytest.importorskip("MDAnalysis")
+        from gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer
+
+        data_dir = Path(__file__).parent / "analysis_examples" / "equilibration_folder"
+        topology = data_dir / "system.pdb"
+        traj = data_dir / "step1_equilibration.dcd"
+        if not topology.exists() or not traj.exists():
+            pytest.skip("equilibration_folder test data not found")
+
+        analyzer = TrajectoryAnalyzer(
+            topology,
+            [traj],
+            file_times={"step1_equilibration.dcd": 0.0},
+        )
+        with pytest.raises(ValueError, match="matched 0 atoms"):
+            analyzer.calculate_rmsd(
+                selection="resname NOTAREAL",
+                align=True,
+                reference_structure=str(topology),
+            )
+
+    def test_rmsf_prepare_runs_on_equilibration_data(self):
+        """On-the-fly unwrap+align RMSF returns finite values (same length as raw)."""
+        pytest.importorskip("MDAnalysis")
+        import numpy as np
+        from gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer
+
+        data_dir = Path(__file__).parent / "analysis_examples" / "equilibration_folder"
+        topology = data_dir / "system.pdb"
+        traj = data_dir / "step1_equilibration.dcd"
+        if not topology.exists() or not traj.exists():
+            pytest.skip("equilibration_folder test data not found")
+
+        analyzer = TrajectoryAnalyzer(
+            topology,
+            [traj],
+            file_times={"step1_equilibration.dcd": 0.1},
+        )
+        try:
+            n_prot = len(analyzer.universe.select_atoms("protein and name CA"))
+        except Exception:
+            n_prot = 0
+        if n_prot < 3:
+            pytest.skip("equilibration_folder has no protein CA atoms")
+
+        raw = analyzer.calculate_rmsf("protein and name CA", prepare=False)
+        prep = analyzer.calculate_rmsf("protein and name CA", prepare=True)
+        assert len(raw["rmsf"]) == len(prep["rmsf"]) == n_prot
+        assert np.isfinite(prep["rmsf"]).all()
+        assert float(np.max(prep["rmsf"])) < 100.0
+
+    def test_structural_selection_validated_before_traj_load(self):
+        """Empty selection must fail on topology before opening DCD files."""
+        pytest.importorskip("MDAnalysis")
+        from gatewizard.utils.trajectory_analysis import run_structural_analysis
+
+        data_dir = Path(__file__).parent / "analysis_examples" / "equilibration_folder"
+        topology = data_dir / "system.pdb"
+        traj = data_dir / "step1_equilibration.dcd"
+        if not topology.exists() or not traj.exists():
+            pytest.skip("equilibration_folder test data not found")
+
+        with pytest.raises(ValueError, match="matched 0 atoms"):
+            run_structural_analysis(
+                topology_file=str(topology),
+                trajectory_files=[str(traj)],
+                analysis_type="rmsd",
+                selection="protein and resid 99999",
+                align=True,
+            )
+
 
 class TestPrepareStructuralInputs:
     def test_split_pdb_from_dcd(self):
@@ -232,6 +305,19 @@ class TestPrepareStructuralInputs:
             reference_structure="/tmp/start.pdb",
         )
         assert ref is not None and ref.name == "start.pdb"
+
+        coord, ref = prepare_structural_inputs(
+            ["/tmp/step5_input.rst7", "/tmp/prod.dcd"],
+            analysis_type="radius_of_gyration",
+        )
+        assert [p.name for p in coord] == ["prod.dcd"]
+        assert ref is None
+
+        with pytest.raises(ValueError, match="not MD trajectories"):
+            prepare_structural_inputs(
+                ["/tmp/step5_input.rst7"],
+                analysis_type="radius_of_gyration",
+            )
 
     def test_fill_missing_box_dimensions(self):
         import numpy as np

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any, TYPE_CHECKING, Union
 
 from .logger import get_logger
+from .peptide_residues import mda_peptide_or_protein_selection
 
 if TYPE_CHECKING:
     import numpy as np
@@ -22,6 +23,10 @@ def _to_path_list(paths: List[Union[str, Path]]) -> List[Path]:
 
 
 _STRUCTURE_SNAPSHOT_SUFFIXES = frozenset({".pdb", ".ent", ".gro"})
+# Amber single-frame restarts / inpcrd — not multi-frame MD trajectories.
+# MDAnalysis maps ``.rst7`` to format name ``RST7``, which is not registered;
+# load these with ``format="INPCRD"`` only as companions / single-frame coords.
+_AMBER_RESTART_SUFFIXES = frozenset({".rst7", ".restrt", ".inpcrd"})
 
 
 def is_structure_snapshot(path: Union[str, Path]) -> bool:
@@ -29,10 +34,19 @@ def is_structure_snapshot(path: Union[str, Path]) -> bool:
     return Path(path).suffix.lower() in _STRUCTURE_SNAPSHOT_SUFFIXES
 
 
+def is_amber_restart(path: Union[str, Path]) -> bool:
+    """True for Amber restart/inpcrd files (single-frame, not DCD/XTC)."""
+    return Path(path).suffix.lower() in _AMBER_RESTART_SUFFIXES
+
+
 def split_analysis_trajectories(
     paths: List[Union[str, Path]],
 ) -> tuple[List[Path], List[Path]]:
-    """Split ``paths`` into ``(snapshots, trajectories)``."""
+    """Split ``paths`` into ``(snapshots, trajectories)``.
+
+    Amber ``.rst7`` / ``.inpcrd`` files are treated as snapshots (with PDB/GRO),
+    not as multi-frame trajectories.
+    """
     snapshots: List[Path] = []
     trajectories: List[Path] = []
     for raw in paths or []:
@@ -41,7 +55,7 @@ def split_analysis_trajectories(
             p = p.resolve()
         except OSError:
             pass
-        if is_structure_snapshot(p):
+        if is_structure_snapshot(p) or is_amber_restart(p):
             snapshots.append(p)
         else:
             trajectories.append(p)
@@ -54,14 +68,34 @@ def prepare_structural_inputs(
     analysis_type: str = "",
     reference_structure: Optional[Union[str, Path]] = None,
 ) -> tuple[List[Path], Optional[Path]]:
-    """Drop static PDB/GRO snapshots from the traj chain when real trajs exist.
+    """Drop static PDB/GRO/Amber-restart snapshots from the traj chain when real trajs exist.
 
     Extra PDBs as frame 0 have no periodic box and crash membrane thickness / APL
-    (``Box is None`` / ``NoneType`` subscript). For RMSD, a leftover snapshot or
-    ``reference_structure`` is returned as the reference, not as a time-series frame.
+    (``Box is None`` / ``NoneType`` subscript). Amber ``.rst7`` files are restarts,
+    not DCD/XTC trajectories — MDAnalysis rejects format ``RST7`` unless loaded as
+    ``INPCRD``. For RMSD, a leftover snapshot or ``reference_structure`` is returned
+    as the reference, not as a time-series frame.
     """
     snapshots, trajectories = split_analysis_trajectories(trajectory_files)
-    coord = list(trajectories) if trajectories else list(snapshots)
+    amber_only = [p for p in snapshots if is_amber_restart(p)]
+    structure_snaps = [p for p in snapshots if is_structure_snapshot(p)]
+
+    if trajectories:
+        coord = list(trajectories)
+    elif structure_snaps:
+        # Single-frame PDB/GRO analysis is allowed.
+        coord = list(structure_snaps)
+    elif amber_only:
+        names = ", ".join(p.name for p in amber_only)
+        raise ValueError(
+            f"{names}: Amber restart/inpcrd files are not MD trajectories. "
+            "Add production .dcd / .xtc / .trr / .nc files to Trajectories and "
+            "remove .rst7/.inpcrd from that list. For RMSD vs a starting structure, "
+            "use the Reference PDB field instead."
+        )
+    else:
+        coord = []
+
     atype = str(analysis_type or "").strip().lower().replace(" ", "_").replace("-", "_")
     ref: Optional[Path] = None
     if reference_structure:
@@ -70,17 +104,36 @@ def prepare_structural_inputs(
             ref = ref.resolve()
         except OSError:
             pass
-    elif atype in {"rmsd"} and snapshots and trajectories:
-        ref = snapshots[0]
+    elif atype in {"rmsd"} and structure_snaps and trajectories:
+        ref = structure_snaps[0]
     if snapshots and trajectories:
         logger.warning(
-            "Ignoring structure file(s) in the trajectory list (%s). "
-            "PDB/GRO frames usually have no periodic box and break membrane "
-            "thickness / APL. For RMSD vs a starting structure, set "
+            "Ignoring structure/restart file(s) in the trajectory list (%s). "
+            "PDB/GRO frames usually have no periodic box; Amber .rst7/.inpcrd are "
+            "restarts, not trajectories. For RMSD vs a starting structure, set "
             "reference_structure instead of listing the PDB as a trajectory.",
             ", ".join(p.name for p in snapshots),
         )
     return coord, ref
+
+
+def _mda_coord_format(path: Union[str, Path]) -> Optional[str]:
+    """Explicit MDAnalysis format for Amber restart/inpcrd coordinate files."""
+    if is_amber_restart(path):
+        return "INPCRD"
+    return None
+
+
+def _open_mda_universe(topology: Union[str, Path], coordinate: Union[str, Path]):
+    """Open topology + one coordinate/trajectory file with Amber restart format fix."""
+    import MDAnalysis as mda
+
+    top = str(Path(topology).expanduser().resolve())
+    coord = Path(coordinate).expanduser().resolve()
+    fmt = _mda_coord_format(coord)
+    if fmt:
+        return mda.Universe(top, str(coord), format=fmt)
+    return mda.Universe(top, str(coord))
 
 
 def _fill_missing_box_dimensions(dimensions) -> None:
@@ -157,6 +210,90 @@ def _align_time_to_frame_count(
     return np.linspace(t_start, t_end if t_end > t_start else t_start, n_frames)
 
 
+def _validate_selection_on_topology(
+    topology: Union[str, Path],
+    selection: str,
+    *,
+    selection2: str = "",
+    require_selection2: bool = False,
+    analysis_label: str = "analysis",
+    companion_structure: Optional[Union[str, Path]] = None,
+) -> None:
+    """Fail fast if selection matches 0 atoms — topology only, no trajectories.
+
+    Uses the topology file (and a companion PDB/GRO/inpcrd when needed for
+    prmtop/psf). ``companion_structure`` (e.g. RMSD Reference PDB) is preferred
+    when provided.
+    """
+    import MDAnalysis as mda
+
+    top = Path(topology).expanduser().resolve()
+    sel = (selection or "").strip()
+    if not sel:
+        raise ValueError(f"Enter an atom selection for {analysis_label}.")
+
+    companion: Optional[Path] = None
+    if companion_structure:
+        cand = Path(companion_structure).expanduser()
+        try:
+            cand = cand.resolve()
+        except OSError:
+            pass
+        if cand.is_file():
+            companion = cand
+
+    suffix = top.suffix.lower()
+    if companion is None and suffix in {".prmtop", ".parm7", ".top", ".psf"}:
+        for ext in (".pdb", ".gro", ".crd", ".inpcrd", ".rst7"):
+            cand = top.with_suffix(ext)
+            if cand.is_file():
+                companion = cand
+                break
+            stem_cand = top.parent / f"{top.stem}{ext}"
+            if stem_cand.is_file():
+                companion = stem_cand
+                break
+
+    try:
+        if companion is not None:
+            u = _open_mda_universe(top, companion)
+        else:
+            u = mda.Universe(str(top))
+    except Exception as ex:
+        raise ValueError(
+            f"Could not open topology {top.name!r} to validate selection: {ex}"
+        ) from ex
+
+    try:
+        n = len(u.select_atoms(sel))
+    except Exception as ex:
+        raise ValueError(f"Invalid MDAnalysis selection {sel!r}: {ex}") from ex
+    if n == 0:
+        proteinish = "protein" in sel.lower() or "backbone" in sel.lower()
+        hint = (
+            " For lipid-only systems use a lipid selection "
+            "(e.g. 'name P31' or 'resname PC'), not a protein selection."
+            if proteinish
+            else ""
+        )
+        raise ValueError(
+            f"{analysis_label} selection {sel!r} matched 0 atoms on the topology.{hint}"
+        )
+
+    if require_selection2:
+        sel2 = (selection2 or "").strip()
+        if not sel2:
+            raise ValueError("Distance analysis requires two atom selections.")
+        try:
+            n2 = len(u.select_atoms(sel2))
+        except Exception as ex:
+            raise ValueError(f"Invalid MDAnalysis selection {sel2!r}: {ex}") from ex
+        if n2 == 0:
+            raise ValueError(
+                f"Second selection {sel2!r} matched 0 atoms on the topology."
+            )
+
+
 def run_structural_analysis(
     topology_file: Union[str, Path],
     trajectory_files: List[Union[str, Path]],
@@ -176,17 +313,34 @@ def run_structural_analysis(
     Supported analysis types: `rmsd`, `rmsf`, `distance`, `radius_of_gyration`.
 
     ``reference_structure`` is an optional PDB/GRO used as the RMSD reference
-    instead of ``reference_frame``. Static PDB files in ``trajectory_files`` are
-    dropped when DCD/XTC files are also present (they have no periodic box).
+    instead of ``reference_frame``. For PSF/PRMTOP topologies it is also used as
+    the companion coordinate file when validating selections. Static PDB files
+    and Amber ``.rst7``/``.inpcrd`` restarts in ``trajectory_files`` are dropped
+    when DCD/XTC files are also present.
     """
     import gc
 
     top = Path(topology_file).expanduser().resolve()
+    atype = analysis_type.strip().lower().replace(" ", "_")
+    _validate_selection_on_topology(
+        top,
+        selection,
+        selection2=selection2,
+        require_selection2=atype in {"distance"},
+        analysis_label=atype.upper() if atype else "analysis",
+        companion_structure=reference_structure,
+    )
+
     trajs, ref_struct = prepare_structural_inputs(
         trajectory_files,
         analysis_type=analysis_type,
         reference_structure=reference_structure,
     )
+    if not trajs:
+        raise ValueError(
+            "No usable trajectory files. Add .dcd / .xtc / .trr / .nc production "
+            "files (Amber .rst7 restarts and lone PDBs are not MD trajectories)."
+        )
     analyzer = TrajectoryAnalyzer(
         top, trajs, file_times=file_times, file_strides=file_strides
     )
@@ -230,6 +384,10 @@ def _run_structural_analysis_body(
             reference_structure=reference_structure,
         )
         y = np.asarray(data["rmsd"], dtype=float)
+        if y.size == 0 or not np.isfinite(y).any():
+            raise ValueError(
+                f"RMSD produced no finite values for selection {selection!r}."
+            )
         return {
             "analysis_type": "rmsd",
             "x": np.asarray(data["time"], dtype=float).tolist(),
@@ -246,7 +404,7 @@ def _run_structural_analysis_body(
         }
 
     if atype in {"rmsf"}:
-        data = analyzer.calculate_rmsf(selection=selection)
+        data = analyzer.calculate_rmsf(selection=selection, prepare=bool(align))
         resids = np.asarray(data["resids"]).tolist()
         resnames = np.asarray(data.get("resnames", [])).tolist()
         atom_indices = list(range(len(resids)))
@@ -270,9 +428,13 @@ def _run_structural_analysis_body(
             "x": x_values,
             "x_labels": labels,
             "y": y.tolist(),
+            # Topology residue ids/names (final numbering) for optional original-PDB remap.
+            "resids": resids,
+            "resnames": resnames,
             "x_label": "Residue" if rmsf_xaxis_type != "atom_index" else "Atom index",
             "y_label": "RMSF (Å)",
             "series_name": "RMSF",
+            "prepared": bool(align),
             "stats": {
                 "mean": float(np.mean(y)),
                 "std": float(np.std(y)),
@@ -403,13 +565,25 @@ class TrajectoryAnalyzer:
         self._file_frame_counts: Dict[str, int] = {}
 
         # Load trajectories into MDAnalysis
-        if len(self.trajectories) == 1:
-            self.universe = mda.Universe(str(self.topology), str(self.trajectories[0]))
-        else:
-            # Concatenate multiple trajectories
-            self.universe = mda.Universe(
-                str(self.topology), [str(t) for t in self.trajectories]
-            )
+        try:
+            if len(self.trajectories) == 1:
+                self.universe = _open_mda_universe(self.topology, self.trajectories[0])
+            else:
+                # Concatenate multiple trajectories (must share one format family).
+                import MDAnalysis as mda
+
+                self.universe = mda.Universe(
+                    str(self.topology), [str(t) for t in self.trajectories]
+                )
+        except Exception as ex:
+            msg = str(ex).strip()
+            if "RST7" in msg or any(is_amber_restart(t) for t in self.trajectories):
+                raise ValueError(
+                    "Could not open trajectory list: Amber .rst7/.inpcrd restarts are "
+                    "not MD trajectories. Remove them from Trajectories and add "
+                    f".dcd/.xtc/.trr/.nc files instead. ({msg.splitlines()[0] if msg else ex})"
+                ) from ex
+            raise
 
         logger.info(
             f"Loaded trajectory: {len(self.universe.trajectory)} frames "
@@ -425,7 +599,7 @@ class TrajectoryAnalyzer:
             raise ImportError("MDAnalysis is required")
 
         for traj_path in self.trajectories:
-            temp_universe = mda.Universe(str(self.topology), str(traj_path))
+            temp_universe = _open_mda_universe(self.topology, traj_path)
             self._file_frame_counts[traj_path.name] = len(temp_universe.trajectory)
 
     def _uses_stride(self) -> bool:
@@ -581,7 +755,7 @@ class TrajectoryAnalyzer:
         cumulative_time_ns = 0.0
 
         for traj_path in self.trajectories:
-            temp_universe = mda.Universe(str(self.topology), str(traj_path))
+            temp_universe = _open_mda_universe(self.topology, traj_path)
             n_frames = len(temp_universe.trajectory)
             self._file_frame_counts[traj_path.name] = n_frames
 
@@ -652,13 +826,28 @@ class TrajectoryAnalyzer:
             ref_path = Path(reference_structure).expanduser()
             if not ref_path.is_file():
                 raise ValueError(f"RMSD reference structure not found: {ref_path}")
-            ref = mda.Universe(str(self.topology), str(ref_path))
+            ref = _open_mda_universe(self.topology, ref_path)
             ref_local = 0
             logger.info("RMSD reference structure: %s (not a trajectory frame)", ref_path.name)
 
         if align:
             # Single-pass aligned RMSD (QCP superposition per frame). Faster than
             # AlignTraj(in_memory=True) plus a redundant per-frame rms.rmsd loop.
+            # Validate before rms.RMSD: empty selections yield all-NaN with no error.
+            n_mobile = len(u.select_atoms(selection))
+            n_ref = len(ref.select_atoms(selection))
+            if n_mobile == 0 or n_ref == 0:
+                raise ValueError(
+                    f"RMSD selection {selection!r} matched 0 atoms "
+                    f"(trajectory={n_mobile}, reference={n_ref}). "
+                    "For lipid-only systems use a lipid selection "
+                    "(e.g. 'name P31' or 'resname PC'), not 'protein and backbone'."
+                )
+            if n_mobile != n_ref:
+                raise ValueError(
+                    f"RMSD selection {selection!r} has {n_mobile} atoms in the "
+                    f"trajectory but {n_ref} in the reference structure."
+                )
             rmsd_analysis = rms.RMSD(
                 u,
                 ref,
@@ -675,7 +864,12 @@ class TrajectoryAnalyzer:
             atoms = u.select_atoms(selection)
             ref_atoms = ref.select_atoms(selection)
             if len(atoms) == 0 or len(ref_atoms) == 0:
-                raise ValueError(f"RMSD selection {selection!r} matched 0 atoms.")
+                raise ValueError(
+                    f"RMSD selection {selection!r} matched 0 atoms "
+                    f"(trajectory={len(atoms)}, reference={len(ref_atoms)}). "
+                    "For lipid-only systems use a lipid selection "
+                    "(e.g. 'name P31' or 'resname PC'), not 'protein and backbone'."
+                )
             if len(atoms) != len(ref_atoms):
                 raise ValueError(
                     f"RMSD selection {selection!r} has {len(atoms)} atoms in the "
@@ -695,41 +889,153 @@ class TrajectoryAnalyzer:
                 len(rmsd_array),
             )
 
+        if rmsd_array.size == 0 or not np.isfinite(rmsd_array).any():
+            raise ValueError(
+                f"RMSD produced no finite values for selection {selection!r}."
+            )
+
         # Get proper time array (in nanoseconds)
         time_ns = self.time_array_for_analysis()
 
         return {"time": time_ns, "rmsd": rmsd_array}  # RMSD values in Angstroms
 
     def calculate_rmsf(
-        self, selection: str = "protein and name CA"
+        self,
+        selection: str = "protein and name CA",
+        *,
+        prepare: bool = True,
     ) -> Dict[str, "np.ndarray"]:
         """
         Calculate RMSF for selected atoms.
 
+        When ``prepare`` is True (default), the polymer is made whole across PBC
+        and aligned to the average structure before RMSF — required when the
+        trajectory was centered on the membrane and the protein still jumps
+        images. Preparation works on a protein/peptide-only coordinate copy so
+        large membrane systems stay tractable.
+
         Args:
             selection: MDAnalysis selection string
+            prepare: Unwrap + align polymer before RMSF
 
         Returns:
             Dictionary with 'resids', 'rmsf' (Angstroms), 'resnames', and 'atom_indices' arrays
         """
         try:
             import MDAnalysis as mda
+            from MDAnalysis.analysis import align as mda_align
             from MDAnalysis.analysis import rms
+            from MDAnalysis.coordinates.memory import MemoryReader
             import numpy as np
         except ImportError:
             raise ImportError("MDAnalysis and numpy are required")
 
         u, _ = self._analysis_universe_and_ref(0)
         atoms = u.select_atoms(selection)
+        if len(atoms) == 0:
+            raise ValueError(
+                f"RMSF selection {selection!r} matched 0 atoms. "
+                "For lipid-only systems use a lipid selection "
+                "(e.g. 'name P31'), not 'protein and name CA'."
+            )
 
-        rmsf_analysis = rms.RMSF(atoms).run()
+        if not prepare:
+            rmsf_analysis = rms.RMSF(atoms).run()
+            return {
+                "resids": atoms.resids,
+                "rmsf": rmsf_analysis.results.rmsf,
+                "resnames": atoms.resnames,
+                "atom_indices": atoms.indices,
+            }
+
+        polymer_sel = mda_peptide_or_protein_selection()
+        try:
+            polymer = u.select_atoms(polymer_sel)
+        except Exception:
+            polymer = u.atoms[[]]
+        if len(polymer) == 0:
+            polymer = atoms.residues.atoms
+        if len(polymer) == 0:
+            raise ValueError(
+                "RMSF prepare could not find protein/peptide atoms to unwrap. "
+                "Check the selection or disable Prepare protein."
+            )
+
+        # Keep RMSF atoms that belong to the polymer we unwrap.
+        poly_index = {int(i): li for li, i in enumerate(polymer.indices)}
+        local_idx = [poly_index[int(i)] for i in atoms.indices if int(i) in poly_index]
+        if not local_idx:
+            raise ValueError(
+                f"RMSF selection {selection!r} is outside the protein/peptide "
+                "group used for PBC prepare. Narrow the selection or disable Prepare."
+            )
+
+        n_frames = len(u.trajectory)
+        n_atoms = polymer.n_atoms
+        if getattr(polymer, "n_bonds", 0) == 0:
+            try:
+                polymer.guess_bonds()
+            except Exception as ex:
+                logger.warning("RMSF prepare: could not guess bonds for unwrap (%s)", ex)
+
+        # (frames, atoms, 3) — MemoryReader order='fac'
+        coords = np.empty((n_frames, n_atoms, 3), dtype=np.float64)
+        unwrap_fail = 0
+        for fi, _ts in enumerate(u.trajectory):
+            try:
+                polymer.unwrap(compound="fragments")
+            except TypeError:
+                try:
+                    polymer.unwrap()
+                except Exception:
+                    unwrap_fail += 1
+            except Exception:
+                unwrap_fail += 1
+            coords[fi, :, :] = polymer.positions
+
+        if unwrap_fail:
+            logger.warning(
+                "RMSF prepare: unwrap failed on %d/%d frames (bonds/topology?); "
+                "continuing with available coordinates + alignment",
+                unwrap_fail,
+                n_frames,
+            )
+
+        prot_u = mda.Merge(polymer).load_new(coords, format=MemoryReader, order="fac")
+        align_sel = "name CA"
+        if len(prot_u.select_atoms(align_sel)) == 0:
+            align_sel = "backbone"
+        if len(prot_u.select_atoms(align_sel)) == 0:
+            align_sel = "all"
+        if len(prot_u.select_atoms(align_sel)) < 3:
+            raise ValueError(
+                "RMSF prepare needs ≥3 atoms to align "
+                f"(tried name CA / backbone / all on {polymer.n_atoms} polymer atoms)."
+            )
+
+        logger.info(
+            "RMSF prepare: unwrapping %d polymer atoms over %d frames, align=%r",
+            n_atoms,
+            n_frames,
+            align_sel,
+        )
+        mda_align.AlignTraj(prot_u, prot_u, select=align_sel, in_memory=True).run()
+        average = mda_align.AverageStructure(prot_u, select=align_sel).run()
+        ref_u = average.results.universe
+        mda_align.AlignTraj(prot_u, ref_u, select=align_sel, in_memory=True).run()
+
+        rmsf_ag = prot_u.atoms[local_idx]
+        rmsf_analysis = rms.RMSF(rmsf_ag).run()
         rmsf_vals = rmsf_analysis.results.rmsf
 
         return {
-            "resids": atoms.resids,
-            "rmsf": rmsf_vals,  # RMSF in Angstroms
-            "resnames": atoms.resnames,  # Residue names (e.g., ALA, GLY)
-            "atom_indices": atoms.indices,  # Atom indices
+            "resids": np.asarray(rmsf_ag.resids),
+            "rmsf": rmsf_vals,
+            "resnames": np.asarray(rmsf_ag.resnames),
+            "atom_indices": np.asarray(
+                [int(gi) for gi in atoms.indices if int(gi) in poly_index],
+                dtype=int,
+            ),
         }
 
     def calculate_distances(
@@ -1152,7 +1458,7 @@ class TrajectoryAnalyzer:
             logger.error("matplotlib and numpy are required for plotting")
             return
 
-        data = self.calculate_rmsf(selection)
+        data = self.calculate_rmsf(selection, prepare=True)
 
         # Convert distance units
         plot_rmsf = data["rmsf"].copy()  # RMSF is in Angstroms
