@@ -131,6 +131,28 @@ def test_recommend_split_lipids_without_solu_memb():
     assert recommended == recommended_groups[0]
 
 
+def test_recommend_output_prefers_system():
+    from gatewizard.utils.trajectory_tools import _recommend_output_group
+
+    groups = [
+        {"name": "SOLU", "n_atoms": 500},
+        {"name": "System", "n_atoms": 20000},
+        {"name": "SOLV", "n_atoms": 18000},
+    ]
+    assert _recommend_output_group(groups) == "System"
+
+
+def test_recommend_output_largest_when_no_system():
+    from gatewizard.utils.trajectory_tools import _recommend_output_group
+
+    groups = [
+        {"name": "SOLU", "n_atoms": 500},
+        {"name": "MEMB", "n_atoms": 8000},
+        {"name": "SOLV", "n_atoms": 15000},
+    ]
+    assert _recommend_output_group(groups) == "SOLV"
+
+
 def test_recommend_solu_memb_wins():
     groups = [
         {"name": "SOLU_MEMB"},

@@ -899,10 +899,9 @@ def detect_pbc_engine(
         recommended_center = group_info.get("recommended")
         recommended_center_groups = list(group_info.get("recommended_groups") or [])
         warnings.extend(group_info.get("warnings") or [])
-        if any(g.get("name") == "System" for g in center_groups):
-            recommended_output = "System"
-        elif center_groups:
-            recommended_output = center_groups[0]["name"]
+        recommended_output = group_info.get("recommended_output") or _recommend_output_group(
+            center_groups
+        )
 
     lipid_resnames: list[str] = []
     recommended_center_selection = "protein"
@@ -1274,6 +1273,25 @@ def _prepare_gromacs_fix_groups(
     }
 
 
+def _recommend_output_group(groups: list[dict]) -> str:
+    """
+    Default Fix PBC export group: whole system.
+
+    Prefer ``System`` when present; otherwise the index group with the most
+    atoms (avoids defaulting to the first listed group such as SOLU).
+    """
+    named = [g for g in groups if str(g.get("name") or "").strip()]
+    if not named:
+        return "System"
+    for g in named:
+        if str(g.get("name") or "").strip().lower() == "system":
+            return str(g["name"]).strip()
+    best = max(named, key=lambda g: int(g.get("n_atoms") or 0))
+    if int(best.get("n_atoms") or 0) > 0:
+        return str(best["name"]).strip()
+    return str(named[0]["name"]).strip() or "System"
+
+
 def _recommend_center_groups(groups: list[dict]) -> tuple[str, list[str]]:
     """Pick recommended center name + multi-select list for the GUI."""
     names = [str(g.get("name") or "") for g in groups if g.get("name")]
@@ -1378,6 +1396,7 @@ def list_gromacs_index_groups(
     groups = unique
 
     recommended, recommended_groups = _recommend_center_groups(groups)
+    recommended_output = _recommend_output_group(groups)
     for g in groups:
         g["recommended"] = g["name"] in set(recommended_groups) or g["name"] == recommended
 
@@ -1385,6 +1404,7 @@ def list_gromacs_index_groups(
         "groups": groups,
         "recommended": recommended,
         "recommended_groups": recommended_groups,
+        "recommended_output": recommended_output,
         "source": source,
         "warnings": warnings,
     }
@@ -1403,8 +1423,8 @@ def _gromacs_center_group(ndx: Optional[Path], explicit: Optional[str] = None) -
 def _gromacs_output_group(ndx: Optional[Path], explicit: Optional[str] = None) -> str:
     if explicit and str(explicit).strip():
         return str(explicit).strip()
-    if ndx and _ndx_has_group(ndx, "System"):
-        return "System"
+    if ndx and ndx.is_file():
+        return _recommend_output_group(list_ndx_groups(ndx))
     return "System"
 
 
