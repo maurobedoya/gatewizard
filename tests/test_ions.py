@@ -10,6 +10,7 @@ from gatewizard.core.builder import Builder
 from gatewizard.utils.ions import (
     DEFAULT_ANION,
     DEFAULT_CATION,
+    ion_mda_selection,
     is_ion_resname,
     resolve_amber_anion,
     resolve_amber_cation,
@@ -25,6 +26,31 @@ def test_is_ion_resname_amber_mixed_case():
     assert not is_ion_resname("ALA")
     assert not is_ion_resname("POPC")
     assert not is_ion_resname("ETA")
+
+
+def test_ion_selection_does_not_include_protein(tmp_path: Path):
+    """PDB potassium (resname K) must not pull in protein atoms via ``ion``."""
+    pytest.importorskip("MDAnalysis")
+    import MDAnalysis as mda
+
+    pdb = tmp_path / "prot_k.pdb"
+    pdb.write_text(
+        "ATOM      1  N   MET A   1       0.000   0.000   0.000  1.00  0.00           N\n"
+        "ATOM      2  CA  MET A   1       1.000   0.000   0.000  1.00  0.00           C\n"
+        "ATOM      3  C   MET A   1       2.000   0.000   0.000  1.00  0.00           C\n"
+        "HETATM    4  K     K A 302      10.000   0.000   0.000  1.00  0.00           K\n"
+        "END\n",
+        encoding="utf-8",
+    )
+    u = mda.Universe(str(pdb))
+    by_resname = u.select_atoms(ion_mda_selection())
+    by_mask = u.atoms[[is_ion_resname(str(rn)) for rn in u.atoms.resnames]]
+    assert len(by_resname) == 1
+    assert list(by_resname.resnames) == ["K"]
+    assert len(by_mask) == 1
+    assert list(by_mask.resnames) == ["K"]
+    assert "MET" not in set(by_resname.resnames)
+    assert "MET" not in set(by_mask.resnames)
 
 
 def test_resolve_amber_ions_defaults_and_aliases():
