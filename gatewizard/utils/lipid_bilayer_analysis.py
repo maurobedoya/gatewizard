@@ -1622,6 +1622,7 @@ class BilayerTrajectoryAnalyzer:
         show: bool = False,
         figsize: tuple = (10, 6),
         dpi: int = 300,
+        apl_method: Optional[str] = "fatslim",
     ):
         """Plot area-per-lipid time series."""
         try:
@@ -1634,6 +1635,7 @@ class BilayerTrajectoryAnalyzer:
         data = self.calculate_area_per_lipid(
             lipid_sel=lipid_sel,
             leaflet_lipid_sel=leaflet_lipid_sel,
+            apl_method=apl_method,
             start=start,
             stop=stop,
             step=step,
