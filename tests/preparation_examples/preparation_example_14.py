@@ -1,3 +1,9 @@
+import shutil
+import sys
+
+if shutil.which("propka3") is None:
+    sys.exit("Skip: PropKa 3 is not on PATH")
+
 from gatewizard.core.preparation import PreparationManager
 import matplotlib.pyplot as plt
 import numpy as np
@@ -60,20 +66,22 @@ fig, (ax1, ax2) = plt.subplots(
 )
 
 # --- Top plot: pKa distribution with protonation states ---
-bp = ax1.boxplot(
-    pka_values_list,
-    labels=res_names,
-    patch_artist=True,
-    showmeans=True,
-    meanline=False,
-    medianprops={"color": "black", "linewidth": 2},
-    meanprops={
+boxplot_kwargs = {
+    "patch_artist": True,
+    "showmeans": True,
+    "meanline": False,
+    "medianprops": {"color": "black", "linewidth": 2},
+    "meanprops": {
         "marker": "D",
         "markerfacecolor": "red",
         "markeredgecolor": "darkred",
         "markersize": 6,
     },
-)
+}
+try:
+    bp = ax1.boxplot(pka_values_list, tick_labels=res_names, **boxplot_kwargs)
+except TypeError:
+    bp = ax1.boxplot(pka_values_list, labels=res_names, **boxplot_kwargs)
 
 # Color each box
 for patch, color in zip(bp["boxes"], colors_list):

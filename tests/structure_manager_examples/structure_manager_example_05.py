@@ -30,4 +30,7 @@ try:
     all_atoms = viewer.select_by_criteria("All")
     print(f"All atoms: {len(all_atoms)}")
 finally:
-    os.unlink(tmp_path)
+    try:
+        os.unlink(tmp_path)
+    except OSError:
+        pass

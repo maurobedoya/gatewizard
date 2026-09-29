@@ -8,7 +8,7 @@ for individual parametrization.
 from pathlib import Path
 from gatewizard.tools.ligand_parametrization import detect_ligands, extract_ligand_pdb
 
-pdb_file = "tests/2MVJ_2ligs.pdb"
+pdb_file = str(Path(__file__).resolve().parent.parent / "2MVJ_2ligs.pdb")
 output_dir = "./systems/ligand_extraction"
 
 # First detect ligands

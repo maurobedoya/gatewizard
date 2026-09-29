@@ -11,6 +11,8 @@ NOTE: This example requires AmberTools (antechamber, parmchk2, tleap)
 to be installed and accessible in the PATH.
 """
 
+import shutil
+import sys
 from pathlib import Path
 from gatewizard.tools.ligand_parametrization import (
     parametrize_all_ligands,
@@ -18,7 +20,10 @@ from gatewizard.tools.ligand_parametrization import (
     build_tleap_ligand_lines,
 )
 
-pdb_file = "tests/2MVJ_2ligs.pdb"
+if shutil.which("antechamber") is None:
+    sys.exit("Skip: AmberTools antechamber is not on PATH")
+
+pdb_file = str(Path(__file__).resolve().parent.parent / "2MVJ_2ligs.pdb")
 output_dir = "./systems/ligand_params"
 
 # Set charges for each ligand (default is 0 if not specified)

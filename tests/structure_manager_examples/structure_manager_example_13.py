@@ -66,4 +66,7 @@ try:
         f"  Residue 1 centroid: ({res1_center[0]:.4f}, {res1_center[1]:.4f}, {res1_center[2]:.4f})"
     )
 finally:
-    os.unlink(tmp_path)
+    try:
+        os.unlink(tmp_path)
+    except OSError:
+        pass

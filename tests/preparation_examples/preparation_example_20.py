@@ -1,3 +1,9 @@
+import shutil
+import sys
+
+if shutil.which("propka3") is None:
+    sys.exit("Skip: PropKa 3 is not on PATH")
+
 import re
 from gatewizard.core.preparation import PreparationManager
 from gatewizard.utils.protein_capping import ProteinCapper

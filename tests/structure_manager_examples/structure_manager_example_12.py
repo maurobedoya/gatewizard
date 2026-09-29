@@ -52,4 +52,7 @@ try:
         f"  Atom 1: ({after180[0][0]:.1f}, {after180[0][1]:.1f}, {after180[0][2]:.1f})"
     )
 finally:
-    os.unlink(tmp_path)
+    try:
+        os.unlink(tmp_path)
+    except OSError:
+        pass

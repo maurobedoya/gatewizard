@@ -5,10 +5,12 @@ Demonstrates how to detect non-standard residues (ligands)
 in a PDB file using the ligand parametrization tools.
 """
 
+from pathlib import Path
+
 from gatewizard.tools.ligand_parametrization import detect_ligands
 
 # Detect ligands in a PDB file with two ligands (AAA and BBB)
-pdb_file = "tests/2MVJ_2ligs.pdb"
+pdb_file = str(Path(__file__).resolve().parent.parent / "2MVJ_2ligs.pdb")
 ligands = detect_ligands(pdb_file)
 
 print(f"Detected {len(ligands)} ligand(s) in {pdb_file}:")

@@ -4,16 +4,15 @@ Unified Preparation Test Suite.
 
 This test suite consolidates all protein preparation/PROPKA testing into a single file:
 1. Core functionality tests (specs and features)
-2. Documentation example workflows (22 examples with protein.pdb)
-3. Example file execution tests (runs all preparation_example_XX.py files with all 3 PDB files)
-4. Complex structure tests with 6RV3_AB.pdb and 8I5B.pdb
+2. Documentation example scripts (preparation_example_*.py, once each)
+3. Complex structure tests with 6RV3_AB.pdb and 8I5B.pdb
 
 PDB files used:
 - protein.pdb: Simple test protein (in preparation_examples/)
 - 6RV3_AB.pdb: Multi-chain membrane protein with ligands
 - 8I5B.pdb: Large multi-chain sodium channel
 
-Note: Example files (Section 3) are run with all three PDB files using pytest parametrize.
+Note: Example scripts run once each from tests/preparation_examples/.
 """
 
 import pytest
@@ -21,9 +20,10 @@ import sys
 import os
 import tempfile
 import shutil
-from pathlib import Path
-import importlib.util
 from collections import defaultdict
+from pathlib import Path
+
+from tests.example_runner import parametrize_example_scripts, run_example_script
 
 # Add gatewizard to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -176,8 +176,7 @@ END
         ), f"Expected atom_type 'OP', got '{p5s_o15['atom_type']}'"
 
         # Verify we can group by ligand
-        from collections import defaultdict
-
+        
         ligands_by_type = defaultdict(list)
         for lig in ligand_atoms:
             ligands_by_type[lig["residue"]].append(lig)
@@ -211,656 +210,45 @@ class TestProteinCapping:
 
 
 # ============================================================================
-# SECTION 2: WORKFLOW EXAMPLES (22 Examples with protein.pdb)
+# SECTION 2: DOCUMENTATION EXAMPLE TESTS
 # ============================================================================
 
 
-class TestPropkaWorkflowExamples:
-    """Test all propka documentation examples."""
-
-    @pytest.fixture
-    def temp_dir(self):
-        """Create a temporary directory for test outputs."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            yield tmpdir
-
-    @pytest.fixture
-    def protein_pdb(self, temp_dir):
-        """Copy actual protein.pdb from tests directory to temp directory."""
-        # Find the protein.pdb file in the tests directory
-        test_dir = Path(__file__).parent
-        source_pdb = test_dir / "preparation_examples" / "protein.pdb"
-
-        if not source_pdb.exists():
-            pytest.skip(f"protein.pdb not found at {source_pdb}")
-
-        # Copy to temp directory
-        dest_pdb = Path(temp_dir) / "protein.pdb"
-        shutil.copy(str(source_pdb), str(dest_pdb))
-        return str(dest_pdb)
-
-    def test_example_01_propka_version(self, temp_dir, protein_pdb):
-        """Test Example 1: PreparationManager initialization."""
-        os.chdir(temp_dir)
-        analyzer = PreparationManager(propka_version="3")
-        assert analyzer.propka_version == "3"
-        print(f"Using PROPKA version: {analyzer.propka_version}")
-
-    def test_example_02_run_analysis(self, temp_dir, protein_pdb):
-        """Test Example 2: Run PROPKA analysis."""
-        os.chdir(temp_dir)
-
-        analyzer = PreparationManager()
-        pka_file = analyzer.run_analysis("protein.pdb")
-
-        assert os.path.exists(pka_file)
-        assert pka_file.endswith(".pka")
-
-    def test_example_03_extract_summary(self, temp_dir, protein_pdb):
-        """Test Example 3: Extract summary from PKA file."""
-        os.chdir(temp_dir)
-
-        analyzer = PreparationManager()
-        pka_file = analyzer.run_analysis("protein.pdb")
-        summary_file = analyzer.extract_summary(pka_file)
-
-        assert os.path.exists(summary_file)
-        assert "summary_of_prediction" in summary_file
-
-    def test_example_04_parse_summary(self, temp_dir, protein_pdb):
-        """Test Example 4: Parse summary with protein residues."""
-        os.chdir(temp_dir)
-
-        analyzer = PreparationManager()
-        pka_file = analyzer.run_analysis("protein.pdb")
-        summary_file = analyzer.extract_summary(pka_file)
-        residues = analyzer.parse_summary(summary_file)
-
-        # Separate protein residues from ligand atoms
-        protein_residues = [r for r in residues if r["res_id"] > 0]
-        ligand_atoms = [r for r in residues if r["res_id"] == 0]
-
-        assert len(protein_residues) > 0
-        print(f"Found {len(protein_residues)} ionizable protein residues")
-        print(f"Found {len(ligand_atoms)} ionizable ligand atoms")
-
-    def test_example_05_apply_protonation(self, temp_dir, protein_pdb):
-        """Test Example 5: Apply protonation states."""
-        os.chdir(temp_dir)
-
-        analyzer = PreparationManager()
-        pka_file = analyzer.run_analysis("protein.pdb")
-        summary_file = analyzer.extract_summary(pka_file)
-        residues = analyzer.parse_summary(summary_file)
-
-        # Basic usage - automatic protonation at pH 7.4
-        stats = analyzer.apply_protonation_states(
-            input_pdb="protein.pdb",
-            output_pdb="protein_ph7.4.pdb",
-            ph=7.4,
-            residues=residues,
-        )
-
-        assert os.path.exists("protein_ph7.4.pdb")
-        assert stats["residue_changes"] >= 0
-        print(
-            f"Modified {stats['residue_changes']} residues ({stats['record_changes']} atoms)"
-        )
-
-    def test_example_06_get_default_protonation_state(self, temp_dir, protein_pdb):
-        """Test Example 6: Get default protonation states at different pH."""
-        os.chdir(temp_dir)
-
-        analyzer = PreparationManager()
-        pka_file = analyzer.run_analysis("protein.pdb")
-        summary_file = analyzer.extract_summary(pka_file)
-        residues = analyzer.parse_summary(summary_file)
-
-        for res in residues[:3]:  # Test first 3 residues
-            if res["res_id"] > 0:  # Only protein residues
-                states = [
-                    analyzer.get_default_protonation_state(res, ph=p)
-                    for p in [2.0, 7.0, 11.0]
-                ]
-                print(
-                    f"{res['residue']}{res['res_id']} (pKa={res['pka']:.2f}): "
-                    f"pH2={states[0]}, pH7={states[1]}, pH11={states[2]}"
-                )
-                assert all(isinstance(s, str) for s in states)
-
-    def test_example_07_get_available_states(self, temp_dir):
-        """Test Example 7: Get available states for residue types."""
-        analyzer = PreparationManager()
-        his_states = analyzer.get_available_states("HIS")
-
-        assert isinstance(his_states, dict)
-        assert "neutral_epsilon" in his_states
-        assert his_states["neutral_epsilon"] == "HIE"
-        print(his_states)
-
-    def test_example_08_detect_disulfide_bonds(self, temp_dir, protein_pdb):
-        """Test Example 8: Detect disulfide bonds."""
-        os.chdir(temp_dir)
-
-        analyzer = PreparationManager()
-        bonds = analyzer.detect_disulfide_bonds("protein.pdb")
-
-        print(f"Found {len(bonds)} disulfide bonds:")
-        for bond in bonds:
-            (res1_name, res1_id), (res2_name, res2_id) = bond
-            print(f"  {res1_name}{res1_id} ↔ {res2_name}{res2_id}")
-
-        assert isinstance(bonds, list)
-
-    def test_example_09_apply_disulfide_bonds(self, temp_dir, protein_pdb):
-        """Test Example 9: Apply disulfide bonds."""
-        os.chdir(temp_dir)
-
-        analyzer = PreparationManager()
-        num_bonds = analyzer.apply_disulfide_bonds(
-            input_pdb="protein.pdb", output_pdb="protein_ss_auto.pdb"
-        )
-
-        assert os.path.exists("protein_ss_auto.pdb")
-        print(f"✓ Applied {num_bonds} disulfide bonds")
-
-    def test_example_10_combined_workflow(self, temp_dir, protein_pdb):
-        """Test Example 10: Combined protonation and disulfide workflow."""
-        os.chdir(temp_dir)
-
-        analyzer = PreparationManager()
-        pka_file = analyzer.run_analysis("protein.pdb")
-        summary_file = analyzer.extract_summary(pka_file)
-        residues = analyzer.parse_summary(summary_file)
-
-        # Step 1: Apply protonation states
-        stats = analyzer.apply_protonation_states(
-            input_pdb="protein.pdb",
-            output_pdb="protein_ph7.pdb",
-            ph=7.4,
-            residues=residues,
-        )
-
-        # Step 2: Apply disulfide bonds
-        num_bonds = analyzer.apply_disulfide_bonds(
-            input_pdb="protein_ph7.pdb", output_pdb="protein_ph7_ss.pdb"
-        )
-
-        assert os.path.exists("protein_ph7_ss.pdb")
-
-    def test_example_11_get_residue_statistics(self, temp_dir, protein_pdb):
-        """Test Example 11: Get residue statistics."""
-        os.chdir(temp_dir)
-
-        analyzer = PreparationManager()
-        pka_file = analyzer.run_analysis("protein.pdb")
-        summary_file = analyzer.extract_summary(pka_file)
-        residues = analyzer.parse_summary(summary_file)
-
-        stats = analyzer.get_residue_statistics()
-
-        assert isinstance(stats, dict)
-        for res_type, count in stats.items():
-            print(f"{res_type}: {count}")
-
-    def test_example_12_get_ph_titration_curve(self, temp_dir, protein_pdb):
-        """Test Example 12: Get pH titration curves."""
-        os.chdir(temp_dir)
-
-        analyzer = PreparationManager()
-        pka_file = analyzer.run_analysis("protein.pdb")
-        summary_file = analyzer.extract_summary(pka_file)
-        residues = analyzer.parse_summary(summary_file)
-
-        curves = analyzer.get_ph_titration_curve(ph_range=(4, 10), ph_step=1.0)
-
-        assert isinstance(curves, dict)
-        assert len(curves) > 0
-
-        for residue_id, curve in list(curves.items())[:2]:  # Test first 2
-            print(f"\n{residue_id}:")
-            for ph, state in curve:
-                print(f"  pH {ph:.1f}: {state}")
-
-    def test_example_15_protein_capping(self, temp_dir, protein_pdb):
-        """Test Example 15: Protein capping with ProteinCapper."""
-        os.chdir(temp_dir)
-        os.makedirs("output", exist_ok=True)
-
-        capper = ProteinCapper()
-        capped_file, residue_mapping = capper.remove_hydrogens_and_cap(
-            input_file="protein.pdb",
-            output_file="protein_capped.pdb",
-            target_dir="output",
-        )
-
-        assert os.path.exists(capped_file)
-        assert isinstance(residue_mapping, dict)
-        print(f"✓ Capped protein: {capped_file}")
-        print(f"✓ Residue mapping: {len(residue_mapping)} residues tracked")
-
-    def test_example_16_cap_protein_convenience(self, temp_dir, protein_pdb):
-        """Test Example 16: Protein capping with convenience function."""
-        os.chdir(temp_dir)
-
-        capped_file, mapping = cap_protein(
-            input_file="protein.pdb", output_file="protein_capped_convenient.pdb"
-        )
-
-        assert os.path.exists(capped_file)
-        assert isinstance(mapping, dict)
-
-    def test_capping_preserves_same_chain_heteroatoms(self, temp_dir, protein_pdb):
-        """Regression: ligands/water/ions on the protein chain must survive capping.
-
-        b382c24 correctly capped protein-only termini, but dropped non-protein
-        atoms that share the protein's MDAnalysis segment (same chain ID).
-        """
-        os.chdir(temp_dir)
-        src = Path("protein.pdb")
-        text = src.read_text()
-        het = (
-            "HETATM 9991  O   HOH A 901      50.000  50.000  50.000  1.00  0.00           O  \n"
-            "HETATM 9992 NA    NA A 902      51.000  51.000  51.000  1.00  0.00          NA  \n"
-            "HETATM 9993  C1  LIG A 903      52.000  52.000  52.000  1.00  0.00           C  \n"
-            "HETATM 9994  C2  LIG A 903      53.000  52.000  52.000  1.00  0.00           C  \n"
-        )
-        body = text.rstrip()[:-3] if text.rstrip().endswith("END") else text
-        inp = Path("protein_with_hetero.pdb")
-        inp.write_text(body + het + "END\n")
-
-        capped_file, mapping = cap_protein(
-            input_file=str(inp), output_file="protein_with_hetero_capped.pdb"
-        )
-        out = Path(capped_file).read_text()
-        assert "HOH" in out
-        assert "LIG" in out
-        assert any(
-            line.startswith(("ATOM", "HETATM")) and line[17:20].strip() == "NA"
-            for line in out.splitlines()
-        )
-        assert "ACE" in out and "NME" in out
-        assert ("HOH", "A", 901) in mapping
-        assert ("LIG", "A", 903) in mapping
-
-    def test_detect_terminal_caps(self, temp_dir, protein_pdb):
-        """detect_terminal_caps finds ACE/NME and returns empty for uncapped PDBs."""
-        os.chdir(temp_dir)
-        assert detect_terminal_caps("protein.pdb") == []
-
-        capped_file, _ = cap_protein(
-            input_file="protein.pdb", output_file="protein_for_caps.pdb"
-        )
-        caps = detect_terminal_caps(capped_file)
-        assert "ACE" in caps
-        assert "NME" in caps or "NMA" in caps
-
-    def test_remove_hydrogens_without_elements_attr(self, temp_dir):
-        """Strip H when PDB topology has no elements attribute (MDA select 'element H')."""
-        os.chdir(temp_dir)
-        # Fixed-column PDB without element column (cols 77–78 empty)
-        pdb = Path("ala_no_elements.pdb")
-        pdb.write_text(
-            "ATOM      1  N   ALA A   1       0.000   0.000   0.000  1.00  0.00\n"
-            "ATOM      2  CA  ALA A   1       1.500   0.000   0.000  1.00  0.00\n"
-            "ATOM      3  C   ALA A   1       2.000   1.400   0.000  1.00  0.00\n"
-            "ATOM      4  O   ALA A   1       1.200   2.400   0.000  1.00  0.00\n"
-            "ATOM      5  CB  ALA A   1       2.000  -0.800   1.200  1.00  0.00\n"
-            "ATOM      6  H   ALA A   1      -0.500   0.800   0.000  1.00  0.00\n"
-            "ATOM      7  HA  ALA A   1       1.500   0.600  -0.900  1.00  0.00\n"
-            "END\n"
-        )
-        capper = ProteinCapper()
-        out = capper._remove_hydrogens(pdb)
-        text = Path(out).read_text()
-        names = [
-            line[12:16].strip()
-            for line in text.splitlines()
-            if line.startswith("ATOM")
-        ]
-        assert "H" not in names and "HA" not in names
-        assert "N" in names and "CA" in names
-        Path(out).unlink(missing_ok=True)
-
-    def test_example_17_complete_workflow(self, temp_dir, protein_pdb):
-        """Test Example 17: Complete workflow with output directory."""
-        os.chdir(temp_dir)
-        os.makedirs("output", exist_ok=True)
-
-        analyzer = PreparationManager()
-
-        # Step 1: Run Propka analysis
-        pka_file = analyzer.run_analysis("protein.pdb", output_dir="output")
-        summary_file = analyzer.extract_summary(pka_file, output_dir="output")
-        residues = analyzer.parse_summary(summary_file)
-
-        # Step 2: Detect disulfide bonds
-        bonds = analyzer.detect_disulfide_bonds("protein.pdb", distance_threshold=2.5)
-
-        # Step 3: Apply protonation states
-        stats = analyzer.apply_protonation_states(
-            input_pdb="protein.pdb",
-            output_pdb="output/protein_ph7.pdb",
-            ph=7.4,
-            residues=residues,
-        )
-
-        # Step 4: Apply disulfide bonds
-        num_bonds = analyzer.apply_disulfide_bonds(
-            input_pdb="output/protein_ph7.pdb",
-            output_pdb="output/protein_ph7_ss.pdb",
-            disulfide_bonds=bonds,
-            auto_detect=False,
-        )
-
-        assert os.path.exists("output/protein_ph7_ss.pdb")
-
-    def test_example_18_capping_workflow(self, temp_dir, protein_pdb):
-        """Test Example 18: Workflow with protein capping."""
-        os.chdir(temp_dir)
-        os.makedirs("output", exist_ok=True)
-
-        # Step 1: Add ACE/NME caps
-        capper = ProteinCapper()
-        capped_file, residue_mapping = capper.remove_hydrogens_and_cap(
-            input_file="protein.pdb",
-            output_file="protein_capped.pdb",
-            target_dir="output",
-        )
-
-        # Step 2: Run Propka on capped structure
-        analyzer = PreparationManager()
-        pka_file = analyzer.run_analysis(capped_file, output_dir="output")
-        summary_file = analyzer.extract_summary(pka_file, output_dir="output")
-        residues = analyzer.parse_summary(summary_file)
-
-        # Step 3: Detect disulfide bonds
-        bonds = analyzer.detect_disulfide_bonds(capped_file)
-
-        # Step 4: Apply protonation
-        stats = analyzer.apply_protonation_states(
-            input_pdb=capped_file,
-            output_pdb="output/protein_capped_ph7.pdb",
-            ph=7.4,
-            residues=residues,
-        )
-
-        # Step 5: Apply disulfide bonds
-        num_bonds = analyzer.apply_disulfide_bonds(
-            input_pdb="output/protein_capped_ph7.pdb",
-            output_pdb="output/protein_capped_ph7_ss.pdb",
-            disulfide_bonds=bonds,
-            auto_detect=False,
-        )
-
-        assert os.path.exists("output/protein_capped_ph7_ss.pdb")
-
-    def test_example_19_multiple_ph_variants(self, temp_dir, protein_pdb):
-        """Test Example 19: Generate structures for multiple pH values."""
-        os.chdir(temp_dir)
-        os.makedirs("output", exist_ok=True)
-
-        analyzer = PreparationManager()
-
-        # Run analysis once
-        pka_file = analyzer.run_analysis("protein.pdb", output_dir="output")
-        summary_file = analyzer.extract_summary(pka_file, output_dir="output")
-        residues = analyzer.parse_summary(summary_file)
-        bonds = analyzer.detect_disulfide_bonds("protein.pdb")
-
-        # Generate structures for different pH values
-        for ph in [5.0, 7.0, 9.0]:  # Test subset
-            stats = analyzer.apply_protonation_states(
-                input_pdb="protein.pdb",
-                output_pdb=f"output/protein_ph{ph:.1f}.pdb",
-                ph=ph,
-                residues=residues,
-            )
-
-            analyzer.apply_disulfide_bonds(
-                input_pdb=f"output/protein_ph{ph:.1f}.pdb",
-                output_pdb=f"output/protein_ph{ph:.1f}_ss.pdb",
-                disulfide_bonds=bonds,
-                auto_detect=False,
-            )
-
-            assert os.path.exists(f"output/protein_ph{ph:.1f}_ss.pdb")
-
-    def test_example_21_custom_protonation(self, temp_dir, protein_pdb):
-        """Test Example 21: Custom protonation states."""
-        os.chdir(temp_dir)
-        os.makedirs("output", exist_ok=True)
-
-        # Step 1: Run standard Propka workflow
-        analyzer = PreparationManager()
-        pka_file = analyzer.run_analysis("protein.pdb", output_dir="output")
-        summary_file = analyzer.extract_summary(pka_file, output_dir="output")
-        residues = analyzer.parse_summary(summary_file)
-
-        # Step 2: Specify custom states
-        custom_states = {"ASP12_A": "ASH", "HIS15_A": "HID"}
-
-        # Step 3: Apply protonation with custom overrides
-        stats = analyzer.apply_protonation_states(
-            input_pdb="protein.pdb",
-            output_pdb="output/protein_custom.pdb",
-            ph=7.4,
-            custom_states=custom_states,
-            residues=residues,
-        )
-
-        assert os.path.exists("output/protein_custom.pdb")
-        print(f"✓ Modified {stats['residue_changes']} residues")
-
-    def test_example_22_filtering_analysis(self, temp_dir, protein_pdb):
-        """Test Example 22: Filtering and analysis of pKa shifts."""
-        os.chdir(temp_dir)
-        os.makedirs("output", exist_ok=True)
-
-        # Step 1: Run Propka analysis
-        analyzer = PreparationManager()
-        pka_file = analyzer.run_analysis("protein.pdb", output_dir="output")
-        summary_file = analyzer.extract_summary(pka_file, output_dir="output")
-        residues = analyzer.parse_summary(summary_file)
-
-        # Step 2: Define expected model pKa values
-        expected_pka = {
-            "ASP": 3.9,
-            "GLU": 4.3,
-            "HIS": 6.0,
-            "LYS": 10.5,
-            "ARG": 12.5,
-            "CYS": 8.3,
-            "TYR": 10.1,
-        }
-
-        # Step 3: Find residues with significant pKa shifts
-        shifted_residues = []
-        for res in residues:
-            if res["res_id"] == 0:  # Skip ligands
-                continue
-
-            res_name = res["residue"]
-            if res_name in expected_pka:
-                pka_diff = abs(res["pka"] - expected_pka[res_name])
-                if pka_diff > 1.0:
-                    shifted_residues.append(
-                        {
-                            "id": f"{res_name}{res['res_id']}_{res['chain']}",
-                            "shift": res["pka"] - expected_pka[res_name],
-                        }
-                    )
-
-        print(f"Found {len(shifted_residues)} residues with significant pKa shifts")
-        assert isinstance(shifted_residues, list)
+class TestPreparationExamples:
+    """Run each preparation_example_*.py script once."""
+
+    @parametrize_example_scripts(
+        Path(__file__).parent / "preparation_examples",
+        "preparation_example_*.py",
+    )
+    def test_example_script(self, script):
+        run_example_script(script)
 
 
 # ============================================================================
-
-
-# ============================================================================
-# SECTION 3: EXAMPLE FILE EXECUTION TESTS (All PDB Files)
-# ============================================================================
-
-
-class TestPropkaExampleFiles:
-    """
-    Test all preparation example files by running them with all three PDB files.
-
-    The test suite automatically discovers and runs all example scripts from:
-        tests/preparation_examples/preparation_example_*.py
-    """
-
-    @pytest.fixture
-    def examples_dir(self):
-        """Get the examples directory path."""
-        return Path(__file__).parent / "preparation_examples"
-
-    @pytest.fixture
-    def temp_dir(self):
-        """Create a temporary directory for test outputs."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            yield Path(tmpdir)
-
-    @pytest.fixture(params=["protein.pdb", "6RV3_AB.pdb", "8I5B.pdb"])
-    def pdb_file_setup(self, request, temp_dir, examples_dir):
-        """
-        Setup test files for each PDB file.
-        This fixture is parametrized to run tests with all three PDB files.
-        """
-        pdb_filename = request.param
-        test_dir = Path(__file__).parent
-
-        # Copy the requested PDB file
-        if pdb_filename == "protein.pdb":
-            source = examples_dir / pdb_filename
-        else:
-            source = test_dir / pdb_filename
-
-        if not source.exists():
-            pytest.skip(f"{pdb_filename} not found at {source}")
-
-        dest = temp_dir / "protein.pdb"  # Always name it protein.pdb for the examples
-        shutil.copy(str(source), str(dest))
-
-        return temp_dir, pdb_filename
-
-    def run_example(self, example_file: Path, work_dir: Path) -> tuple:
-        """
-        Run a single example file.
-
-        Returns:
-            tuple: (success: bool | None, message: str)
-            None indicates skip (e.g., missing dependency)
-        """
-        # Save current directory
-        try:
-            original_dir = os.getcwd()
-        except (FileNotFoundError, OSError):
-            original_dir = Path(__file__).parent.parent
-            os.chdir(original_dir)
-
-        original_sys_path = sys.path.copy()
-
-        try:
-            # Ensure project root is in sys.path
-            project_root = Path(__file__).parent.parent
-            if str(project_root) not in sys.path:
-                sys.path.insert(0, str(project_root))
-
-            # Change to working directory
-            os.chdir(work_dir)
-
-            # Create output directory if needed
-            (work_dir / "output").mkdir(exist_ok=True)
-
-            # Load and execute the example module
-            spec = importlib.util.spec_from_file_location(
-                example_file.stem, example_file
-            )
-            if spec is None or spec.loader is None:
-                return False, f"Could not load {example_file.name}"
-
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[example_file.stem] = module
-
-            # Execute the module
-            spec.loader.exec_module(module)
-
-            return True, "Success"
-
-        except Exception as e:
-            error_msg = f"{type(e).__name__}: {str(e)}"
-            # Check if it's an expected error
-            if any(
-                keyword in str(e).lower()
-                for keyword in [
-                    "propka3",
-                    "propka",
-                    "matplotlib",
-                    "numpy",
-                    "summary_of_prediction.txt",
-                    "no propka",
-                    "propka not found",
-                ]
-            ):
-                return None, f"Skipped: {error_msg}"
-            return False, error_msg
-
-        finally:
-            # Restore original state
-            try:
-                os.chdir(original_dir)
-            except (FileNotFoundError, OSError):
-                os.chdir(Path(__file__).parent.parent)
-
-            sys.path = original_sys_path
-            if example_file.stem in sys.modules:
-                del sys.modules[example_file.stem]
-
-    @pytest.mark.parametrize("example_num", [f"{i:02d}" for i in range(1, 23)])
-    def test_example_all_pdbs(self, example_num, examples_dir, pdb_file_setup):
-        """
-        Test each preparation example with all PDB files.
-
-        This test is parametrized to run all 22 examples with all 3 PDB files,
-        resulting in 66 test cases (22 examples × 3 PDB files).
-        """
-        work_dir, pdb_name = pdb_file_setup
-        example_file = examples_dir / f"preparation_example_{example_num}.py"
-
-        if not example_file.exists():
-            pytest.skip(f"Example {example_num} not found at {example_file}")
-
-        # Special handling for examples that need matplotlib
-        if example_num in ["13", "14"]:
-            try:
-                import matplotlib
-
-                matplotlib.use("Agg")
-                if example_num == "14":
-                    import numpy
-            except ImportError as e:
-                pytest.skip(f"Required package not installed: {e}")
-
-        success, message = self.run_example(example_file, work_dir)
-        if success is None:
-            pytest.skip(message)
-        assert success, f"Example {example_num} with {pdb_name} failed: {message}"
-
-
-# SECTION 4: COMPLEX STRUCTURE TESTS
+# SECTION 3: COMPLEX STRUCTURE TESTS
 # ============================================================================
 
 
 class TestPropkaComplexStructures:
     """Test propka examples with complex protein structures."""
 
+    @pytest.fixture(autouse=True)
+    def require_propka_for_analysis(self, request):
+        if request.node.name == "test_8i5b_disulfide_bonds":
+            return
+        if shutil.which("propka3") is None:
+            pytest.skip("PropKa 3 is not on PATH")
+
     @pytest.fixture
     def temp_dir(self):
         """Create a temporary directory for test outputs."""
+        original = os.getcwd()
         with tempfile.TemporaryDirectory() as tmpdir:
-            yield tmpdir
+            try:
+                yield tmpdir
+            finally:
+                os.chdir(original)
 
     @pytest.fixture
     def pdb_6rv3(self, temp_dir):
@@ -918,8 +306,7 @@ class TestPropkaComplexStructures:
         print(f"Found {len(ligand_atoms)} ionizable ligand atoms")
 
         # Group by ligand type
-        from collections import defaultdict
-
+        
         ligands_by_type = defaultdict(list)
         for lig in ligand_atoms:
             ligands_by_type[lig["residue"]].append(lig)
@@ -1202,6 +589,61 @@ END
         )
         assert ok2
         assert "Remove protein hydrogens" not in msg2
+
+
+class TestPdb4amberRobustness:
+    """CONECT/LINK strip and reduce-binary fallback (no AmberTools required)."""
+
+    def test_strip_conect_and_link_keeps_atoms(self, tmp_path):
+        from gatewizard.core.preparation import strip_conect_and_link_records
+
+        src = tmp_path / "with_conect.pdb"
+        src.write_text(
+            "ATOM      1  N   ALA A   1      11.104  13.556   9.648  1.00  0.00           N\n"
+            "CONECT    1    2\n"
+            "LINK         O   THR A  93                 K     K A 306\n"
+            "END\n",
+            encoding="utf-8",
+        )
+        out = tmp_path / "clean.pdb"
+        info = strip_conect_and_link_records(str(src), str(out))
+        assert info["removed"] == 2
+        text = out.read_text(encoding="utf-8")
+        assert "ATOM" in text
+        assert "CONECT" not in text
+        assert "LINK" not in text
+
+    def test_reduce_option_dropped_when_binary_missing(self, monkeypatch):
+        from gatewizard.core import preparation as prep
+
+        monkeypatch.setattr(prep, "resolve_reduce_executable", lambda: None)
+        options, skipped = prep.apply_pdb4amber_reduce_option({"reduce": True, "dry": False})
+        assert skipped is True
+        assert "reduce" not in options
+        assert options["dry"] is False
+
+    def test_reduce_option_kept_when_binary_present(self, monkeypatch):
+        from gatewizard.core import preparation as prep
+
+        monkeypatch.setattr(prep, "resolve_reduce_executable", lambda: "/usr/bin/reduce")
+        options, skipped = prep.apply_pdb4amber_reduce_option({"reduce": True})
+        assert skipped is False
+        assert options["reduce"] is True
+
+    def test_get_clean_env_prepends_conda_bin(self, monkeypatch, tmp_path):
+        import os
+
+        from gatewizard.utils.helpers import get_clean_env
+
+        conda = tmp_path / "env"
+        (conda / "bin").mkdir(parents=True)
+        monkeypatch.setenv("CONDA_PREFIX", str(conda))
+        monkeypatch.setenv("PATH", "/usr/bin")
+        monkeypatch.delenv("AMBERHOME", raising=False)
+        env = get_clean_env()
+        parts = env["PATH"].split(os.pathsep)
+        assert parts[0] == str(conda / "bin")
+        assert env["AMBERHOME"] == str(conda)
 
 
 if __name__ == "__main__":

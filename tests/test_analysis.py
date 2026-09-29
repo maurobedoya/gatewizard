@@ -29,18 +29,14 @@ Usage:
     pytest tests/test_analysis.py::TestAnalysisExamples -v
 
     # Run specific example
-    pytest tests/test_analysis.py::TestAnalysisExamples::test_individual_examples[01] -v
-
-    # Run examples manually (outside pytest)
-    python tests/test_analysis.py
+    pytest tests/test_analysis.py::TestAnalysisExamples::test_example_script[analysis_example_01.py] -v
 """
 
 import pytest
 import sys
-import os
-import tempfile
 from pathlib import Path
-import importlib.util
+
+from tests.example_runner import parametrize_example_scripts, run_example_script
 
 # Add gatewizard to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -377,201 +373,15 @@ class TestEnergyAnalyzer:
 
 
 class TestAnalysisExamples:
-    """Test analysis example scripts from documentation."""
+    """Run each analysis_example_*.py script once."""
 
-    @pytest.fixture
-    def temp_dir(self, tmp_path):
-        """Create a temporary directory for test outputs."""
-        return tmp_path
-
-    def test_run_all_example_scripts(self, temp_dir):
-        """Test running all example scripts from analysis_examples directory."""
-        examples_dir = Path(__file__).parent / "analysis_examples"
-
-        if not examples_dir.exists():
-            pytest.skip(f"Examples directory not found: {examples_dir}")
-
-        # Automatically discover all example files
-        example_files = sorted(examples_dir.glob("analysis_example_*.py"))
-
-        if not example_files:
-            pytest.skip("No example files found in analysis_examples directory")
-
-        print(f"\nFound {len(example_files)} example files to test")
-
-        failed_examples = []
-        passed_examples = []
-
-        # Change to examples directory for relative paths
-        original_dir = os.getcwd()
-        os.chdir(examples_dir)
-
-        try:
-            for example_file in example_files:
-                # Extract example number from filename (e.g., "01" from "analysis_example_01.py")
-                parts = example_file.stem.split("_")
-                example_num = parts[-1] if len(parts) >= 3 else "unknown"
-
-                # Load and run the example
-                spec = importlib.util.spec_from_file_location(
-                    f"example_{example_num}", example_file
-                )
-
-                if spec is None or spec.loader is None:
-                    failed_examples.append((example_num, "Could not load module"))
-                    continue
-
-                module = importlib.util.module_from_spec(spec)
-
-                try:
-                    print(f"\n{'='*60}")
-                    print(f"Testing Example {example_num}: {example_file.name}")
-                    print(f"{'='*60}")
-                    spec.loader.exec_module(module)
-                    print(f"✓ Example {example_num} executed successfully")
-                    passed_examples.append(example_num)
-                except Exception as e:
-                    error_msg = f"{type(e).__name__}: {str(e)}"
-                    print(f"✗ Example {example_num} failed: {error_msg}")
-                    failed_examples.append((example_num, error_msg))
-        finally:
-            # Restore original directory
-            os.chdir(original_dir)
-
-        # Print summary
-        print(f"\n{'='*60}")
-        print(f"TEST SUMMARY")
-        print(f"{'='*60}")
-        print(f"Total examples: {len(example_files)}")
-        print(f"Passed: {len(passed_examples)}")
-        print(f"Failed: {len(failed_examples)}")
-
-        if passed_examples:
-            print(f"\n✓ Passed examples: {', '.join(passed_examples)}")
-
-        if failed_examples:
-            print(f"\n✗ Failed examples:")
-            for num, error in failed_examples:
-                print(f"  - Example {num}: {error}")
-            # Fail the test if any examples failed
-            pytest.fail(f"{len(failed_examples)} example(s) failed")
-        else:
-            print(f"\n🎉 All {len(passed_examples)} examples passed!")
-
-    @pytest.mark.parametrize(
-        "example_num",
-        ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15"],
+    @parametrize_example_scripts(
+        Path(__file__).parent / "analysis_examples",
+        "analysis_example_*.py",
     )
-    def test_individual_examples(self, example_num, temp_dir):
-        """Test each example individually for better pytest reporting."""
-        examples_dir = Path(__file__).parent / "analysis_examples"
-
-        # Find files with pattern analysis_example_NN.py
-        example_file = examples_dir / f"analysis_example_{example_num}.py"
-
-        if not example_file.exists():
-            pytest.skip(f"Example {example_num} not found")
-
-        # Change to examples directory for relative paths
-        original_dir = os.getcwd()
-        os.chdir(examples_dir)
-
-        try:
-            # Load and run the example
-            spec = importlib.util.spec_from_file_location(
-                f"example_{example_num}", example_file
-            )
-
-            if spec is None or spec.loader is None:
-                pytest.fail(f"Could not load example {example_num}")
-
-            module = importlib.util.module_from_spec(spec)
-
-            try:
-                spec.loader.exec_module(module)
-                print(f"✓ Example {example_num} passed")
-            except Exception as e:
-                pytest.fail(
-                    f"Example {example_num} failed: {type(e).__name__}: {str(e)}"
-                )
-        finally:
-            # Restore original directory
-            os.chdir(original_dir)
-
-
-# ============================================================================
-# HELPER FUNCTIONS
-# ============================================================================
-
-
-def run_all_examples():
-    """Helper function to run all examples manually."""
-    examples_dir = Path(__file__).parent / "analysis_examples"
-
-    if not examples_dir.exists():
-        print(f"Examples directory not found: {examples_dir}")
-        return
-
-    # Find all example files automatically
-    example_files = sorted(examples_dir.glob("analysis_example_*.py"))
-
-    if not example_files:
-        print("No example files found")
-        return
-
-    print(f"Found {len(example_files)} examples to run\n")
-
-    passed = []
-    failed = []
-
-    # Change to examples directory for relative paths
-    original_dir = os.getcwd()
-    os.chdir(examples_dir)
-
-    try:
-        for example_file in example_files:
-            # Extract example number
-            parts = example_file.stem.split("_")
-            example_num = parts[2] if len(parts) > 2 else "unknown"
-
-            print(f"\n{'='*80}")
-            print(f"Running Example {example_num}: {example_file.name}")
-            print(f"{'='*80}")
-
-            spec = importlib.util.spec_from_file_location(
-                f"example_{example_num}", example_file
-            )
-            if spec is None or spec.loader is None:
-                print(f"✗ Example {example_num}: Could not load module")
-                failed.append(example_num)
-                continue
-
-            module = importlib.util.module_from_spec(spec)
-
-            try:
-                spec.loader.exec_module(module)
-                print(f"✓ Example {example_num} completed successfully")
-                passed.append(example_num)
-            except Exception as e:
-                print(f"✗ Example {example_num} failed: {e}")
-                import traceback
-
-                traceback.print_exc()
-                failed.append(example_num)
-    finally:
-        # Restore original directory
-        os.chdir(original_dir)
-
-    # Print summary
-    print(f"\n{'='*80}")
-    print(f"SUMMARY")
-    print(f"{'='*80}")
-    print(f"Total: {len(example_files)}")
-    print(f"Passed: {len(passed)} - {passed}")
-    print(f"Failed: {len(failed)} - {failed if failed else 'None'}")
-    print(f"{'='*80}")
+    def test_example_script(self, script):
+        run_example_script(script)
 
 
 if __name__ == "__main__":
-    # Run tests with pytest
     pytest.main([__file__, "-v"])

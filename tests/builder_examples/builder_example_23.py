@@ -8,16 +8,23 @@ to both packmol-memgen and the final tleap parametrization.
 NOTE: This example requires AmberTools and packmol-memgen.
 """
 
+import shutil
+import sys
+from pathlib import Path
+
 from gatewizard.core.builder import Builder
 from gatewizard.tools.ligand_parametrization import (
     detect_ligands,
     parametrize_all_ligands,
 )
 
+if shutil.which("antechamber") is None:
+    sys.exit("Skip: AmberTools antechamber is not on PATH")
+
 # Create builder
 builder = Builder()
 
-pdb_file = "tests/2MVJ_2ligs.pdb"
+pdb_file = str(Path(__file__).resolve().parent.parent / "2MVJ_2ligs.pdb")
 working_dir = "./systems"
 
 # Step 1: Detect and parametrize ligands

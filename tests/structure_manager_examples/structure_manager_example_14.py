@@ -62,4 +62,7 @@ try:
     print(f"  Y: {spans_ca[1]:.2f} Å")
     print(f"  Z: {spans_ca[2]:.2f} Å")
 finally:
-    os.unlink(tmp_path)
+    try:
+        os.unlink(tmp_path)
+    except OSError:
+        pass

@@ -15,7 +15,7 @@ from gatewizard.tools.ligand_parametrization import (
     LIGHT_PALETTE,
 )
 
-pdb_file = "tests/2MVJ_2ligs.pdb"
+pdb_file = str(Path(__file__).resolve().parent.parent / "2MVJ_2ligs.pdb")
 output_dir = "./systems/ligand_images"
 Path(output_dir).mkdir(parents=True, exist_ok=True)
 

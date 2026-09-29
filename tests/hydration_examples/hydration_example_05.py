@@ -1,3 +1,4 @@
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -10,10 +11,11 @@ BOX_MAX = (6.97, -29.98, 38.67)
 vol = estimate_cavity_volume(PDB_FILE, BOX_MIN, BOX_MAX)
 n_waters = max(1, min(vol.suggested_waters, 50))
 
-with tempfile.TemporaryDirectory() as tmp:
+tmp = Path(tempfile.mkdtemp())
+try:
     job = prepare_hydration_job(
         pdb_file=PDB_FILE,
-        job_dir=tmp,
+        job_dir=str(tmp),
         box_min=BOX_MIN,
         box_max=BOX_MAX,
         n_waters=n_waters,
@@ -22,5 +24,7 @@ with tempfile.TemporaryDirectory() as tmp:
     print(f"Input file: {job['packmol_inp_path']}")
     print(f"Output PDB name: {job['output_pdb_name']}")
     for name in ("packmol.inp", "TIP3P.pdb", Path(PDB_FILE).name):
-        path = Path(tmp) / name
+        path = tmp / name
         print(f"  {name}: {'OK' if path.is_file() else 'MISSING'}")
+finally:
+    shutil.rmtree(tmp, ignore_errors=True)

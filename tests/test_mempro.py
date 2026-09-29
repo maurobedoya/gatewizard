@@ -20,10 +20,7 @@ Usage:
     pytest tests/test_mempro.py::TestMemProExamples -v
 
     # Run specific example
-    pytest tests/test_mempro.py::TestMemProExamples::test_individual_examples[01] -v
-
-    # Run examples manually (outside pytest)
-    python tests/test_mempro.py
+    pytest tests/test_mempro.py::TestMemProExamples::test_example_script[mempro_example_01.py] -v
 """
 
 import pytest
@@ -32,7 +29,8 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-import importlib.util
+
+from tests.example_runner import parametrize_example_scripts, remove_tree, run_example_script
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -276,151 +274,23 @@ class TestMemProOrientationTransform:
 
 
 class TestMemProExamples:
-    """Test mempro examples from mempro_examples directory."""
-
-    @pytest.fixture
-    def temp_dir(self, tmp_path):
-        """Provide a temporary directory for test outputs."""
-        orig = os.getcwd()
-        os.chdir(tmp_path)
-        yield tmp_path
-        os.chdir(orig)
+    """Run each mempro_example_*.py script once."""
 
     @pytest.fixture(autouse=True)
     def cleanup_orient_dirs(self):
-        """Clean up Orient and my_orient directories created by mempro examples."""
         yield
+        examples_dir = Path(__file__).parent / "mempro_examples"
         for dir_name in ("Orient", "my_orient"):
-            target = Path(dir_name)
-            if target.exists():
-                for attempt in range(3):
-                    try:
-                        shutil.rmtree(target)
-                        break
-                    except (PermissionError, OSError):
-                        import time as _time
+            remove_tree(examples_dir / dir_name)
+            remove_tree(Path(dir_name))
 
-                        _time.sleep(1)
+    @parametrize_example_scripts(
+        Path(__file__).parent / "mempro_examples",
+        "mempro_example_*.py",
+    )
+    def test_example_script(self, script):
+        run_example_script(script)
 
-    def test_run_example_scripts(self, temp_dir):
-        """Test running actual example scripts from mempro_examples directory."""
-        examples_dir = Path(__file__).parent / "mempro_examples"
-
-        if not examples_dir.exists():
-            pytest.skip(f"Examples directory not found: {examples_dir}")
-
-        example_files = sorted(examples_dir.glob("mempro_example_*.py"))
-
-        if not example_files:
-            pytest.skip("No example files found in mempro_examples directory")
-
-        print(f"\nFound {len(example_files)} example files to test")
-
-        failed_examples = []
-        passed_examples = []
-
-        for example_file in example_files:
-            example_num = example_file.stem.split("_")[-1]
-
-            spec = importlib.util.spec_from_file_location(
-                f"mempro_example_{example_num}", example_file
-            )
-
-            if spec is None or spec.loader is None:
-                failed_examples.append((example_num, "Could not load module"))
-                continue
-
-            module = importlib.util.module_from_spec(spec)
-
-            try:
-                print(f"\nTesting Example {example_num}: {example_file.name}")
-                spec.loader.exec_module(module)
-                print(f"  Example {example_num} executed successfully")
-                passed_examples.append(example_num)
-            except Exception as e:
-                error_msg = f"{type(e).__name__}: {str(e)}"
-                print(f"  Example {example_num} failed: {error_msg}")
-                failed_examples.append((example_num, error_msg))
-
-        print(
-            f"\nSummary: {len(passed_examples)} passed, "
-            f"{len(failed_examples)} failed"
-        )
-
-        if failed_examples:
-            for num, error in failed_examples:
-                print(f"  Failed {num}: {error}")
-            pytest.fail(f"{len(failed_examples)} example(s) failed")
-
-    @pytest.mark.parametrize("example_num", [f"{i:02d}" for i in range(1, 13)])
-    def test_individual_examples(self, example_num, temp_dir):
-        """Test each example individually for better pytest reporting."""
-        examples_dir = Path(__file__).parent / "mempro_examples"
-        example_file = examples_dir / f"mempro_example_{example_num}.py"
-
-        if not example_file.exists():
-            pytest.skip(f"Example {example_num} not found")
-
-        spec = importlib.util.spec_from_file_location(
-            f"mempro_example_{example_num}", example_file
-        )
-
-        if spec is None or spec.loader is None:
-            pytest.fail(f"Could not load example {example_num}")
-
-        module = importlib.util.module_from_spec(spec)
-
-        try:
-            spec.loader.exec_module(module)
-        except Exception as e:
-            pytest.fail(f"Example {example_num} failed: {type(e).__name__}: {str(e)}")
-
-
-# ============================================================================
-# MAIN (for running outside pytest)
-# ============================================================================
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("MemPrO Test Suite - Manual Run")
-    print("=" * 60)
-
-    examples_dir = Path(__file__).parent / "mempro_examples"
-
-    if not examples_dir.exists():
-        print(f"Examples directory not found: {examples_dir}")
-        sys.exit(1)
-
-    example_files = sorted(examples_dir.glob("mempro_example_*.py"))
-
-    if not example_files:
-        print("No example files found")
-        sys.exit(1)
-
-    print(f"Found {len(example_files)} examples to run\n")
-
-    passed = 0
-    failed = 0
-
-    for example_file in example_files:
-        example_num = example_file.stem.split("_")[-1]
-        print(f"Running Example {example_num}: {example_file.name}")
-
-        spec = importlib.util.spec_from_file_location(
-            f"mempro_example_{example_num}", example_file
-        )
-        if spec is None or spec.loader is None:
-            print(f"  SKIP: Could not load")
-            continue
-
-        module = importlib.util.module_from_spec(spec)
-        try:
-            spec.loader.exec_module(module)
-            print(f"  PASSED")
-            passed += 1
-        except Exception as e:
-            print(f"  FAILED: {type(e).__name__}: {e}")
-            failed += 1
-
-    print(f"\n{'=' * 60}")
-    print(f"Results: {passed} passed, {failed} failed " f"out of {len(example_files)}")
+    pytest.main([__file__, "-v"])

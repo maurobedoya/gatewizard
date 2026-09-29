@@ -9,6 +9,10 @@ NOTE: This example requires AmberTools (antechamber, parmchk2, tleap)
 to be installed and accessible in the PATH.
 """
 
+import shutil
+import sys
+from pathlib import Path
+
 from gatewizard.tools.ligand_parametrization import (
     parametrize_all_ligands,
     build_tleap_ligand_lines,
@@ -19,6 +23,9 @@ from gatewizard.tools.ligand_parametrization import (
     RECOMMENDED_COMBOS,
     NON_RECOMMENDED_COMBOS,
 )
+
+if shutil.which("antechamber") is None:
+    sys.exit("Skip: AmberTools antechamber is not on PATH")
 
 # ── Available options ────────────────────────────────────────────────
 print("Available atom types:")
@@ -52,7 +59,7 @@ else:
     print(f"\n{atom_type}/{charge_method} has no specific recommendation.")
 
 # ── Parametrize with gaff2/abcg2 (recommended) ──────────────────────
-pdb_file = "tests/2MVJ_2ligs.pdb"
+pdb_file = str(Path(__file__).resolve().parent.parent / "2MVJ_2ligs.pdb")
 output_dir = "./systems/ligand_params_gaff2_abcg2"
 
 results = parametrize_all_ligands(

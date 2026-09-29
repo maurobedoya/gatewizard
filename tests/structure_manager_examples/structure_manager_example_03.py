@@ -35,4 +35,7 @@ try:
     ss = viewer.get_secondary_structure_summary()
     print(f"SS summary: {ss}")
 finally:
-    os.unlink(tmp_path)
+    try:
+        os.unlink(tmp_path)
+    except OSError:
+        pass

@@ -14,18 +14,20 @@ success, message, job_dir = builder.prepare_system(
     lipid_ratios="1//1",
 )
 
-if success:
+if not success:
+    print(f"✗ Preparation not started: {message}")
+else:
     print(f"✓ Job started: {job_dir}")
 
-    # Monitor progress in real-time
+    # Monitor progress; cap wait so a missing packmol-memgen cannot hang pytest.
     monitor = JobMonitor(working_directory=Path("./systems"))
+    deadline = time.time() + 30
 
-    while True:
+    while time.time() < deadline:
         monitor.scan_for_jobs(force=True)
         active_jobs = monitor.get_active_jobs()
 
         if not active_jobs:
-            # Job completed
             completed = monitor.get_completed_jobs()
             if completed:
                 for job_id, job_info in completed.items():
@@ -35,7 +37,6 @@ if success:
                         break
             break
 
-        # Show progress
         for job_id, job_info in active_jobs.items():
             if str(job_dir) in job_id:
                 print(
@@ -44,4 +45,6 @@ if success:
                     flush=True,
                 )
 
-        time.sleep(2)  # Check every 2 seconds
+        time.sleep(2)
+    else:
+        print("\nStopped waiting after 30s (job still running)")

@@ -84,4 +84,7 @@ try:
     print(f"\nAligned only chain A ({n} atoms), chain B unchanged:")
     print(f"  Chain B moved: {not np.allclose(coordsB_before, coordsB_after)}")
 finally:
-    os.unlink(tmp_path)
+    try:
+        os.unlink(tmp_path)
+    except OSError:
+        pass

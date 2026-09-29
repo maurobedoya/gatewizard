@@ -30,11 +30,7 @@ Usage:
     pytest tests/test_equilibration.py::TestEquilibrationExamples -v
 
     # Run specific example
-    pytest tests/test_equilibration.py::TestEquilibrationExamples::test_individual_examples[01] -v
-    pytest tests/test_equilibration.py::TestEquilibrationExamples::test_individual_examples[custom_template] -v
-
-    # Run examples manually (outside pytest)
-    python tests/test_equilibration.py
+    pytest tests/test_equilibration.py::TestEquilibrationExamples::test_example_script[equilibration_example_01.py] -v
 """
 
 import pytest
@@ -43,7 +39,8 @@ import os
 import tempfile
 from types import SimpleNamespace
 from pathlib import Path
-import importlib.util
+
+from tests.example_runner import parametrize_example_scripts, run_example_script
 
 # Add gatewizard to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -746,151 +743,15 @@ class TestAutoDetection:
 
 
 class TestEquilibrationExamples:
-    """Test equilibration example scripts."""
+    """Run each equilibration and OpenMM example script once."""
 
-    @pytest.fixture
-    def temp_dir(self):
-        """Create temporary directory for test outputs."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            yield Path(tmpdir)
-
-    def test_example_01_from_folder(self, temp_dir):
-        """Test Example 01: Auto-detection from system folder."""
-        manager = NAMDEquilibrationManager(temp_dir)
-
-        # Test that manager was created successfully
-        assert manager.working_dir == temp_dir
-        assert manager.namd_executable == "namd3"
-        print("✓ Example 01: Basic setup works")
-
-    def test_example_02_basic(self, temp_dir):
-        """Test Example 02: Basic single stage setup."""
-        manager = NAMDEquilibrationManager(temp_dir)
-
-        # Test basic configuration
-        assert manager.namd_executable == "namd3"
-        print("✓ Example 02: Basic single stage API works")
-
-    def test_example_03_three_stage(self, temp_dir):
-        """Test Example 03: Three-stage protocol."""
-        manager = NAMDEquilibrationManager(temp_dir)
-
-        # Test manager initialization
-        assert manager.working_dir == temp_dir
-        print("✓ Example 03: Three-stage protocol API works")
-
-    def test_example_04_custom(self, temp_dir):
-        """Test Example 04: Custom four-stage protocol."""
-        manager = NAMDEquilibrationManager(temp_dir)
-
-        # Test manager initialization
-        assert manager.working_dir == temp_dir
-        print("✓ Example 04: Custom protocol API works")
-
-    def test_example_05_complete(self, temp_dir):
-        """Test Example 05: Complete CHARMM-GUI 7-stage protocol."""
-        manager = NAMDEquilibrationManager(temp_dir)
-
-        # Test manager initialization
-        assert manager.working_dir == temp_dir
-        print("✓ Example 05: Complete CHARMM-GUI protocol API works")
-
-    def test_run_example_scripts(self, temp_dir):
-        """Test running actual example scripts from equilibration_examples directory."""
-        examples_dir = Path(__file__).parent / "equilibration_examples"
-
-        if not examples_dir.exists():
-            pytest.skip(f"Examples directory not found: {examples_dir}")
-
-        # Find all example files (01-05 plus any new ones)
-        example_files = sorted(examples_dir.glob("equilibration_example_*.py"))
-
-        if not example_files:
-            pytest.skip("No example files found in equilibration_examples directory")
-
-        print(f"\nFound {len(example_files)} example files to test")
-
-        failed_examples = []
-        passed_examples = []
-
-        for example_file in example_files:
-            # Extract example number from filename
-            parts = example_file.stem.split("_")
-            example_num = parts[-2] if len(parts) > 2 else parts[-1]
-
-            # Load and run the example
-            spec = importlib.util.spec_from_file_location(
-                f"example_{example_num}", example_file
-            )
-
-            if spec is None or spec.loader is None:
-                failed_examples.append((example_num, "Could not load module"))
-                continue
-
-            module = importlib.util.module_from_spec(spec)
-
-            try:
-                print(f"\n{'='*60}")
-                print(f"Testing Example {example_num}: {example_file.name}")
-                print(f"{'='*60}")
-                spec.loader.exec_module(module)
-                print(f"✓ Example {example_num} executed successfully")
-                passed_examples.append(example_num)
-            except Exception as e:
-                error_msg = f"{type(e).__name__}: {str(e)}"
-                print(f"✗ Example {example_num} failed: {error_msg}")
-                failed_examples.append((example_num, error_msg))
-
-        # Print summary
-        print(f"\n{'='*60}")
-        print(f"TEST SUMMARY")
-        print(f"{'='*60}")
-        print(f"Total examples: {len(example_files)}")
-        print(f"Passed: {len(passed_examples)}")
-        print(f"Failed: {len(failed_examples)}")
-
-        if passed_examples:
-            print(f"\n✓ Passed examples: {', '.join(passed_examples)}")
-
-        if failed_examples:
-            print(f"\n✗ Failed examples:")
-            for num, error in failed_examples:
-                print(f"  - Example {num}: {error}")
-            # Fail the test if any examples failed
-            pytest.fail(f"{len(failed_examples)} example(s) failed")
-        else:
-            print(f"\n🎉 All {len(passed_examples)} examples passed!")
-
-    @pytest.mark.parametrize("example_num", ["01", "02", "03", "04", "05", "06"])
-    def test_individual_examples(self, example_num, temp_dir):
-        """Test each example individually for better pytest reporting."""
-        examples_dir = Path(__file__).parent / "equilibration_examples"
-
-        # Find files with pattern equilibration_example_NN*.py
-        matching_files = list(
-            examples_dir.glob(f"equilibration_example_{example_num}*.py")
-        )
-
-        if not matching_files:
-            pytest.skip(f"Example {example_num} not found")
-
-        example_file = matching_files[0]
-
-        # Load and run the example
-        spec = importlib.util.spec_from_file_location(
-            f"example_{example_num}", example_file
-        )
-
-        if spec is None or spec.loader is None:
-            pytest.fail(f"Could not load example {example_num}")
-
-        module = importlib.util.module_from_spec(spec)
-
-        try:
-            spec.loader.exec_module(module)
-            print(f"✓ Example {example_num} passed")
-        except Exception as e:
-            pytest.fail(f"Example {example_num} failed: {type(e).__name__}: {str(e)}")
+    @parametrize_example_scripts(
+        Path(__file__).parent / "equilibration_examples",
+        "equilibration_example_*.py",
+        "openmm_example_*.py",
+    )
+    def test_example_script(self, script):
+        run_example_script(script)
 
 
 # ============================================================================
@@ -1028,71 +889,6 @@ class TestMDAnalysisSelections:
         assert output.exists()
         content = output.read_text()
         assert "10.00" in content
-
-
-# ============================================================================
-# HELPER FUNCTIONS
-# ============================================================================
-
-
-def run_all_examples():
-    """Helper function to run all examples manually."""
-    examples_dir = Path(__file__).parent / "equilibration_examples"
-
-    if not examples_dir.exists():
-        print(f"Examples directory not found: {examples_dir}")
-        return
-
-    # Find all example files automatically
-    example_files = sorted(examples_dir.glob("equilibration_example_*.py"))
-
-    if not example_files:
-        print("No example files found")
-        return
-
-    print(f"Found {len(example_files)} examples to run\n")
-
-    passed = []
-    failed = []
-
-    for example_file in example_files:
-        # Extract example number
-        parts = example_file.stem.split("_")
-        example_num = parts[-2] if len(parts) > 2 else parts[-1]
-
-        print(f"\n{'='*80}")
-        print(f"Running Example {example_num}: {example_file.name}")
-        print(f"{'='*80}")
-
-        spec = importlib.util.spec_from_file_location(
-            f"example_{example_num}", example_file
-        )
-        if spec is None or spec.loader is None:
-            print(f"✗ Example {example_num}: Could not load module")
-            failed.append(example_num)
-            continue
-
-        module = importlib.util.module_from_spec(spec)
-
-        try:
-            spec.loader.exec_module(module)
-            print(f"✓ Example {example_num} completed successfully")
-            passed.append(example_num)
-        except Exception as e:
-            print(f"✗ Example {example_num} failed: {e}")
-            import traceback
-
-            traceback.print_exc()
-            failed.append(example_num)
-
-    # Print summary
-    print(f"\n{'='*80}")
-    print(f"SUMMARY")
-    print(f"{'='*80}")
-    print(f"Total: {len(example_files)}")
-    print(f"Passed: {len(passed)} - {passed}")
-    print(f"Failed: {len(failed)} - {failed if failed else 'None'}")
-    print(f"{'='*80}")
 
 
 if __name__ == "__main__":

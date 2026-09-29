@@ -27,4 +27,7 @@ try:
             f"rep={sel.representation}, cs={sel.color_scheme}"
         )
 finally:
-    os.unlink(tmp_path)
+    try:
+        os.unlink(tmp_path)
+    except OSError:
+        pass

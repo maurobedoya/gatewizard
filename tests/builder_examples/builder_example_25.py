@@ -10,8 +10,12 @@ Two approaches are shown:
   B) Launch in background + call wait_for_completion() later
 
 NOTE: This example requires AmberTools and packmol-memgen.
-      It uses the real test PDB file tests/2MVJ_2ligs.pdb.
+      It uses the in-repo two-ligand PDB tests/2MVJ_2ligs.pdb.
 """
+
+import shutil
+import sys
+from pathlib import Path
 
 from gatewizard.core.builder import Builder
 from gatewizard.tools.ligand_parametrization import (
@@ -19,7 +23,10 @@ from gatewizard.tools.ligand_parametrization import (
     parametrize_all_ligands,
 )
 
-pdb_file = "tests/2MVJ_2ligs.pdb"
+if shutil.which("antechamber") is None:
+    sys.exit("Skip: AmberTools antechamber is not on PATH")
+
+pdb_file = str(Path(__file__).resolve().parent.parent / "2MVJ_2ligs.pdb")
 working_dir = "./systems"
 
 # ── Step 1: Detect and parametrize ligands (same as example 23) ──────

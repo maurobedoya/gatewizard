@@ -124,4 +124,7 @@ try:
     ss = viewer.assign_secondary_structure("auto")
     print(f"SS after auto: {ss}")
 finally:
-    os.unlink(tmp_path)
+    try:
+        os.unlink(tmp_path)
+    except OSError:
+        pass

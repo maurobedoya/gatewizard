@@ -37,4 +37,7 @@ try:
     ligand = viewer.select_by_criteria("Ligand")
     print(f"Ligand atoms: {len(ligand)}")
 finally:
-    os.unlink(tmp_path)
+    try:
+        os.unlink(tmp_path)
+    except OSError:
+        pass

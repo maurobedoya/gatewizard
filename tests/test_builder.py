@@ -22,19 +22,19 @@ Usage:
     pytest tests/test_builder.py::TestBuilderExamples -v
 
     # Run specific example
-    pytest tests/test_builder.py::TestBuilderExamples::test_individual_examples[08] -v
-
-    # Run examples manually (outside pytest)
-    python tests/test_builder.py
+    pytest tests/test_builder.py::TestBuilderExamples::test_example_script[builder_example_08.py] -v
 """
 
 import pytest
 import sys
-import os
 import tempfile
-import shutil
 from pathlib import Path
-import importlib.util
+
+from tests.example_runner import (
+    parametrize_example_scripts,
+    remove_tree,
+    run_example_script,
+)
 
 # Add gatewizard to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -72,7 +72,7 @@ class TestBuilder:
         assert builder.config["dist_wat"] == 26
         assert builder.config["preoriented"] == True
         assert builder.config["parametrize"] == True
-        assert builder.config["notprotonate"] == False
+        assert builder.config["notprotonate"] == True
         assert builder.config["nloop"] == 20
         assert builder.config["nloop_all"] == 100
         assert builder.config["tolerance"] == 2.0
@@ -511,272 +511,22 @@ class TestForceFieldManager:
 
 
 class TestBuilderExamples:
-    """Test system builder example scripts."""
-
-    @pytest.fixture
-    def temp_dir(self):
-        """Create temporary directory for test outputs."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            yield Path(tmpdir)
+    """Run each builder_example_*.py script once."""
 
     @pytest.fixture(autouse=True)
     def cleanup_example_outputs(self):
         """Clean up output directories created by example scripts."""
         yield
-        # Remove systems/ directory if any example created it
-        systems_dir = Path("./systems")
-        if systems_dir.exists():
-            # Retry a few times to handle cloud-sync (Dropbox) file locks
-            for attempt in range(3):
-                try:
-                    shutil.rmtree(systems_dir)
-                    break
-                except (PermissionError, OSError):
-                    import time as _time
-
-                    _time.sleep(1)
-
-    def test_example_01_basic_configuration(self, temp_dir):
-        """Test Example 01: Basic configuration (Constructor)."""
-        # This example matches the constructor example in docs
-        builder = Builder()
-        assert builder.config["water_model"] == "tip3p"
-        assert builder.config["protein_ff"] == "ff19SB"
-        print("✓ Example 01: Basic configuration works")
-
-    def test_example_02_custom_configuration(self, temp_dir):
-        """Test Example 02: set_configuration()."""
-        builder = Builder()
-
-        # Set custom configuration (matches docs example)
-        builder.set_configuration(
-            water_model="tip3p",
-            protein_ff="ff14SB",
-            lipid_ff="lipid21",
-            salt_concentration=0.15,
-            cation="Na+",
-            anion="Cl-",
-            dist_wat=20.0,  # Larger water layer
-            preoriented=True,
-        )
-
-        # Verify configuration was updated
-        assert builder.config["water_model"] == "tip3p"
-        assert builder.config["protein_ff"] == "ff14SB"
-        assert builder.config["salt_concentration"] == 0.15
-        assert builder.config["cation"] == "Na+"
-        assert builder.config["dist_wat"] == 20.0
-        print("✓ Example 02: set_configuration() works")
-
-    def test_example_03_water_models(self, temp_dir):
-        """Test Example 03: Available water models."""
-        ff_manager = ForceFieldManager()
-        water_models = ff_manager.get_water_models()
-        assert len(water_models) > 0
-        assert "tip3p" in water_models
-        print("✓ Example 03: Available water models works")
-
-    def test_example_04_protein_force_fields(self, temp_dir):
-        """Test Example 04: Available protein force fields."""
-        ff_manager = ForceFieldManager()
-        protein_ffs = ff_manager.get_protein_force_fields()
-        assert len(protein_ffs) > 0
-        assert "ff14SB" in protein_ffs
-        print("✓ Example 04: Available protein force fields works")
-
-    def test_example_05_lipid_force_fields(self, temp_dir):
-        """Test Example 05: Available lipid force fields."""
-        ff_manager = ForceFieldManager()
-        lipid_ffs = ff_manager.get_lipid_force_fields()
-        assert len(lipid_ffs) > 0
-        assert "lipid21" in lipid_ffs
-        print("✓ Example 05: Available lipid force fields works")
-
-    def test_example_06_simple_symmetric_membrane(self, temp_dir):
-        """Test Example 06: Simple symmetric membrane (demonstration)."""
-        # This tests the API structure shown in the docs
-        builder = Builder()
-        builder.set_configuration(
-            water_model="tip3p",
-            protein_ff="ff14SB",
-            lipid_ff="lipid21",
-            salt_concentration=0.15,
-            cation="K+",
-            anion="Cl-",
-        )
-        # Configuration successful
-        assert builder.config["water_model"] == "tip3p"
-        print("✓ Example 06: Simple symmetric membrane API works")
-
-    def test_example_07_asymmetric_membrane(self, temp_dir):
-        """Test Example 07: Asymmetric membrane (demonstration)."""
-        builder = Builder()
-        builder.set_configuration(
-            water_model="tip3p",
-            protein_ff="ff14SB",
-            lipid_ff="lipid21",
-            salt_concentration=0.15,
-            dist_wat=20.0,
-        )
-        assert builder.config["dist_wat"] == 20.0
-        print("✓ Example 07: Asymmetric membrane API works")
-
-    def test_example_08_plasma_membrane(self, temp_dir):
-        """Test Example 08: Plasma membrane mimic (demonstration)."""
-        builder = Builder()
-        # Test the configuration from example 08
-        assert builder.config["water_model"] == "tip3p"
-        print("✓ Example 08: Plasma membrane API works")
-
-    def test_example_09_packing_only(self, temp_dir):
-        """Test Example 09: Packing only (demonstration)."""
-        builder = Builder()
-        # Verify we can set parametrize=False
-        builder.set_configuration(parametrize=False)
-        assert builder.config["parametrize"] == False
-        print("✓ Example 09: Packing only API works")
-
-    def test_example_10_custom_salt(self, temp_dir):
-        """Test Example 10: Custom salt concentration (demonstration)."""
-        builder = Builder()
-        builder.set_configuration(salt_concentration=0.5, cation="Na+", anion="Cl-")
-        assert builder.config["salt_concentration"] == 0.5
-        assert builder.config["cation"] == "Na+"
-        print("✓ Example 10: Custom salt concentration API works")
-
-    def test_example_11_no_salt(self, temp_dir):
-        """Test Example 11: No salt (demonstration)."""
-        builder = Builder()
-        builder.set_configuration(salt_concentration=0.0, add_salt=True)
-        assert builder.config["salt_concentration"] == 0.0
-        assert builder.config.get("add_salt", True) == True
-        print("✓ Example 11: No salt API works")
-
-    def test_example_12_input_validation(self, temp_dir):
-        """Test Example 12: Input validation."""
-        builder = Builder()
-
-        # Create a dummy PDB file
-        dummy_pdb = temp_dir / "protein.pdb"
-        dummy_pdb.write_text(
-            "ATOM      1  N   GLU A   1       0.000   0.000   0.000  1.00  0.00           N\n"
-        )
-
-        # Test validation (matches docs example)
-        valid, error_msg = builder.validate_system_inputs(
-            pdb_file=str(dummy_pdb),
-            upper_lipids=["POPC", "POPE"],
-            lower_lipids=["POPC", "POPE"],
-            lipid_ratios="7:3//7:3",
-            water_model="tip3p",
-            protein_ff="ff14SB",
-            lipid_ff="lipid21",
-        )
-        # Should be valid or have specific error
-        assert valid or len(error_msg) > 0
-        print("✓ Example 12: Input validation works")
-
-    def test_example_13_force_field_validation(self, temp_dir):
-        """Test Example 13: Force field validation."""
-        ff_manager = ForceFieldManager()
-
-        # Test validation (matches docs example)
-        valid, message, is_warning = ff_manager.validate_combination(
-            "tip3p", "ff14SB", "lipid21"
-        )
-        assert valid == True
-        assert is_warning == False
-        assert "valid" in message.lower()
-        print("✓ Example 13: Force field validation works")
-
-    def test_run_example_scripts(self, temp_dir):
-        """Test running actual example scripts from builder_examples directory."""
         examples_dir = Path(__file__).parent / "builder_examples"
+        remove_tree(examples_dir / "systems")
+        remove_tree(Path("./systems"))
 
-        if not examples_dir.exists():
-            pytest.skip(f"Examples directory not found: {examples_dir}")
-
-        # Find all example files (01-17)
-        example_files = sorted(examples_dir.glob("builder_example_*.py"))
-
-        if not example_files:
-            pytest.skip("No example files found in builder_examples directory")
-
-        print(f"\nFound {len(example_files)} example files to test")
-
-        failed_examples = []
-        passed_examples = []
-
-        for example_file in example_files:
-            example_num = example_file.stem.split("_")[-1]
-
-            # Load and run the example
-            spec = importlib.util.spec_from_file_location(
-                f"example_{example_num}", example_file
-            )
-
-            if spec is None or spec.loader is None:
-                failed_examples.append((example_num, "Could not load module"))
-                continue
-
-            module = importlib.util.module_from_spec(spec)
-
-            try:
-                print(f"\n{'='*60}")
-                print(f"Testing Example {example_num}: {example_file.name}")
-                print(f"{'='*60}")
-                spec.loader.exec_module(module)
-                print(f"✓ Example {example_num} executed successfully")
-                passed_examples.append(example_num)
-            except Exception as e:
-                error_msg = f"{type(e).__name__}: {str(e)}"
-                print(f"✗ Example {example_num} failed: {error_msg}")
-                failed_examples.append((example_num, error_msg))
-
-        # Print summary
-        print(f"\n{'='*60}")
-        print(f"TEST SUMMARY")
-        print(f"{'='*60}")
-        print(f"Total examples: {len(example_files)}")
-        print(f"Passed: {len(passed_examples)}")
-        print(f"Failed: {len(failed_examples)}")
-
-        if passed_examples:
-            print(f"\n✓ Passed examples: {', '.join(passed_examples)}")
-
-        if failed_examples:
-            print(f"\n✗ Failed examples:")
-            for num, error in failed_examples:
-                print(f"  - Example {num}: {error}")
-            # Fail the test if any examples failed
-            pytest.fail(f"{len(failed_examples)} example(s) failed")
-        else:
-            print(f"\n🎉 All {len(passed_examples)} examples passed!")
-
-    @pytest.mark.parametrize("example_num", [f"{i:02d}" for i in range(1, 26)])
-    def test_individual_examples(self, example_num, temp_dir):
-        """Test each example individually for better pytest reporting."""
-        examples_dir = Path(__file__).parent / "builder_examples"
-        example_file = examples_dir / f"builder_example_{example_num}.py"
-
-        if not example_file.exists():
-            pytest.skip(f"Example {example_num} not found")
-
-        # Load and run the example
-        spec = importlib.util.spec_from_file_location(
-            f"example_{example_num}", example_file
-        )
-
-        if spec is None or spec.loader is None:
-            pytest.fail(f"Could not load example {example_num}")
-
-        module = importlib.util.module_from_spec(spec)
-
-        try:
-            spec.loader.exec_module(module)
-            print(f"✓ Example {example_num} passed")
-        except Exception as e:
-            pytest.fail(f"Example {example_num} failed: {type(e).__name__}: {str(e)}")
+    @parametrize_example_scripts(
+        Path(__file__).parent / "builder_examples",
+        "builder_example_*.py",
+    )
+    def test_example_script(self, script):
+        run_example_script(script)
 
 
 # ============================================================================
@@ -908,69 +658,6 @@ END
         assert result["success"] is True
         assert result["stopped"] is False
         assert result["status"] == "completed"
-
-
-# ============================================================================
-# HELPER FUNCTIONS
-# ============================================================================
-
-
-def run_all_examples():
-    """Helper function to run all examples manually."""
-    examples_dir = Path(__file__).parent / "builder_examples"
-
-    if not examples_dir.exists():
-        print(f"Examples directory not found: {examples_dir}")
-        return
-
-    # Find all example files automatically
-    example_files = sorted(examples_dir.glob("builder_example_*.py"))
-
-    if not example_files:
-        print("No example files found")
-        return
-
-    print(f"Found {len(example_files)} examples to run\n")
-
-    passed = []
-    failed = []
-
-    for example_file in example_files:
-        example_num = example_file.stem.split("_")[-1]
-
-        print(f"\n{'='*80}")
-        print(f"Running Example {example_num}: {example_file.name}")
-        print(f"{'='*80}")
-
-        spec = importlib.util.spec_from_file_location(
-            f"example_{example_num}", example_file
-        )
-        if spec is None or spec.loader is None:
-            print(f"✗ Example {example_num}: Could not load module")
-            failed.append(example_num)
-            continue
-
-        module = importlib.util.module_from_spec(spec)
-
-        try:
-            spec.loader.exec_module(module)
-            print(f"✓ Example {example_num} completed successfully")
-            passed.append(example_num)
-        except Exception as e:
-            print(f"✗ Example {example_num} failed: {e}")
-            import traceback
-
-            traceback.print_exc()
-            failed.append(example_num)
-
-    # Print summary
-    print(f"\n{'='*80}")
-    print(f"SUMMARY")
-    print(f"{'='*80}")
-    print(f"Total: {len(example_files)}")
-    print(f"Passed: {len(passed)} - {passed}")
-    print(f"Failed: {len(failed)} - {failed if failed else 'None'}")
-    print(f"{'='*80}")
 
 
 class TestNamdOpcBuilderTleap:

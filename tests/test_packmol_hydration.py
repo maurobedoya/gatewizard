@@ -7,15 +7,17 @@ Unit tests for gatewizard.tools.packmol_hydration plus documentation example run
 
 from __future__ import annotations
 
-import importlib.util
-import os
-import shutil
 import sys
-import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+
+from tests.example_runner import (
+    parametrize_example_scripts,
+    remove_tree,
+    run_example_script,
+)
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -238,61 +240,22 @@ class TestPackmolHydrationUnit:
 
 
 class TestHydrationExamples:
-    """Run hydration_example_*.py scripts (documentation examples)."""
-
-    @pytest.fixture
-    def temp_dir(self, tmp_path):
-        orig = os.getcwd()
-        os.chdir(tmp_path)
-        yield tmp_path
-        os.chdir(orig)
+    """Run each hydration_example_*.py script once."""
 
     @pytest.fixture(autouse=True)
     def cleanup_job_dirs(self):
         yield
-        for pattern in ("hydration_*",):
-            for target in Path(".").glob(pattern):
-                if target.is_dir():
-                    shutil.rmtree(target, ignore_errors=True)
-
-    def test_run_example_scripts(self, temp_dir):
         examples_dir = Path(__file__).parent / "hydration_examples"
-        if not examples_dir.exists():
-            pytest.skip(f"Examples directory not found: {examples_dir}")
+        for target in examples_dir.glob("hydration_*"):
+            if target.is_dir():
+                remove_tree(target)
+        for target in Path(".").glob("hydration_*"):
+            if target.is_dir():
+                remove_tree(target)
 
-        example_files = sorted(examples_dir.glob("hydration_example_*.py"))
-        if not example_files:
-            pytest.skip("No hydration example files found")
-
-        failed = []
-        for example_file in example_files:
-            example_num = example_file.stem.split("_")[-1]
-            spec = importlib.util.spec_from_file_location(
-                f"hydration_example_{example_num}", example_file
-            )
-            if spec is None or spec.loader is None:
-                failed.append((example_num, "Could not load module"))
-                continue
-            module = importlib.util.module_from_spec(spec)
-            try:
-                spec.loader.exec_module(module)
-            except Exception as exc:
-                failed.append((example_num, f"{type(exc).__name__}: {exc}"))
-
-        if failed:
-            msg = "; ".join(f"{n}: {e}" for n, e in failed)
-            pytest.fail(f"{len(failed)} example(s) failed: {msg}")
-
-    @pytest.mark.parametrize("example_num", [f"{i:02d}" for i in range(1, 7)])
-    def test_individual_examples(self, example_num, temp_dir):
-        examples_dir = Path(__file__).parent / "hydration_examples"
-        example_file = examples_dir / f"hydration_example_{example_num}.py"
-        if not example_file.is_file():
-            pytest.skip(f"Example file not found: {example_file}")
-
-        spec = importlib.util.spec_from_file_location(
-            f"hydration_example_{example_num}", example_file
-        )
-        assert spec is not None and spec.loader is not None
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+    @parametrize_example_scripts(
+        Path(__file__).parent / "hydration_examples",
+        "hydration_example_*.py",
+    )
+    def test_example_script(self, script):
+        run_example_script(script)

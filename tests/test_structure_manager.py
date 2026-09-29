@@ -5,20 +5,20 @@ StructureManager Test Suite
 This test suite covers:
 1. Core structure manager API (StructureManager class)
 2. Data model classes (Atom, Residue, ProteinStructure, Selection)
-3. Documentation example workflows (Examples 1-10)
+3. Documentation example workflows (structure_manager_example_*.py)
 
 The test suite automatically discovers and runs all example scripts from:
-    tests/viewer_examples/viewer_example_*.py
+    tests/structure_manager_examples/structure_manager_example_*.py
 
 Usage:
     # Run all tests
-    pytest tests/test_viewer.py -v
+    pytest tests/test_structure_manager.py -v
 
     # Run only example tests
-    pytest tests/test_viewer.py::TestViewerExamples -v
+    pytest tests/test_structure_manager.py::TestStructureManagerExamples -v
 
     # Run specific example
-    pytest tests/test_viewer.py::TestViewerExamples::test_individual_examples[01] -v
+    pytest tests/test_structure_manager.py::TestStructureManagerExamples::test_example_script[structure_manager_example_01.py] -v
 """
 
 import pytest
@@ -26,7 +26,8 @@ import sys
 import os
 import tempfile
 from pathlib import Path
-import importlib.util
+
+from tests.example_runner import parametrize_example_scripts, run_example_script
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -193,7 +194,10 @@ class TestStructureManager:
         ss_map = assign_secondary_structure_map(str(p), method="auto")
         assert isinstance(ss_map, dict)
         assert ss_map
-        assert any(code in {"H", "E"} for code in ss_map.values())
+        assert ("Z", 999) not in ss_map
+        assert ("A", 1) in ss_map
+        assert ("A", 2) in ss_map
+        assert all(code in {"H", "E", "C"} for code in ss_map.values())
 
     def test_assign_ss_psique_falls_back_to_protein_only(
         self, tmp_path, monkeypatch
@@ -413,148 +417,16 @@ class TestDataModel:
 # ============================================================================
 
 
-class TestViewerExamples:
-    """Test viewer examples from viewer_examples directory."""
+class TestStructureManagerExamples:
+    """Run each structure_manager_example_*.py script once."""
 
-    @pytest.fixture
-    def temp_dir(self, tmp_path):
-        """Provide a temporary directory for test outputs."""
-        orig = os.getcwd()
-        os.chdir(tmp_path)
-        yield tmp_path
-        os.chdir(orig)
+    @parametrize_example_scripts(
+        Path(__file__).parent / "structure_manager_examples",
+        "structure_manager_example_*.py",
+    )
+    def test_example_script(self, script):
+        run_example_script(script)
 
-    def test_run_example_scripts(self, temp_dir):
-        """Test running actual example scripts from viewer_examples directory."""
-        examples_dir = Path(__file__).parent / "viewer_examples"
-
-        if not examples_dir.exists():
-            pytest.skip(f"Examples directory not found: {examples_dir}")
-
-        example_files = sorted(examples_dir.glob("viewer_example_*.py"))
-
-        if not example_files:
-            pytest.skip("No example files found in viewer_examples directory")
-
-        print(f"\nFound {len(example_files)} example files to test")
-
-        failed_examples = []
-        passed_examples = []
-
-        for example_file in example_files:
-            example_num = example_file.stem.split("_")[-1]
-
-            spec = importlib.util.spec_from_file_location(
-                f"viewer_example_{example_num}", example_file
-            )
-
-            if spec is None or spec.loader is None:
-                failed_examples.append((example_num, "Could not load module"))
-                continue
-
-            module = importlib.util.module_from_spec(spec)
-
-            try:
-                print(f"\nTesting Example {example_num}: {example_file.name}")
-                spec.loader.exec_module(module)
-                print(f"  Example {example_num} executed successfully")
-                passed_examples.append(example_num)
-            except Exception as e:
-                error_msg = f"{type(e).__name__}: {str(e)}"
-                print(f"  Example {example_num} failed: {error_msg}")
-                failed_examples.append((example_num, error_msg))
-
-        print(
-            f"\nSummary: {len(passed_examples)} passed, "
-            f"{len(failed_examples)} failed"
-        )
-
-        if failed_examples:
-            for num, error in failed_examples:
-                print(f"  Failed {num}: {error}")
-            pytest.fail(f"{len(failed_examples)} example(s) failed")
-
-    @pytest.mark.parametrize("example_num", [f"{i:02d}" for i in range(1, 11)])
-    def test_individual_examples(self, example_num, temp_dir):
-        """Test each example individually for better pytest reporting."""
-        examples_dir = Path(__file__).parent / "viewer_examples"
-        example_file = examples_dir / f"viewer_example_{example_num}.py"
-
-        if not example_file.exists():
-            pytest.skip(f"Example {example_num} not found")
-
-        spec = importlib.util.spec_from_file_location(
-            f"viewer_example_{example_num}", example_file
-        )
-
-        if spec is None or spec.loader is None:
-            pytest.fail(f"Could not load example {example_num}")
-
-        module = importlib.util.module_from_spec(spec)
-
-        try:
-            spec.loader.exec_module(module)
-        except Exception as e:
-            pytest.fail(f"Example {example_num} failed: {type(e).__name__}: {str(e)}")
-
-
-# ============================================================================
-# MAIN (for running outside pytest)
-# ============================================================================
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("StructureManager Test Suite - Manual Run")
-    print("=" * 60)
-
-    examples_dir = Path(__file__).parent / "viewer_examples"
-
-    if not examples_dir.exists():
-        print(f"Examples directory not found: {examples_dir}")
-        sys.exit(1)
-
-    example_files = sorted(examples_dir.glob("viewer_example_*.py"))
-
-    if not example_files:
-        print("No example files found")
-        sys.exit(1)
-
-    print(f"Found {len(example_files)} examples to run\n")
-
-    passed = []
-    failed = []
-
-    for example_file in example_files:
-        example_num = example_file.stem.split("_")[-1]
-        print(f"\n{'=' * 60}")
-        print(f"Example {example_num}: {example_file.name}")
-        print(f"{'=' * 60}")
-
-        spec = importlib.util.spec_from_file_location(
-            f"viewer_example_{example_num}", example_file
-        )
-
-        if spec is None or spec.loader is None:
-            print(f"  Could not load module")
-            failed.append(example_num)
-            continue
-
-        module = importlib.util.module_from_spec(spec)
-        try:
-            spec.loader.exec_module(module)
-            print(f"  Passed")
-            passed.append(example_num)
-        except Exception as e:
-            print(f"  Failed: {type(e).__name__}: {e}")
-            failed.append(example_num)
-
-    print(f"\n{'=' * 60}")
-    print(
-        f"Results: {len(passed)} passed, {len(failed)} failed "
-        f"out of {len(example_files)}"
-    )
-    print(f"{'=' * 60}")
-
-    if failed:
-        print(f"Failed: {', '.join(failed)}")
-        sys.exit(1)
+    pytest.main([__file__, "-v"])

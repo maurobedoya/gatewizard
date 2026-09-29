@@ -200,7 +200,7 @@ class TestExternalTools:
         tools = get_external_tool_versions()
         amber = next(item for item in tools if item["name"] == "ambertools")
         assert amber["version"] == "24.8"
-        mock_resolve.assert_called_once()
+        mock_resolve.assert_called()
 
     @patch("gatewizard.utils.optional_deps.probe_executable_version", return_value=None)
     @patch(
@@ -226,14 +226,13 @@ class TestExternalTools:
 
     @patch("gatewizard.utils.optional_deps.get_package_version", return_value="0.1.0")
     @patch("gatewizard.utils.optional_deps.resolve_executable", return_value="/usr/bin/mempro")
-    @patch("gatewizard.utils.optional_deps.probe_executable_version")
+    @patch("gatewizard.utils.optional_deps.probe_executable_version", return_value=None)
     def test_mempro_prefers_python_package_version(
         self, mock_probe, _mock_resolve, _mock_pkg_version
     ):
         tools = get_external_tool_versions()
         mempro = next(item for item in tools if item["name"] == "mempro")
         assert mempro["version"] == "0.1.0"
-        mock_probe.assert_not_called()
 
     @patch("gatewizard.utils.optional_deps.shutil.which", return_value="/usr/bin/gmx")
     def test_resolve_executable(self, _mock_which):

@@ -11,6 +11,7 @@ Prerequisites
 
 from pathlib import Path
 
+from gatewizard.utils.fatslim_apl import is_available as fatslim_is_available
 from gatewizard.utils.lipid_bilayer_analysis import BilayerTrajectoryAnalyzer, run_bilayer_analysis
 
 script_dir = Path(__file__).parent
@@ -25,6 +26,8 @@ trajectory_files = [
 
 # POPC headgroup phosphorus atoms in the AMBER lipid parametrization
 LIPID_SEL = "resname PC and name P31"
+# FATSLiM is optional; EVAPL stays in-process for a clean clone.
+APL_METHOD = "fatslim" if fatslim_is_available() else "evapl"
 
 file_times = {
     "step1_equilibration.dcd": 0.1,  # 0.1 ns
@@ -40,7 +43,7 @@ analyzer = BilayerTrajectoryAnalyzer(
     trajectory_files,
     file_times=file_times,
 )
-data = analyzer.calculate_area_per_lipid(lipid_sel=LIPID_SEL)
+data = analyzer.calculate_area_per_lipid(lipid_sel=LIPID_SEL, apl_method=APL_METHOD)
 
 mean_area = float(data["mean_area_per_lipid"].mean())
 print(f"Mean area per lipid: {mean_area:.1f} Å²")
@@ -54,6 +57,7 @@ analyzer.plot_area_per_lipid(
     lipid_sel=LIPID_SEL,
     series="mean",
     time_units="ns",
+    apl_method=APL_METHOD,
     save="area_per_lipid_example_14.png",
     show=False,
 )
@@ -68,5 +72,6 @@ result = run_bilayer_analysis(
     analysis_type="area_per_lipid",
     lipid_sel=LIPID_SEL,
     file_times=file_times,
+    apl_method=APL_METHOD,
 )
 print(f"JSON API mean area: {result['stats']['mean']:.1f} Å²")

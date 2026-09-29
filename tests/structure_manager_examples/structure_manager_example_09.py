@@ -35,6 +35,12 @@ try:
     saved = viewer.save_pdb(out_path)
     print(f"Saved to: {os.path.basename(saved)}")
 finally:
-    os.unlink(tmp_path)
+    try:
+        os.unlink(tmp_path)
+    except OSError:
+        pass
     if os.path.exists(out_path):
-        os.unlink(out_path)
+        try:
+            os.unlink(out_path)
+        except OSError:
+            pass

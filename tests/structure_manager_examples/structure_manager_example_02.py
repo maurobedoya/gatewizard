@@ -28,4 +28,7 @@ try:
     print(f"Chains: {info['n_chains']}, Bonds: {info['n_bonds']}")
     print(f"Title: {info.get('title', 'N/A')}")
 finally:
-    os.unlink(tmp_path)
+    try:
+        os.unlink(tmp_path)
+    except OSError:
+        pass
