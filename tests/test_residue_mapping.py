@@ -5,7 +5,11 @@ from pathlib import Path
 import pytest
 
 from gatewizard.utils.residue_mapping import (
+    align_mapping_keys_to_pdb,
+    compose_amber_to_original,
+    parse_residue_mapping_file,
     parse_residue_mapping_text,
+    parse_residue_mapping_text_by_chain,
     remap_residue_type_labels,
     remap_resids_to_original,
     should_apply_residue_mapping,
@@ -48,6 +52,26 @@ def test_parse_protonated_renum_final_then_original():
     assert m[1] == 1
 
 
+def test_parse_pdb4amber_renum_original_then_final():
+    text = "ALA A    10    ALA     1\nGLY A    20    GLY     2\nLIG A   900    LIG     3\n"
+    m = parse_residue_mapping_text(text, path="prepared_renum.txt")
+    assert m == {1: 10, 2: 20, 3: 900}
+
+
+def test_parse_four_column_renum_blank_chain():
+    text = "MET       1    MET     1\nLYS       2    LYS     2\nY01 A   301    Y01   523\n"
+    by_chain = parse_residue_mapping_text_by_chain(text, path="9g9v_protonated_renum.txt")
+    assert by_chain[(" ", 1)] == 1
+    assert by_chain[(" ", 2)] == 2
+    assert by_chain[("A", 301)] == 523 or by_chain[("A", 523)] == 301
+
+
+def test_align_mapping_flips_swapped_columns():
+    swapped = {("A", 10): 1, ("A", 20): 2}
+    aligned = align_mapping_keys_to_pdb(swapped, [("A", 1), ("A", 2)])
+    assert aligned == {("A", 1): 10, ("A", 2): 20}
+
+
 def test_should_apply_gatewizard_not_charmm():
     m = parse_residue_mapping_text(SAMPLE)
     assert should_apply_residue_mapping([2, 3, 4], m) is True
@@ -79,6 +103,22 @@ def test_remap_labels():
 def test_parse_file(tmp_path: Path):
     p = tmp_path / "prot_gatewizard_residue_mapping.txt"
     p.write_text(SAMPLE, encoding="utf-8")
-    from gatewizard.utils.residue_mapping import parse_residue_mapping_file
-
     assert parse_residue_mapping_file(p)[2] == 21
+
+
+def test_parse_by_chain_keeps_caps_and_distinguishes_chains():
+    two_chain = SAMPLE + "VAL B     21    VAL   2\n"
+    m = parse_residue_mapping_text_by_chain(two_chain)
+    assert m[("A", 1)] is None
+    assert m[("A", 2)] == 21
+    assert m[("A", 5)] is None
+    assert m[("B", 2)] == 21
+
+
+def test_compose_amber_to_original_through_cap_map():
+    remum = {("A", 1): 1, ("A", 2): 2, ("A", 3): 3}
+    cap = {("A", 1): None, ("A", 2): 200, ("A", 3): 205}
+    composed = compose_amber_to_original(remum, cap)
+    assert composed[("A", 1)] is None
+    assert composed[("A", 2)] == 200
+    assert composed[("A", 3)] == 205

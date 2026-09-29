@@ -28,8 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **PlotSpec grid:** panels may list `series_keys` to draw multiple sets on one subplot (energetic compare-by-property / by-set Pub PNG).
 - **Publication plot export:** matplotlib uses the headless Agg backend in API/GUI export so Tk/Tcl is not touched from FastAPI worker threads (fixes `main thread is not in main loop` / `Tcl_AsyncDelete` log noise on WSL).
 
+- **MemPro apply mismatch message:** when protein atoms cannot be matched, the error names the target structure file and the MemPro oriented PDB, and says to apply to the same structure used for the run.
+- **Preparation ASH/GLH protons:** `complete_missing_heavy_atoms` / GUI Prepare now run tleap **after** Amber protonation names (ASH, GLH, HIP, …). Completing on ASP and only renaming afterward left the extra carboxylic proton off — the names only mattered later at packmol-memgen parametrization.
 ### Added
 
+- **Preparation complete missing protein atoms:** `complete_missing_heavy_atoms` uses Amber `tleap` templates to add missing side-chain heavy atoms on residues that already exist (not missing loops). GUI Prepare then runs `pdb4amber --reduce` for Amber hydrogens when `reduce` is installed.
+- **Preparation preserve residue numbers:** `PreparationManager.restore_original_residue_numbers` and `run_pdb4amber_with_cap_fix(..., preserve_residue_numbers=False)` rewrite Amber sequential ids back to the input (chain-aware remum; compose cap mapping so a 200/205 loop gap survives ACE/NME). New caps get N-terminus − 1 (residue **0** when the chain starts at 1) and C-terminus + 1. `parse_residue_mapping_by_chain` keeps per-chain ids.
 - **FATSLiM APL bridge:** `gatewizard.utils.fatslim_apl` resolves `fatslim`, exports centered GRO/XTC/NDX, runs `fatslim apl`, parses `apl_raw` CSV (nm²→Å²). Registered in `EXTERNAL_TOOL_REGISTRY`.
 - **GridMAT-MD.pl APL bridge:** `apl_method='gridmat_md'` runs original Perl GridMAT-MD.pl (`gatewizard.utils.gridmat_md_apl`, `scripts/install_gridmat_md.sh`, `GATEWIZARD_GRIDMAT_MD`). In-process `gridmat` and `vtmc` stay **GW experimental**.
 - **PlotSpec reference bands:** `reference_bands` (axis x/y, min/max, color, opacity, z_order, optional border) plus `opacity` / `z_order` on `reference_lines`; matplotlib renderer draws bands/lines behind or in front of series accordingly.
@@ -48,6 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Preparation without Amber `reduce`:** `pdb4amber --reduce` no longer fails with `FileNotFoundError: reduce`. `get_clean_env` puts `CONDA_PREFIX/bin` on `PATH`. If `reduce` is still missing, Prepare drops `--reduce`, keeps tleap template hydrogens, and strips stale CONECT/LINK records (ParmEd serial / K+ LINK warnings).
+- **Preparation preserve residue numbers after tleap:** tleap/`pdb4amber` merge chains onto a blank chain and write 4-column remum lines. Restore now pairs polymer residues in file order to the original PDB (chain + resid), so A/B 1–261 is not left as blank 1–522.
 - **Residue mapping:** `gatewizard_to_original*` filenames parse as original→final; remapping leaves already-original axes alone and can rebuild a full-length over-remapped RMSF axis from sorted finals.
 - **PropKa re-run:** repeating PropKa in the same output folder (e.g. after changing target pH) now replaces the previous ``.pka`` instead of keeping the first run’s prediction.
 - **Visualize rename/renumber by selection:** only the selected atoms change when two ligands share the same resname/resnum (e.g. UNK 900); sibling copies are left alone.

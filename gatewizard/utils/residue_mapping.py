@@ -8,24 +8,42 @@ Supported files (same 5-column layout, column meaning differs)::
        # Format: ORIGINAL_RESNAME CHAIN ORIGINAL_ID FINAL_RESNAME FINAL_ID
        VAL A     21    VAL   2
 
-2. ``*_protonated_renum.txt`` / ``system_for_tleap_renum.txt`` (pdb4amber)::
+2. pdb4amber / tleap ``*_renum.txt`` — column order varies by tool version::
 
-       VAL A      2    VAL  21
-       # first id = new/final, second id = old/original
+       ALA A     10    ALA    1    # original then final (AmberTools pdb4amber)
+       VAL A      2    VAL   21    # final then original (some tleap / GW files)
 
 Caps may use ``-`` for a missing original id. The returned map is always
-``final_resid → original_resid``.
+``final_resid → original_resid``. Detect order from the header or from
+which column is systematically larger; do not trust the filename alone.
 """
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Dict, List, Mapping, Optional, Sequence, Union
+from typing import Dict, List, Mapping, NamedTuple, Optional, Sequence, Tuple, Union
 
 _MAPPING_LINE = re.compile(
     r"^\s*(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s*$"
 )
+# pdb4amber drops the chain column when tleap blanked it: "MET 1 MET 1"
+_MAPPING_LINE_NO_CHAIN = re.compile(
+    r"^\s*(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s*$"
+)
+
+# (chain, final_resid) → original resid; ``None`` means a new cap (``-``).
+ResidueChainKey = Tuple[str, int]
+
+
+class ResidueMappingRow(NamedTuple):
+    """One 5-column mapping line, ids already oriented as final → original."""
+
+    original_resname: str
+    chain: str
+    original_resid: Optional[int]
+    final_resname: str
+    final_resid: int
 
 
 def _detect_column_order(text: str, path: Optional[Union[str, Path]] = None) -> str:
@@ -35,8 +53,6 @@ def _detect_column_order(text: str, path: Optional[Union[str, Path]] = None) -> 
     name = Path(path).name.lower() if path else ""
     if "gatewizard_residue_mapping" in name or "gatewizard_to_original" in name:
         return "original_final"
-    if name.endswith("_renum.txt") or name.endswith("renum.txt") or "_renum." in name:
-        return "final_original"
 
     header = "\n".join(
         line for line in text.splitlines()[:12] if line.strip().startswith("#")
@@ -89,6 +105,58 @@ def parse_residue_mapping_file(
     return parse_residue_mapping_text(text, path=p)
 
 
+def parse_residue_mapping_rows(
+    text: str,
+    *,
+    path: Optional[Union[str, Path]] = None,
+    column_order: Optional[str] = None,
+) -> List[ResidueMappingRow]:
+    """Parse mapping text into rows. Caps keep ``original_resid=None``."""
+    order = column_order or _detect_column_order(text, path)
+    rows: List[ResidueMappingRow] = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        match = _MAPPING_LINE.match(line)
+        if match:
+            orig_name, chain, id_a_s, final_name, id_b_s = match.groups()
+        else:
+            match = _MAPPING_LINE_NO_CHAIN.match(line)
+            if not match:
+                continue
+            orig_name, id_a_s, final_name, id_b_s = match.groups()
+            chain = " "
+        if order == "final_original":
+            final_id_s, original_id_s = id_a_s, id_b_s
+            # remum: first resname is the final/Amber name
+            original_resname, final_resname = final_name, orig_name
+        else:
+            original_id_s, final_id_s = id_a_s, id_b_s
+            original_resname, final_resname = orig_name, final_name
+        if original_id_s in {"-", "."}:
+            original_id: Optional[int] = None
+        else:
+            try:
+                original_id = int(original_id_s)
+            except ValueError:
+                continue
+        try:
+            final_id = int(final_id_s)
+        except ValueError:
+            continue
+        rows.append(
+            ResidueMappingRow(
+                original_resname=original_resname,
+                chain=chain,
+                original_resid=original_id,
+                final_resname=final_resname,
+                final_resid=final_id,
+            )
+        )
+    return rows
+
+
 def parse_residue_mapping_text(
     text: str,
     *,
@@ -96,29 +164,90 @@ def parse_residue_mapping_text(
     column_order: Optional[str] = None,
 ) -> Dict[int, int]:
     """Parse mapping text into ``final_resid → original_resid``."""
-    order = column_order or _detect_column_order(text, path)
     final_to_original: Dict[int, int] = {}
-    for raw in text.splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
+    for row in parse_residue_mapping_rows(text, path=path, column_order=column_order):
+        if row.original_resid is None:
             continue
-        match = _MAPPING_LINE.match(line)
-        if not match:
-            continue
-        id_a_s, id_b_s = match.group(3), match.group(5)
-        if order == "final_original":
-            final_id_s, original_id_s = id_a_s, id_b_s
-        else:
-            original_id_s, final_id_s = id_a_s, id_b_s
-        if original_id_s in {"-", "."}:
-            continue
-        try:
-            original_id = int(original_id_s)
-            final_id = int(final_id_s)
-        except ValueError:
-            continue
-        final_to_original[final_id] = original_id
+        final_to_original[row.final_resid] = row.original_resid
     return final_to_original
+
+
+def parse_residue_mapping_by_chain(
+    path: Union[str, Path],
+) -> Dict[ResidueChainKey, Optional[int]]:
+    """
+    Load ``(chain, final_resid) → original_resid`` from a mapping file.
+
+    Cap lines with original ``-`` are kept as ``None``. Two chains that share
+    the same final id stay distinct.
+    """
+    p = Path(path).expanduser().resolve()
+    text = p.read_text(encoding="utf-8", errors="replace")
+    return parse_residue_mapping_text_by_chain(text, path=p)
+
+
+def parse_residue_mapping_text_by_chain(
+    text: str,
+    *,
+    path: Optional[Union[str, Path]] = None,
+    column_order: Optional[str] = None,
+) -> Dict[ResidueChainKey, Optional[int]]:
+    """Parse mapping text into ``(chain, final_resid) → original_resid``."""
+    by_chain: Dict[ResidueChainKey, Optional[int]] = {}
+    for row in parse_residue_mapping_rows(text, path=path, column_order=column_order):
+        by_chain[(row.chain, row.final_resid)] = row.original_resid
+    return by_chain
+
+
+def align_mapping_keys_to_pdb(
+    by_chain: Mapping[ResidueChainKey, Optional[int]],
+    pdb_keys: Sequence[ResidueChainKey],
+) -> Dict[ResidueChainKey, Optional[int]]:
+    """
+    If a remum was parsed with the columns swapped, flip it so keys match the PDB.
+
+    Compares ``(chain, final)`` hits vs ``(chain, original)`` hits against *pdb_keys*.
+    """
+    if not by_chain:
+        return {}
+    key_set = set(pdb_keys)
+    current = dict(by_chain)
+    hits = sum(1 for key in current if key in key_set)
+    flipped: Dict[ResidueChainKey, Optional[int]] = {}
+    for (chain, final_id), orig_id in current.items():
+        if orig_id is None:
+            flipped[(chain, final_id)] = None
+            continue
+        flipped[(chain, orig_id)] = final_id
+    flip_hits = sum(1 for key in flipped if key in key_set)
+    if flip_hits > hits:
+        return flipped
+    return current
+
+
+def compose_amber_to_original(
+    remum_by_chain: Mapping[ResidueChainKey, Optional[int]],
+    cap_by_chain: Optional[Mapping[ResidueChainKey, Optional[int]]] = None,
+) -> Dict[ResidueChainKey, Optional[int]]:
+    """
+    Map Amber (pdb4amber) ids to pre-cap originals.
+
+    ``remum_by_chain`` is ``(chain, amber_id) → id_in_pdb4amber_input``.
+    ``cap_by_chain`` is ``(chain, capped_id) → original_id`` (``None`` for ACE/NME).
+    """
+    if not cap_by_chain:
+        return dict(remum_by_chain)
+    composed: Dict[ResidueChainKey, Optional[int]] = {}
+    for (chain, amber_id), capped_id in remum_by_chain.items():
+        if capped_id is None:
+            composed[(chain, amber_id)] = None
+            continue
+        cap_key = (chain, capped_id)
+        if cap_key in cap_by_chain:
+            composed[(chain, amber_id)] = cap_by_chain[cap_key]
+        else:
+            composed[(chain, amber_id)] = capped_id
+    return composed
 
 
 def should_apply_residue_mapping(

@@ -22,6 +22,14 @@ from gatewizard.utils.peptide_residues import (
     PEPTIDE_POLYMER_RESIDUES,
     is_peptide_polymer_residue,
 )
+from gatewizard.utils.residue_restore import (
+    discover_cap_mapping_path,
+    discover_original_pdb,
+    find_pdb4amber_renum_path,
+    restore_original_residue_numbers as restore_original_residue_numbers_impl,
+    snapshot_pdb_residues,
+    stamp_atom_lines_from_snapshots,
+)
 
 logger = get_logger(__name__)
 
@@ -168,6 +176,237 @@ def _resolve_pdb4amber_executable() -> str:
             "or ensure CONDA_PREFIX/bin is on PATH."
         )
     return exe
+
+
+def _resolve_tleap_executable() -> str:
+    """Return tleap path (CONDA_PREFIX/bin first, then PATH)."""
+    exe = resolve_conda_executable("tleap")
+    if not os.path.isfile(exe):
+        raise PreparationError(
+            "tleap not found. Install AmberTools (e.g. conda install ambertools) "
+            "or ensure CONDA_PREFIX/bin is on PATH."
+        )
+    return exe
+
+
+def resolve_reduce_executable() -> Optional[str]:
+    """Return the Amber ``reduce`` binary, or ``None`` if it is not installed."""
+    exe = resolve_conda_executable("reduce")
+    if os.path.isfile(exe) and os.access(exe, os.X_OK):
+        return exe
+    return None
+
+
+def is_connectivity_record(line: str) -> bool:
+    """Return True for PDB CONECT or LINK records."""
+    return line.startswith(("CONECT", "LINK"))
+
+
+def strip_conect_and_link_records(
+    input_pdb: str,
+    output_pdb: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Drop CONECT and LINK records.
+
+    Those serials become stale after tleap adds atoms or pdb4amber
+    renumbers, which produces ParmEd warnings and does not help Amber.
+    Ligand / ion connectivity is rebuilt later (GAFF, ion templates).
+    """
+    if not os.path.isfile(input_pdb):
+        raise FileNotFoundError(f"PDB file not found: {input_pdb}")
+
+    out_path = output_pdb or input_pdb
+    kept: List[str] = []
+    removed = 0
+    with open(input_pdb, "r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            if is_connectivity_record(line):
+                removed += 1
+                continue
+            kept.append(line)
+
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w", encoding="utf-8", newline="\n") as handle:
+        handle.writelines(kept)
+
+    if removed:
+        logger.info("Removed %s CONECT/LINK record(s) from %s", removed, input_pdb)
+    return {"output_file": str(out_path), "removed": removed}
+
+
+def apply_pdb4amber_reduce_option(
+    options: Optional[Dict[str, Any]],
+) -> Tuple[Dict[str, Any], bool]:
+    """
+    Copy pdb4amber options and drop ``reduce`` when the binary is missing.
+
+    Returns:
+        ``(options, reduce_skipped)``
+    """
+    resolved = dict(options or {})
+    if not resolved.get("reduce"):
+        return resolved, False
+    if resolve_reduce_executable():
+        return resolved, False
+    resolved.pop("reduce", None)
+    logger.warning(
+        "Amber reduce binary not found; running pdb4amber without --reduce. "
+        "Hydrogens from tleap templates are kept if complete_missing_heavy_atoms ran."
+    )
+    return resolved, True
+
+
+def complete_missing_heavy_atoms(
+    input_pdb: str,
+    output_pdb: Optional[str] = None,
+    leaprc: str = "leaprc.protein.ff19SB",
+) -> Dict[str, Any]:
+    """
+    Add missing protein atoms from Amber residue templates (tleap).
+
+    Residue names must already be the Amber protonation labels (ASH, GLH,
+    HID/HIE/HIP, …). ``tleap`` then adds the extra carboxylic / imidazole
+    protons the same way the later packmol-memgen parametrization does.
+    Completing on ASP/GLU/HIS and only renaming afterward leaves those
+    protons off.
+
+    Ligands, waters, and ions are copied unchanged. Missing *residues*
+    (a loop gap of 200 then 205) are not built. Hydrogens added by tleap
+    are left in place for a later strip / ``pdb4amber --reduce`` pass.
+    CONECT/LINK records are dropped (serials change after ``savePdb``).
+
+    Args:
+        input_pdb: Path to the input PDB
+        output_pdb: Destination (defaults to *input_pdb*)
+        leaprc: Leap force-field script sourced before ``loadPdb``
+
+    Returns:
+        Dict with ``output_file``, ``protein_atoms_in``, ``protein_atoms_out``,
+        ``hetero_atoms``, and ``atoms_added``.
+    """
+    if not os.path.isfile(input_pdb):
+        raise FileNotFoundError(f"PDB file not found: {input_pdb}")
+
+    out_path = output_pdb or input_pdb
+    protein_lines: List[str] = []
+    hetero_lines: List[str] = []
+    other_lines: List[str] = []
+    protein_atoms_in = 0
+    hetero_atoms = 0
+
+    with open(input_pdb, "r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            if line.startswith(("ATOM", "HETATM")):
+                res_name = line[17:20].strip() if len(line) >= 20 else ""
+                if is_protein_residue_name(res_name):
+                    protein_lines.append(
+                        "ATOM  " + line[6:] if line.startswith("HETATM") else line
+                    )
+                    protein_atoms_in += 1
+                else:
+                    hetero_lines.append(line)
+                    hetero_atoms += 1
+            elif line.startswith("TER"):
+                if protein_lines:
+                    protein_lines.append(line if line.endswith("\n") else line + "\n")
+            elif not is_connectivity_record(line):
+                other_lines.append(line)
+
+    if protein_atoms_in == 0:
+        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(input_pdb, out_path)
+        return {
+            "output_file": str(out_path),
+            "protein_atoms_in": 0,
+            "protein_atoms_out": 0,
+            "hetero_atoms": hetero_atoms,
+            "atoms_added": 0,
+        }
+
+    work = Path(tempfile.mkdtemp(prefix="gw_complete_atoms_"))
+    try:
+        protein_in = work / "protein_only.pdb"
+        protein_out = work / "protein_completed.pdb"
+        leap_in = work / "complete.leap"
+        with protein_in.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.writelines(protein_lines)
+            if not protein_lines[-1].startswith("END"):
+                handle.write("END\n")
+        leap_in.write_text(
+            f"source {leaprc}\n"
+            f"x = loadPdb {protein_in.as_posix()}\n"
+            f"savePdb x {protein_out.as_posix()}\n"
+            "quit\n",
+            encoding="utf-8",
+        )
+        tleap_exe = _resolve_tleap_executable()
+        # tleap is a shell script (not Python). Do not wrap it with
+        # subprocess_argv_for_script — that forces conda python onto it.
+        bash = shutil.which("bash")
+        cmd = (
+            [bash, tleap_exe, "-f", str(leap_in)]
+            if bash
+            else [tleap_exe, "-f", str(leap_in)]
+        )
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=get_clean_env(),
+            cwd=str(work),
+        )
+        if result.returncode != 0 or not protein_out.is_file():
+            log = (result.stdout or "") + "\n" + (result.stderr or "")
+            raise PreparationError(
+                "tleap failed while completing missing protein atoms.\n" + log.strip()
+            )
+
+        completed: List[str] = []
+        protein_atoms_out = 0
+        with protein_out.open("r", encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                if line.startswith(("ATOM", "HETATM")):
+                    completed.append(line)
+                    protein_atoms_out += 1
+                elif line.startswith("TER"):
+                    completed.append(line)
+
+        input_snaps = [
+            snap
+            for snap in snapshot_pdb_residues(protein_in)
+            if snap[3] not in {"ACE", "NME", "NMA"}
+        ]
+        completed = stamp_atom_lines_from_snapshots(completed, input_snaps)
+
+        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.writelines(other_lines)
+            handle.writelines(completed)
+            if hetero_lines:
+                handle.writelines(hetero_lines)
+            handle.write("END\n")
+
+        atoms_added = max(0, protein_atoms_out - protein_atoms_in)
+        logger.info(
+            "Completed missing protein atoms via tleap (%s → %s, +%s; kept %s hetero) %s → %s",
+            protein_atoms_in,
+            protein_atoms_out,
+            atoms_added,
+            hetero_atoms,
+            input_pdb,
+            out_path,
+        )
+        return {
+            "output_file": str(out_path),
+            "protein_atoms_in": protein_atoms_in,
+            "protein_atoms_out": protein_atoms_out,
+            "hetero_atoms": hetero_atoms,
+            "atoms_added": atoms_added,
+        }
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
 
 
 class PreparationManager:
@@ -888,12 +1127,56 @@ class PreparationManager:
 
         return num_disulfide_bonds
 
+    def complete_missing_heavy_atoms(
+        self,
+        input_pdb: str,
+        output_pdb: Optional[str] = None,
+        leaprc: str = "leaprc.protein.ff19SB",
+    ) -> Dict[str, Any]:
+        """Add missing protein heavy atoms from Amber templates. See module function."""
+        return complete_missing_heavy_atoms(
+            input_pdb, output_pdb=output_pdb, leaprc=leaprc
+        )
+
+    def restore_original_residue_numbers(
+        self,
+        pdb_path: str,
+        remum_path: Optional[str] = None,
+        output_pdb: Optional[str] = None,
+        cap_mapping_path: Optional[str] = None,
+        original_pdb: Optional[str] = None,
+        assign_new_caps: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Rewrite residue numbers in a PDB back to the pre-pdb4amber / pre-cap ids.
+
+        ACE/NME (when *assign_new_caps* is True) get N-terminus − 1 and
+        C-terminus + 1 so they do not collide with restored protein residues.
+        Compose *cap_mapping_path* with the remum when capping ran first,
+        otherwise loop gaps (200 then 205) stay collapsed.
+
+        Returns:
+            Dict with ``residue_numbers_preserved``, ``output_file``,
+            ``remum_path``, ``cap_mapping_path``, and ``cap_assignments``.
+        """
+        return restore_original_residue_numbers_impl(
+            pdb_path,
+            remum_path=remum_path,
+            output_pdb=output_pdb,
+            cap_mapping_path=cap_mapping_path,
+            original_pdb=original_pdb,
+            assign_new_caps=assign_new_caps,
+        )
+
     def run_pdb4amber_with_cap_fix(
         self,
         input_pdb: str,
         output_pdb: str,
         fix_caps: bool = True,
         pdb4amber_options: Optional[Dict[str, Any]] = None,
+        preserve_residue_numbers: bool = False,
+        cap_mapping_path: Optional[str] = None,
+        original_pdb: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Run pdb4amber on a PDB file with optional ACE/NME cap HETATM fix.
@@ -903,13 +1186,22 @@ class PreparationManager:
         records to HETATM, which causes issues with downstream tools like
         packmol-memgen. This method optionally fixes that issue.
 
+        When *preserve_residue_numbers* is True, residue and chain ids are
+        rewritten back to the input (or pre-cap) numbers after pdb4amber.
+        Default is False so MD / tleap scripts keep sequential Amber numbering.
+
         Args:
             input_pdb: Path to input PDB file
             output_pdb: Path for output PDB file
             fix_caps: If True, automatically convert ACE/NME HETATM back to ATOM
                      after pdb4amber processing (default: True)
             pdb4amber_options: Optional dictionary of pdb4amber command-line options
-                              Example: {'reduce': True, 'dry': False}
+                              Example: {'reduce': True, 'dry': False}.
+                              ``reduce=True`` is dropped when the Amber ``reduce``
+                              binary is missing (tleap hydrogens stay if present).
+            preserve_residue_numbers: Restore original residue numbers after Amber
+            cap_mapping_path: Optional ``*_gatewizard_residue_mapping.txt`` from capping
+            original_pdb: Optional pre-cap PDB used to restore loop gaps
 
         Returns:
             Dictionary containing:
@@ -918,6 +1210,12 @@ class PreparationManager:
                 - 'hetatm_fixed': int - Number of HETATM records fixed (if fix_caps=True)
                 - 'stdout': str - pdb4amber stdout
                 - 'stderr': str - pdb4amber stderr
+                - 'residue_numbers_preserved': bool
+                - 'remum_path': Optional remum file path
+                - 'cap_assignments': dict of new ACE/NME ids when preserve is on
+                - 'reduce_used': bool - Whether ``--reduce`` was actually passed
+                - 'reduce_skipped': bool - ``--reduce`` requested but binary missing
+                - 'conect_records_removed': int - CONECT/LINK lines dropped first
 
         Raises:
             FileNotFoundError: If input file doesn't exist
@@ -935,61 +1233,109 @@ class PreparationManager:
         if not os.path.isfile(input_pdb):
             raise FileNotFoundError(f"Input PDB file not found: {input_pdb}")
 
-        # Prepare pdb4amber command
-        pdb4amber_exe = _resolve_pdb4amber_executable()
-        cmd = subprocess_argv_for_script(
-            pdb4amber_exe, ["-i", input_pdb, "-o", output_pdb]
+        pre_amber_snapshot = (
+            snapshot_pdb_residues(input_pdb) if preserve_residue_numbers else None
+        )
+        resolved_cap = cap_mapping_path or (
+            str(p) if (p := discover_cap_mapping_path(input_pdb)) else None
+        )
+        resolved_original = original_pdb or (
+            str(p) if (p := discover_original_pdb(input_pdb)) else None
         )
 
-        # Add optional arguments
-        if pdb4amber_options:
-            for key, value in pdb4amber_options.items():
+        options, reduce_skipped = apply_pdb4amber_reduce_option(pdb4amber_options)
+        reduce_used = bool(options.get("reduce"))
+
+        fd, cleaned_path = tempfile.mkstemp(suffix=".pdb", prefix="gw_pdb4amber_")
+        os.close(fd)
+        try:
+            strip_info = strip_conect_and_link_records(input_pdb, cleaned_path)
+            pdb4amber_exe = _resolve_pdb4amber_executable()
+            cmd = subprocess_argv_for_script(
+                pdb4amber_exe, ["-i", cleaned_path, "-o", output_pdb]
+            )
+
+            for key, value in options.items():
                 if isinstance(value, bool):
                     if value:
                         cmd.append(f"--{key}")
                 else:
                     cmd.extend([f"--{key}", str(value)])
 
-        logger.info(f"Running pdb4amber: {' '.join(cmd)}")
+            logger.info(f"Running pdb4amber: {' '.join(cmd)}")
 
-        try:
-            # Run pdb4amber
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, check=True, env=get_clean_env()
-            )
+            try:
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    env=get_clean_env(),
+                )
 
-            logger.info(f"pdb4amber completed successfully")
+                logger.info("pdb4amber completed successfully")
 
-            # Initialize result dictionary
-            result_dict = {
-                "success": True,
-                "output_file": output_pdb,
-                "hetatm_fixed": 0,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-            }
+                result_dict = {
+                    "success": True,
+                    "output_file": output_pdb,
+                    "hetatm_fixed": 0,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                    "residue_numbers_preserved": False,
+                    "remum_path": None,
+                    "cap_assignments": {},
+                    "reduce_used": reduce_used,
+                    "reduce_skipped": reduce_skipped,
+                    "conect_records_removed": int(strip_info.get("removed") or 0),
+                }
 
-            # Apply ACE/NME cap fix if requested
-            if fix_caps:
-                logger.info("Applying ACE/NME HETATM fix...")
-                hetatm_fixed = self._fix_cap_hetatm_records(output_pdb)
-                result_dict["hetatm_fixed"] = hetatm_fixed
+                if fix_caps:
+                    logger.info("Applying ACE/NME HETATM fix...")
+                    hetatm_fixed = self._fix_cap_hetatm_records(output_pdb)
+                    result_dict["hetatm_fixed"] = hetatm_fixed
 
-                if hetatm_fixed > 0:
-                    logger.info(f"Fixed {hetatm_fixed} HETATM records for ACE/NME caps")
-                else:
-                    logger.debug("No ACE/NME caps found requiring HETATM fix")
+                    if hetatm_fixed > 0:
+                        logger.info(
+                            f"Fixed {hetatm_fixed} HETATM records for ACE/NME caps"
+                        )
+                    else:
+                        logger.debug("No ACE/NME caps found requiring HETATM fix")
 
-            return result_dict
+                if preserve_residue_numbers:
+                    remum = find_pdb4amber_renum_path(output_pdb)
+                    restore_info = restore_original_residue_numbers_impl(
+                        output_pdb,
+                        remum_path=str(remum) if remum else None,
+                        output_pdb=output_pdb,
+                        cap_mapping_path=resolved_cap,
+                        original_pdb=resolved_original,
+                        assign_new_caps=True,
+                        pre_amber_snapshot=pre_amber_snapshot,
+                    )
+                    result_dict.update(restore_info)
+                    result_dict["success"] = True
+                    result_dict["output_file"] = output_pdb
+                    result_dict["reduce_used"] = reduce_used
+                    result_dict["reduce_skipped"] = reduce_skipped
+                    result_dict["conect_records_removed"] = int(
+                        strip_info.get("removed") or 0
+                    )
 
-        except subprocess.CalledProcessError as e:
-            error_msg = f"pdb4amber failed: {e.stderr}"
-            logger.error(error_msg)
-            raise PreparationError(error_msg)
-        except Exception as e:
-            error_msg = f"Error running pdb4amber: {str(e)}"
-            logger.error(error_msg)
-            raise PreparationError(error_msg)
+                return result_dict
+
+            except subprocess.CalledProcessError as e:
+                error_msg = f"pdb4amber failed: {e.stderr}"
+                logger.error(error_msg)
+                raise PreparationError(error_msg)
+            except Exception as e:
+                error_msg = f"Error running pdb4amber: {str(e)}"
+                logger.error(error_msg)
+                raise PreparationError(error_msg)
+        finally:
+            try:
+                os.remove(cleaned_path)
+            except OSError:
+                pass
 
     def _fix_cap_hetatm_records(self, pdb_file: str) -> int:
         """

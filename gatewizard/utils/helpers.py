@@ -617,7 +617,8 @@ def subprocess_argv_for_script(executable: str, args: Sequence[str]) -> list[str
 
 def get_clean_env() -> dict:
     """
-    Return a copy of ``os.environ`` with ``LD_LIBRARY_PATH`` sanitised.
+    Return a copy of ``os.environ`` with ``CONDA_PREFIX/bin`` on ``PATH``
+    and ``LD_LIBRARY_PATH`` sanitised.
 
     When multiple conda environments are activated (or stacked), libraries
     from foreign environments can leak into ``LD_LIBRARY_PATH`` and break
@@ -631,6 +632,13 @@ def get_clean_env() -> dict:
     conda_prefix = env.get("CONDA_PREFIX", "")
     if conda_prefix and not env.get("AMBERHOME"):
         env["AMBERHOME"] = conda_prefix
+    if conda_prefix:
+        conda_bin = os.path.join(conda_prefix, "bin")
+        if os.path.isdir(conda_bin):
+            path = env.get("PATH", "")
+            parts = [p for p in path.split(os.pathsep) if p] if path else []
+            parts = [p for p in parts if p != conda_bin]
+            env["PATH"] = os.pathsep.join([conda_bin, *parts])
     ld_path = env.get("LD_LIBRARY_PATH", "")
 
     if not ld_path:

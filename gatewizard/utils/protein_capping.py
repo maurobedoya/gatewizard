@@ -103,8 +103,11 @@ class ProteinCapper:
                 mapping_dir, residue_mapping, input_file, mapping_filename
             )
 
-            # Clean up temporary file
-            Path(temp_no_h_file).unlink(missing_ok=True)
+            # Clean up temporary file (Windows may still have it mapped)
+            try:
+                Path(temp_no_h_file).unlink(missing_ok=True)
+            except OSError:
+                pass
 
             logger.info(f"Protein capping completed. Output: {output_file}")
             logger.info(f"GateWizard mapping file created: {mapping_file_path}")
