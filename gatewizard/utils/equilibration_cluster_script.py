@@ -11,7 +11,7 @@ LOCAL_RUN_SCRIPT = "run_equilibration.sh"
 CLUSTER_RUN_SCRIPT = "run_equilibration_cluster.sh"
 
 _CLUSTER_HEADER = (
-    "# Cluster runner — use after module load; called by run_equilibration.slurm\n"
+    "# Cluster runner - use after module load; called by run_equilibration.slurm\n"
 )
 
 
@@ -179,7 +179,16 @@ def ensure_amber_cluster_runner_for_gpus(eq_dir: Path, *, gpus: int) -> bool:
     cluster_exe = cluster_engine_executable(
         "amber", local_amber, use_gpu=want_gpu
     )
-    num_gpus = max(1, int(gpus)) if want_gpu else max(1, int(compute.get("num_gpus") or 1))
+    num_gpus = max(1, int(gpus)) if want_gpu else 0
+    resolved_stages = [
+        dict(stage) if isinstance(stage, dict) else stage
+        for stage in (resolved_stages or [])
+    ]
+    if not want_gpu:
+        for stage in resolved_stages:
+            if isinstance(stage, dict):
+                stage["use_gpu"] = False
+                stage["num_gpus"] = 0
 
     manager = AmberEquilibrationManager(eq_dir)
     path = manager.generate_run_script(

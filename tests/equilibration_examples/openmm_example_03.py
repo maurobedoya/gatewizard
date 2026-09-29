@@ -55,7 +55,10 @@ print(f"Restraint files: {result['restraint_files']}")
 # ---------------------------------------------------------------------------
 print("\n=== Example 2: Ligand ABC restraints in stages 1-3 ===")
 raw_stages = OpenMMEquilibrationManager.get_default_stage_params()
-stage_objs = [EquilibrationStage(**s) for s in raw_stages]
+stage_objs = [
+    s if isinstance(s, EquilibrationStage) else EquilibrationStage(**s)
+    for s in raw_stages
+]
 
 # Apply 5 kcal/mol/Å² to ligand ABC in the first 3 stages; zero thereafter
 stage_dicts = []
@@ -97,11 +100,19 @@ sc_schedule = [5.0, 2.5, 1.0, 0.5, 0.0, 0.0]
 lig_schedule = [5.0, 5.0, 5.0, 0.0, 0.0, 0.0]
 
 stage_dicts3 = []
-for i, s in enumerate(raw_stages):
-    s["constraints"]["protein_backbone"] = bb_schedule[i]
-    s["constraints"]["protein_sidechain"] = sc_schedule[i]
-    s["constraints"]["ligand_ABC"] = lig_schedule[i]
-    stage_dicts3.append(s)
+for i, item in enumerate(raw_stages):
+    stage = (
+        item
+        if isinstance(item, EquilibrationStage)
+        else EquilibrationStage(**item)
+    )
+    constraints = {
+        **stage.constraints,
+        "protein_backbone": bb_schedule[i],
+        "protein_sidechain": sc_schedule[i],
+        "ligand_ABC": lig_schedule[i],
+    }
+    stage_dicts3.append(stage.replace(constraints=constraints).to_dict())
 
 result3 = manager.setup_openmm_equilibration(
     system_files=system_files,

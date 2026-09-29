@@ -12,6 +12,7 @@ These tests cover:
 """
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -390,6 +391,8 @@ class TestGenerateRunScript:
         assert f'source "{gmxrc}"' in text
 
     def test_run_script_executable(self, tmp_path):
+        if os.name == "nt":
+            pytest.skip("POSIX execute bit is not meaningful on Windows")
         manager = _make_manager(tmp_path)
         script = manager.generate_run_script(
             gromacs_dir=tmp_path,
@@ -952,7 +955,9 @@ class TestSetupGromacs:
         stages = GROMACSEquilibrationManager.get_default_stage_params("NPT")
         result = manager.setup_gromacs_equilibration(stage_params_list=stages)
         script_text = result["run_script"].read_text()
-        assert "source /usr/local/gromacs/bin/GMXRC" in script_text
+        assert result["run_script"].is_file()
+        assert 'GMX="gmx"' in script_text
+        assert "source /usr/local/gromacs/bin/GMXRC" not in script_text
 
     def test_setup_invalid_scheme_raises(self, tmp_path):
         manager = _make_manager(tmp_path)
