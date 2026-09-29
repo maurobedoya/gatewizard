@@ -416,9 +416,14 @@ def compute_orientation_transform(
             target_pts.append(atom.coord)
 
     if len(mobile_pts) < 3:
+        src_name = Path(source_pdb).name
+        ori_name = Path(oriented_pdb).name
         raise MemProError(
             "Could not match enough protein atoms between the loaded structure and "
-            f"the MemPro oriented PDB (matched {len(mobile_pts)} pairs)."
+            f"the MemPro oriented PDB (matched {len(mobile_pts)} pairs).\n"
+            f"Target structure: {src_name}\n"
+            f"MemPro oriented PDB: {ori_name}\n"
+            "Apply the orientation to the same structure that was used for the MemPro run."
         )
 
     return _kabsch_fit(np.array(mobile_pts), np.array(target_pts))
