@@ -4,6 +4,23 @@ Welcome to the GateWizard API documentation. This reference provides detailed in
 
 ## Available Modules
 
+### [Method dictionary](dictionary.md)
+A–Z index of public classes and functions. Click a name to jump to its heading.
+
+### [Structure Manager](structure_manager.md)
+Load, inspect, edit, and save PDB structures (selections, chain/residue edits, MemPrO orientation).
+
+**Key Features:**
+- Load from disk or PDB ID
+- MDAnalysis selections and criteria helpers
+- Rename / renumber / delete atoms
+- Secondary structure assignment
+- Apply a MemPrO orientation to the full system
+
+**Main Classes:** `StructureManager`
+
+---
+
 ### [Preparation Module](preparation.md)
 Module for predicting pKa values and managing protonation states in protein structures.
 
@@ -13,6 +30,8 @@ Module for predicting pKa values and managing protonation states in protein stru
 - Disulfide bond detection and application
 - Protein capping with ACE/NME groups
 - pH-dependent protein structure preparation
+- Apply Amber protonation names, then complete missing protein atoms (`complete_missing_heavy_atoms`, tleap templates including ASH/GLH protons); `pdb4amber --reduce` can rebuild hydrogens when `reduce` is installed
+- Restore original residue numbers after `pdb4amber` (`preserve_residue_numbers`; ACE/NME get N-terminus − 1 / C-terminus + 1)
 
 **Main Classes:** `PreparationManager`, `ProteinCapper`
 
@@ -94,7 +113,8 @@ Module for analyzing simulation results and monitoring equilibration progress.
 
 - **[Quick Reference](../QUICK_REFERENCE.md)** - Common patterns and snippets
 - **[User Guide](../user-guide.md)** - Step-by-step tutorials
-- **[Examples Directory](https://github.com/yourusername/gatewizard/tree/main/examples)** - Complete workflow examples
+- **[Method dictionary](dictionary.md)** - Clickable A–Z of public methods
+- **[Example scripts](https://github.com/maurobedoya/gatewizard/tree/main/tests)** - `tests/<module>_examples/` (included in these pages and run by pytest)
 
 ## Getting Help
 

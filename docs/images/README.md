@@ -6,7 +6,9 @@ This directory contains all images used in the GateWizard documentation.
 
 ```
 docs/images/
-├── splash.png              # Brand lockup (API README header; synced from GUI)
+├── splash.png              # Brand lockup (Home banner + API README; synced from GUI)
+├── logo.png                # White emblem for the MkDocs header (app-window-dark)
+├── favicon.png             # Browser tab icon (packaging emblem)
 ├── api/                    # Images for API reference documentation
 │   ├── propka_titration_curves.png
 │   ├── propka_pka_distribution.png

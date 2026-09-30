@@ -1,3 +1,7 @@
+<div class="gw-hero" markdown="0">
+  <img src="images/splash.png" alt="GateWizard — Membrane Proteins" class="gw-hero__logo" width="136" />
+</div>
+
 # GateWizard Documentation
 
 Welcome to GateWizard, a tool for membrane protein preparation and molecular dynamics analysis.
@@ -15,7 +19,8 @@ GateWizard is a Python-based GUI application designed to prepare protein membran
 - **Membrane System Building**: Automated membrane protein insertion and equilibration protocols
 - **Trajectory Analysis**: RMSD, RMSF, distances, and radius of gyration calculations
 - **Energy Analysis**: NAMD log file parsing and visualization
-- **Modern GUI**: Built with CustomTkinter for an intuitive, cross-platform user experience
+- **Python API**: `pip install gatewizard` for scripts and notebooks
+- **Desktop app**: Electron + Svelte in [gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui) (separate install)
 
 ## Quick Start
 

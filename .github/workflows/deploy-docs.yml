@@ -24,6 +24,9 @@ jobs:
         run: |
           pip install mkdocs-material
           pip install mkdocs-minify-plugin
+
+      - name: Check API dictionary is current
+        run: python scripts/gen_api_dictionary.py --check
       
       - name: Deploy to GitHub Pages
         run: mkdocs gh-deploy --force

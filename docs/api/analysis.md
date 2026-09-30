@@ -151,7 +151,7 @@ analyzer = EnergyAnalyzer(
 
 ---
 
-### Method: `plot_energy()`
+### plot_energy
 
 Create a 4-panel energy analysis plot with full customization.
 
@@ -200,7 +200,7 @@ plot_energy(
 
 ---
 
-### Method: `plot_properties()`
+### plot_properties
 
 Create custom plots of selected energy/thermodynamic properties with full control over visualization.
 
@@ -287,38 +287,7 @@ The same applies to all properties - use whatever format is most convenient for 
 Simplest energy analysis using `plot_energy()` - 4-panel plot with default settings.
 
 ```python
-from pathlib import Path
-from gatewizard.utils.namd_analysis import EnergyAnalyzer
-
-# Get the directory where this script is located
-script_dir = Path(__file__).parent
-data_dir = script_dir / "equilibration_folder"
-
-# Multiple log files from equilibration_folder
-log_files = [
-    data_dir / "step1_equilibration.log",
-    data_dir / "step2_equilibration.log",
-    data_dir / "step3_equilibration.log"
-]
-
-# Initialize analyzer with custom time for each file (in nanoseconds)
-analyzer = EnergyAnalyzer(
-    [str(f) for f in log_files],
-    file_times={
-        "step1_equilibration.log": 0.1,  # 100 ps
-        "step2_equilibration.log": 0.1,  # 100 ps
-        "step3_equilibration.log": 0.1   # 100 ps
-    }
-)
-
-# Generate comprehensive 4-panel energy plot
-analyzer.plot_energy(target_temperature=300,    # 300 K
-                     target_pressure=1.01325,   # 1.01325 atm (1 bar)
-                     time_units="ps",
-                     save="energy_analysis_example_01.png")
-
-print(f"Energy analysis complete!")
-print(f"Plot saved: energy_analysis_example_01.png")
+--8<-- "tests/analysis_examples/analysis_example_01.py"
 ```
 
 **Output figure:**
@@ -364,7 +333,7 @@ analyzer.plot_properties(properties="TEMP", time_units="ns")
 
 ---
 
-### Method: `get_available_properties()`
+### get_available_properties
 
 Get list of all plottable properties available in the loaded log file(s).
 
@@ -377,23 +346,7 @@ get_available_properties() -> List[str]
 ### Example 2: Get available properties
 
 ```python
-from pathlib import Path
-from gatewizard.utils.namd_analysis import EnergyAnalyzer
-
-# Get the directory where this script is located
-script_dir = Path(__file__).parent
-
-# Path to log file in equilibration_folder
-log_file = script_dir / "equilibration_folder" / "step1_equilibration.log"
-
-# Initialize energy analyzer
-analyzer = EnergyAnalyzer(log_file)
-props = analyzer.get_available_properties()
-print(f"Can plot: {', '.join(props)}")
-# Output: Can plot: Total Energy, Potential Energy, Kinetic Energy, 
-# Electrostatic Energy, Van der Waals Energy, Bond Energy, 
-# Angle Energy, Dihedral Energy, Improper Energy, Pressure, Volume
-
+--8<-- "tests/analysis_examples/analysis_example_02.py"
 ```
 
 ---
@@ -401,51 +354,7 @@ print(f"Can plot: {', '.join(props)}")
 
 ### Example 3: Individual energy plots
 ```python
-from pathlib import Path
-from gatewizard.utils.namd_analysis import EnergyAnalyzer
-
-# Get the directory where this script is located
-script_dir = Path(__file__).parent
-data_dir = script_dir / "equilibration_folder"
-
-# Multiple log files from equilibration_folder
-log_files = [
-    data_dir / "step1_equilibration.log",
-    data_dir / "step2_equilibration.log",
-    data_dir / "step3_equilibration.log",
-    data_dir / "step4_equilibration.log",
-    data_dir / "step5_equilibration.log",
-    data_dir / "step6_equilibration.log",
-    data_dir / "step7_production.log"
-]
-
-# Initialize analyzer with custom time for each file (in nanoseconds)
-analyzer = EnergyAnalyzer(
-    [str(f) for f in log_files],
-    file_times={
-        "step1_equilibration.log": 0.1,  # 100 ps
-        "step2_equilibration.log": 0.1,  # 100 ps
-        "step3_equilibration.log": 0.1,  # 100 ps
-        "step4_equilibration.log": 0.1,  # 100 ps
-        "step5_equilibration.log": 0.1,  # 100 ps
-        "step6_equilibration.log": 0.1,  # 100 ps
-        "step7_production.log": 0.1,     # 100 ps
-    }
-)
-
-# Plot specific energy properties
-analyzer.plot_properties(
-    properties=["bond energy", "angle energy", "dihedral energy"],
-    energy_units="kcal/mol",
-    time_units="ps",
-    bg_color = "#ffffff",
-    fig_bg_color = "#FFFFFF",
-    save="energy_analysis_example_03.png",
-    dpi=300,
-)
-
-print(f"Energy properties plot complete!")
-print(f"Plot saved: energy_analysis_example_03.png")
+--8<-- "tests/analysis_examples/analysis_example_03.py"
 ```
 
 **Example Output:**
@@ -456,7 +365,7 @@ print(f"Plot saved: energy_analysis_example_03.png")
 
 ---
 
-### Method: `get_statistics()`
+### get_statistics
 
 Get statistical summary of all energy components.
 
@@ -484,37 +393,7 @@ get_statistics() -> Dict[str, Dict[str, float]]
 ### Example 4: Individual energy plots
 
 ```python
-from pathlib import Path
-from gatewizard.utils.namd_analysis import EnergyAnalyzer
-
-# Get the directory where this script is located
-script_dir = Path(__file__).parent
-
-# Path to log file in equilibration_folder
-log_file = script_dir / "equilibration_folder" / "step2_equilibration.log"
-
-# Initialize energy analyzer
-analyzer = EnergyAnalyzer(log_file)
-
-stats = analyzer.get_statistics()
-
-# Temperature
-temp = stats['temp']
-print(f"Temperature: {temp['mean']:.1f} ± {temp['std']:.1f} K")
-print(f"  Range: {temp['min']:.1f} - {temp['max']:.1f} K")
-
-# Energy
-energy = stats['bond']
-print(f"Bond Energy: {energy['mean']:.0f} kcal/mol")
-print(f"  Final: {energy['final']:.0f} kcal/mol")
-print(f"  Convergence: {abs(energy['final'] - energy['mean']):.0f} kcal/mol")
-
-# Output: 
-# Temperature: 303.6 ± 2.1 K
-#   Range: 299.4 - 306.3 K
-# Bond Energy: 2080 kcal/mol
-#   Final: 2097 kcal/mol
-#   Convergence: 17 kcal/mol
+--8<-- "tests/analysis_examples/analysis_example_04.py"
 ```
 
 ---
@@ -572,7 +451,7 @@ analyzer = TrajectoryAnalyzer(
 
 ---
 
-### Method: `calculate_rmsd()`
+### calculate_rmsd
 
 Calculate RMSD for selected atoms.
 
@@ -605,7 +484,7 @@ print(f"RMSD range: {data['rmsd'].min():.2f} - {data['rmsd'].max():.2f} Å")
 
 ---
 
-### Method: `plot_rmsd()`
+### plot_rmsd
 
 Plot RMSD with full customization options including line styling, threshold highlighting, and convergence line control.
 
@@ -694,59 +573,12 @@ plot_rmsd(
 ### Example 5: RMSD Plot
 
 ```python
-from pathlib import Path
-from gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer
-
-# Get the directory where this script is located
-script_dir = Path(__file__).parent
-data_dir = script_dir / "equilibration_folder"
-
-# Path to topology in equilibration_folder
-topology_file = data_dir / "system.pdb"
-
-# Multiple trajectory files from equilibration_folder
-trajectory_files = [
-    data_dir / "step1_equilibration.dcd",
-    data_dir / "step2_equilibration.dcd",
-    data_dir / "step3_equilibration.dcd"
-]
-
-# Initialize analyzer with custom time for each file (in nanoseconds)
-analyzer = TrajectoryAnalyzer(
-    topology_file,
-    trajectory_files,
-    file_times={
-        "step1_equilibration.dcd": 0.1,  # 100 ps
-        "step2_equilibration.dcd": 0.1,  # 100 ps
-        "step3_equilibration.dcd": 0.1   # 100 ps
-    }
-)
-
-# Plot RMSD across all trajectories
-analyzer.plot_rmsd(
-    selection="protein and backbone",
-    time_units="ns",
-    bg_color="white",
-    fig_bg_color="white",
-    text_color="black",
-    show_grid=False,
-    line_color="#1f77b4",
-    line_width=2,
-    #title=" ",
-    save="trajectory_analysis_example_05.png",
-    dpi=300,
-    # other settings...
-)
-
-
-print(f"Multi-file trajectory analysis complete!")
-print(f"Plot saved: trajectory_analysis_example_05.png")
-print(f"Total simulation time: 300 ps")
+--8<-- "tests/analysis_examples/analysis_example_05.py"
 ```
 
 ---
 
-### Method: `calculate_rmsf()`
+### calculate_rmsf
 
 Calculate RMSF (Root Mean Square Fluctuation) for selected atoms.
 
@@ -770,50 +602,12 @@ calculate_rmsf(
 ### Example 6: RMSF Calculation
 
 ```python
-from pathlib import Path
-from gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer
-
-# Get the directory where this script is located
-script_dir = Path(__file__).parent
-data_dir = script_dir / "equilibration_folder"
-
-# Path to topology in equilibration_folder
-topology_file = data_dir / "system.pdb"
-
-# Multiple trajectory files from equilibration_folder
-trajectory_files = [
-    data_dir / "step1_equilibration.dcd",
-    data_dir / "step2_equilibration.dcd",
-    data_dir / "step3_equilibration.dcd"
-]
-
-# Initialize analyzer with custom time for each file (in nanoseconds)
-analyzer = TrajectoryAnalyzer(
-    topology_file,
-    trajectory_files,
-    file_times={
-        "step1_equilibration.dcd": 0.1,  # 100 ps
-        "step2_equilibration.dcd": 0.1,  # 100 ps
-        "step3_equilibration.dcd": 0.1   # 100 ps
-    }
-)
-
-# Calculate RMSF for alpha carbon atoms
-data = analyzer.calculate_rmsf("protein and name CA")
-print(f"Residues analyzed: {len(data['resids'])}")
-print(f"RMSF range: {data['rmsf'].min():.2f} - {data['rmsf'].max():.2f} Å")
-print(f"Mean RMSF: {data['rmsf'].mean():.2f} Å")
-
-# Output:
-# Residues analyzed: 26
-# RMSF range: 0.09 - 0.15 Å
-# Mean RMSF: 0.12 Å
-
+--8<-- "tests/analysis_examples/analysis_example_06.py"
 ```
 
 ---
 
-### Method: `plot_rmsf()`
+### plot_rmsf
 
 Plot RMSF with full customization including line styling, residue labeling, and flexibility highlighting.
 
@@ -896,62 +690,7 @@ plot_rmsf(
 ### Example 7: RMSF Plotting
 
 ```python
-from pathlib import Path
-from gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer
-
-# Get the directory where this script is located
-script_dir = Path(__file__).parent
-data_dir = script_dir / "equilibration_folder"
-
-# Path to topology in equilibration_folder
-topology_file = data_dir / "system.pdb"
-
-# Multiple trajectory files from equilibration_folder
-trajectory_files = [
-    data_dir / "step1_equilibration.dcd",
-    data_dir / "step2_equilibration.dcd",
-    data_dir / "step3_equilibration.dcd",
-    data_dir / "step4_equilibration.dcd",
-    data_dir / "step5_equilibration.dcd",  
-    data_dir / "step6_equilibration.dcd",
-    data_dir / "step7_production.dcd",
-]
-
-# Initialize analyzer with custom time for each file (in nanoseconds)
-analyzer = TrajectoryAnalyzer(
-    topology_file,
-    trajectory_files,
-    file_times={
-        "step1_equilibration.dcd": 0.1,  # 100 ps
-        "step2_equilibration.dcd": 0.1,  # 100 ps
-        "step3_equilibration.dcd": 0.1,   # 100 ps
-        "step4_equilibration.dcd": 0.1,  # 100 ps
-        "step5_equilibration.dcd": 0.1,  # 100 ps
-        "step6_equilibration.dcd": 0.1,  # 100 ps
-        "step7_production.dcd": 0.1      # 100 ps
-    }
-)
-
-# Plot RMSF across all trajectories
-analyzer.plot_rmsf(
-    selection="protein and name C",
-    xaxis_type= "residue_type_number",
-    residue_name_format="triple",
-    label_frequency="all",
-    highlight_threshold=0.6,
-    highlight_color="red",
-    bg_color="white",
-    fig_bg_color="white",
-    text_color="black",
-    show_grid=False,
-    line_color="#1f77b4",
-    line_width=2,
-    #title=" ",
-    save="trajectory_analysis_example_07.png",
-    dpi=300,
-    # other settings...
-)
-
+--8<-- "tests/analysis_examples/analysis_example_07.py"
 ```
 
 **Output figure:**
@@ -962,7 +701,7 @@ analyzer.plot_rmsf(
 
 ---
 
-### Method: `calculate_distances()`
+### calculate_distances
 
 Calculate distances between atom selections over time.
 
@@ -996,7 +735,7 @@ for name, data in results.items():
 
 ---
 
-### Method: `plot_distances()`
+### plot_distances
 
 Plot distances with full customization including line styling.
 
@@ -1058,55 +797,7 @@ plot_distances(
 ### Example 8: Distances
 
 ```python
-from pathlib import Path
-from gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer
-
-# Get the directory where this script is located
-script_dir = Path(__file__).parent
-data_dir = script_dir / "equilibration_folder"
-
-# Path to topology in equilibration_folder
-topology_file = data_dir / "system.pdb"
-
-# Multiple trajectory files from equilibration_folder
-trajectory_files = [
-    data_dir / "step1_equilibration.dcd",
-    data_dir / "step2_equilibration.dcd",
-    data_dir / "step3_equilibration.dcd",
-    data_dir / "step4_equilibration.dcd",
-    data_dir / "step5_equilibration.dcd",  
-    data_dir / "step6_equilibration.dcd",
-    data_dir / "step7_production.dcd",
-]
-
-# Initialize analyzer with custom time for each file (in nanoseconds)
-analyzer = TrajectoryAnalyzer(
-    topology_file,
-    trajectory_files,
-    file_times={
-        "step1_equilibration.dcd": 0.1,  # 100 ps
-        "step2_equilibration.dcd": 0.1,  # 100 ps
-        "step3_equilibration.dcd": 0.1,   # 100 ps
-        "step4_equilibration.dcd": 0.1,  # 100 ps
-        "step5_equilibration.dcd": 0.1,  # 100 ps
-        "step6_equilibration.dcd": 0.1,  # 100 ps
-        "step7_production.dcd": 0.1      # 100 ps
-    }
-)
-# Calculate and plot distances between selections
-analyzer.plot_distances(
-    selections={
-        "gate_distance": ("resid 1 and name C", "resid 28 and name C"),
-        "domain_distance": ("resid 1-2 and name C", "resid 9-10 and name C")
-    },
-    bg_color="white",
-    fig_bg_color="white",
-    text_color="black",
-    line_width=3,
-    save="trajectory_analysis_example_08_distances.png"
-)
-
-print(f"Distances plot saved: trajectory_analysis_example_08_distances.png")
+--8<-- "tests/analysis_examples/analysis_example_08.py"
 ```
 
 **Output figure:**
@@ -1118,7 +809,7 @@ print(f"Distances plot saved: trajectory_analysis_example_08_distances.png")
 
 ---
 
-### Method: `calculate_radius_of_gyration()`
+### calculate_radius_of_gyration
 
 Calculate radius of gyration over trajectory.
 
@@ -1146,7 +837,7 @@ print(f"Mean Rg: {data['rg'].mean():.2f} Å")
 
 ---
 
-### Method: `plot_radius_of_gyration()`
+### plot_radius_of_gyration
 
 Plot radius of gyration with full customization including line styling and convergence control.
 
@@ -1213,62 +904,17 @@ plot_radius_of_gyration(
 ### Example 9: Radius of gyration
 
 ```python
-from pathlib import Path
-from gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer
-
-# Get the directory where this script is located
-script_dir = Path(__file__).parent
-data_dir = script_dir / "equilibration_folder"
-
-# Path to topology in equilibration_folder
-topology_file = data_dir / "system.pdb"
-
-# Multiple trajectory files from equilibration_folder
-trajectory_files = [
-    data_dir / "step1_equilibration.dcd",
-    data_dir / "step2_equilibration.dcd",
-    data_dir / "step3_equilibration.dcd",
-    data_dir / "step4_equilibration.dcd",
-    data_dir / "step5_equilibration.dcd",  
-    data_dir / "step6_equilibration.dcd",
-    data_dir / "step7_production.dcd",
-]
-
-# Initialize analyzer with custom time for each file (in nanoseconds)
-analyzer = TrajectoryAnalyzer(
-    topology_file,
-    trajectory_files,
-    file_times={
-        "step1_equilibration.dcd": 0.1,  # 100 ps
-        "step2_equilibration.dcd": 0.1,  # 100 ps
-        "step3_equilibration.dcd": 0.1,   # 100 ps
-        "step4_equilibration.dcd": 0.1,  # 100 ps
-        "step5_equilibration.dcd": 0.1,  # 100 ps
-        "step6_equilibration.dcd": 0.1,  # 100 ps
-        "step7_production.dcd": 0.1      # 100 ps
-    }
-)
-# Calculate and plot radius of gyration of a selection
-analyzer.plot_radius_of_gyration(
-    selection="protein",
-    bg_color="white",
-    fig_bg_color="white",
-    text_color="black",
-    line_width=3,
-    save="trajectory_analysis_example_09_rdgyr.png",
-    dpi=300,
-)
-
+--8<-- "tests/analysis_examples/analysis_example_09.py"
 ```
 
 ---
 
-### Method: `plot_comprehensive()`
+### plot_summary
 
 Create a 4-panel analysis plot with RMSD, RMSF, Rg, and statistics.
 
 ```python
-plot_comprehensive(
+plot_summary(
     save: Optional[str] = None,
     show: bool = False,
     figsize: tuple = (14, 10),
@@ -1285,7 +931,7 @@ plot_comprehensive(
 
 **Example:**
 ```python
-analyzer.plot_comprehensive(save="comprehensive_analysis.png")
+analyzer.plot_summary(save="comprehensive_analysis.png")
 ```
 
 ---
@@ -1505,7 +1151,7 @@ BilayerTrajectoryAnalyzer(
 
 Same topology/trajectory interface as `TrajectoryAnalyzer`. Leaflet assignment is performed automatically before each analysis.
 
-### Method: `calculate_area_per_lipid()`
+### calculate_area_per_lipid
 
 Calculate the area per lipid. Leaflet assignment uses [lipyphilic `AssignLeaflets`](https://lipyphilic.readthedocs.io/).
 
@@ -1551,7 +1197,7 @@ calculate_area_per_lipid(
 
 See [Example 14: Area per Lipid](#example-14-area-per-lipid).
 
-### Method: `calculate_membrane_thickness()`
+### calculate_membrane_thickness
 
 Calculate bilayer thickness from interleaflet headgroup distances ([lipyphilic `MembThickness`](https://lipyphilic.readthedocs.io/en/latest/reference/analysis/memb_thickness.html)).
 
@@ -1583,11 +1229,11 @@ calculate_membrane_thickness(
 
 See [Example 15: Membrane Thickness](#example-15-membrane-thickness).
 
-### Method: `plot_area_per_lipid()` / `plot_membrane_thickness()`
+### plot_area_per_lipid / `plot_membrane_thickness()`
 
 Generate time-series plots with the same styling options as `TrajectoryAnalyzer` plots. See Examples 14 and 15.
 
-### Function: `run_bilayer_analysis()`
+### run_bilayer_analysis
 
 JSON-serializable API for GUI and downstream consumers.
 
@@ -1651,146 +1297,7 @@ Complete working examples are available in [Analysis examples](https://github.co
 Complete RMSD customization with dark themes showing **all available plot options**.
 
 ```python
-from pathlib import Path
-from gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer
-
-# Get the directory where this script is located
-script_dir = Path(__file__).parent
-data_dir = script_dir / "equilibration_folder"
-
-# ============================================================================
-# Dark Theme RMSD Analysis - Full Customization
-# ============================================================================
-
-topology_file = data_dir / "system.pdb"
-# Multiple trajectory files from equilibration_folder
-trajectory_files = [
-    data_dir / "step1_equilibration.dcd",
-    data_dir / "step2_equilibration.dcd",
-    data_dir / "step3_equilibration.dcd",
-    data_dir / "step4_equilibration.dcd",
-]
-
-# Initialize analyzer with custom time for each file (in nanoseconds)
-analyzer = TrajectoryAnalyzer(
-    topology_file,
-    trajectory_files,
-    file_times={
-        "step1_equilibration.dcd": 0.1,  # 100 ps
-        "step2_equilibration.dcd": 0.1,  # 100 ps
-        "step3_equilibration.dcd": 0.1,   # 100 ps
-        "step4_equilibration.dcd": 0.1,  # 100 ps
-    }
-)
-
-# RMSD plot with full dark theme customization
-analyzer.plot_rmsd(
-    selection="protein and backbone",
-    reference_frame=0,
-    align=True,
-    distance_units="Å",
-    time_units="ps",
-    line_color="#00d9ff",        # Bright cyan
-    line_width=2.0,
-    line_style="-",
-    bg_color="#1a1a2e",          # Dark blue-black
-    fig_bg_color="#16213e",      # Darker border
-    text_color="#eee",           # Light gray
-    show_grid=True,
-    xlim=None,
-    ylim=None,
-    title="Dark Theme RMSD - Full Customization",
-    xlabel="Time (ps)",
-    ylabel="RMSD (Å)",
-    highlight_threshold=None,
-    highlight_color="orange",
-    highlight_alpha=0.2,
-    show_convergence=True,
-    convergence_color="#ff006e",  # Magenta
-    convergence_style="--",
-    convergence_width=2.0,
-    hlines=None,
-    hline_colors=None,
-    hline_styles=None,
-    hline_widths=None,
-    vlines=None,
-    vline_colors=None,
-    vline_styles=None,
-    vline_widths=None,
-    save="dark_theme_rmsd_example_10.png",
-    show=False,
-    figsize=(12, 7),
-    dpi=300
-)
-
-print(f"Dark theme RMSD plot saved: dark_theme_rmsd_example_10.png")
-
-# ============================================================================
-# Dark Theme RMSD - With Threshold and Reference Lines
-# ============================================================================
-
-analyzer.plot_rmsd(
-    selection="protein and backbone",
-    align=True,
-    distance_units="Å",
-    time_units="ps",
-    line_color="#7fff00",        # Chartreuse
-    line_width=1.8,
-    line_style="-",
-    bg_color="#0d1117",          # GitHub dark
-    fig_bg_color="#010409",
-    text_color="#c9d1d9",
-    show_grid=True,
-    title="Dark Theme RMSD - With Threshold and Reference Lines",
-    xlabel="Time (ps)",
-    ylabel="RMSD (Å)",
-    highlight_threshold=0.25,     # Highlight regions > 0.25 Å
-    highlight_color="#ff6b6b",   # Red highlight
-    highlight_alpha=0.5,
-    show_convergence=True,
-    convergence_color="#ffd700",  # Gold
-    convergence_style="-.",
-    convergence_width=1.5,
-    hlines=[0.1, 0.2, 0.25],      # Horizontal reference lines
-    hline_colors=["#4ecdc4", "#95e1d3", "#ff6b6b"],  # Teal to red gradient
-    hline_styles=[":", ":", ":"],
-    hline_widths=[1.0, 1.0, 1.0],
-    save="dark_theme_rmsd_with_lines_example_10.png",
-    figsize=(12, 7),
-    dpi=300
-)
-
-print(f"Dark theme RMSD with lines saved: dark_theme_rmsd_with_lines_example_10.png")
-
-# ============================================================================
-# Dark Theme RMSD - Minimal Style
-# ============================================================================
-
-analyzer.plot_rmsd(
-    selection="protein and backbone",
-    align=True,
-    distance_units="Å",
-    time_units="ps",
-    line_color="#ffffff",        # Pure white line
-    line_width=1.5,
-    line_style="-",
-    bg_color="#000000",          # Pure black
-    fig_bg_color="#000000",
-    text_color="#ffffff",
-    show_grid=False,             # No grid for minimal look
-    title="",                    # No title
-    show_convergence=False,      # No convergence line
-    save="dark_theme_rmsd_minimal_example_10.png",
-    figsize=(10, 6),
-    dpi=300
-)
-
-print(f"Dark theme RMSD minimal saved: dark_theme_rmsd_minimal_example_10.png")
-
-print(f"\nAll dark theme RMSD figures created with:")
-print(f"  - Custom dark backgrounds")
-print(f"  - Full customization options")
-print(f"  - High resolution (300 DPI)")
+--8<-- "tests/analysis_examples/analysis_example_10.py"
 ```
 
 **Output figures** Three dark-themed RMSD plots:
@@ -1854,7 +1361,7 @@ OpenMMLogAnalyzer(
 
 ---
 
-### Method: get_statistics()
+### get_statistics
 
 ```python
 analyzer.get_statistics() -> Dict[str, Dict[str, float]]
@@ -1867,7 +1374,7 @@ that contains data.
 
 ---
 
-### Method: plot_energy()
+### plot_energy
 
 ```python
 analyzer.plot_energy(
@@ -1900,7 +1407,7 @@ volume / density.
 
 ---
 
-### Method: plot_properties()
+### plot_properties
 
 ```python
 analyzer.plot_properties(
@@ -1939,54 +1446,7 @@ non-empty numeric columns are plotted automatically.
 ### Example 11: Basic Energy Analysis
 
 ```python
-from pathlib import Path
-from gatewizard.utils.openmm_analysis import OpenMMLogAnalyzer
-
-# Get the directory where this script is located
-script_dir = Path(__file__).parent
-data_dir = script_dir / "equilibration_folder"
-
-# Single OpenMM log file (StateDataReporter output)
-log_file = data_dir / "step7_production.log"
-
-# Initialize the analyzer
-analyzer = OpenMMLogAnalyzer(log_file)
-
-# ------------------------------------------------------------------
-# 1. Get statistics for all properties
-# ------------------------------------------------------------------
-stats = analyzer.get_statistics()
-
-for key, s in stats.items():
-    print(
-        f"  {key:20s}  mean={s['mean']:12.3f}  std={s['std']:10.3f}"
-        f"  min={s['min']:12.3f}  max={s['max']:12.3f}"
-    )
-# → All values in kJ/mol (energies) or native units (temperature in K,
-#   volume in nm³, density in g/mL)
-
-# ------------------------------------------------------------------
-# 2. 2×2 summary plot: total energy, potential + kinetic, temperature,
-#    volume / density
-# ------------------------------------------------------------------
-analyzer.plot_energy(
-    save="energy_summary_example_11.png",
-    show=False,
-    target_temperature=303.15,
-)
-
-print("Energy summary saved: energy_summary_example_11.png")
-
-# ------------------------------------------------------------------
-# 3. Same plot converted to kcal/mol
-# ------------------------------------------------------------------
-analyzer.plot_energy(
-    energy_units="kcal/mol",
-    save="energy_summary_kcal_example_11.png",
-    show=False,
-)
-
-print("Energy summary (kcal/mol) saved: energy_summary_kcal_example_11.png")
+--8<-- "tests/analysis_examples/analysis_example_11.py"
 ```
 
 ---
@@ -1994,63 +1454,7 @@ print("Energy summary (kcal/mol) saved: energy_summary_kcal_example_11.png")
 ### Example 12: Multi-Stage Analysis
 
 ```python
-from pathlib import Path
-from gatewizard.utils.openmm_analysis import OpenMMLogAnalyzer
-
-script_dir = Path(__file__).parent
-data_dir = script_dir / "equilibration_folder"
-
-# Pass a list of log files — time axis is concatenated automatically
-log_files = [
-    data_dir / "step1_equilibration.log",
-    data_dir / "step2_equilibration.log",
-    data_dir / "step3_equilibration.log",
-    data_dir / "step4_equilibration.log",
-    data_dir / "step5_equilibration.log",
-    data_dir / "step6_equilibration.log",
-    data_dir / "step7_production.log",
-]
-
-# Provide real stage durations (ns) to override the "Time (ps)" column
-# — useful when logs lack the time column or have restarted counters.
-file_times = {
-    "step1_equilibration.log": 0.125,
-    "step2_equilibration.log": 0.125,
-    "step3_equilibration.log": 0.125,
-    "step4_equilibration.log": 0.25,
-    "step5_equilibration.log": 0.25,
-    "step6_equilibration.log": 0.5,
-    "step7_production.log": 50.0,
-}
-
-analyzer = OpenMMLogAnalyzer(log_files, file_times=file_times)
-
-# ------------------------------------------------------------------
-# 1. Print key statistics
-# ------------------------------------------------------------------
-stats = analyzer.get_statistics()
-
-print("=== Multi-stage OpenMM analysis ===")
-for key in ("potential", "kinetic", "total", "temp", "volume", "density"):
-    if key not in stats:
-        continue
-    s = stats[key]
-    print(
-        f"  {key:12s}  mean={s['mean']:12.3f}"
-        f"  initial={s['initial']:12.3f}  final={s['final']:12.3f}"
-    )
-
-# ------------------------------------------------------------------
-# 2. Energy summary over the full trajectory
-# ------------------------------------------------------------------
-analyzer.plot_energy(
-    save="energy_multistage_example_12.png",
-    show=False,
-    title="Full equilibration + production (51.375 ns)",
-    target_temperature=303.15,
-)
-
-print("Saved: energy_multistage_example_12.png")
+--8<-- "tests/analysis_examples/analysis_example_12.py"
 ```
 
 ---
@@ -2058,46 +1462,7 @@ print("Saved: energy_multistage_example_12.png")
 ### Example 13: Custom Property Plots
 
 ```python
-from pathlib import Path
-from gatewizard.utils.openmm_analysis import OpenMMLogAnalyzer
-
-script_dir = Path(__file__).parent
-data_dir = script_dir / "equilibration_folder"
-
-log_file = data_dir / "step7_production.log"
-analyzer = OpenMMLogAnalyzer(log_file)
-
-# ------------------------------------------------------------------
-# 1. Plot all available properties (auto-detected)
-# ------------------------------------------------------------------
-analyzer.plot_properties(
-    save="all_properties_example_13.png",
-    show=False,
-)
-print("All-properties plot saved: all_properties_example_13.png")
-
-# ------------------------------------------------------------------
-# 2. Plot only energies, converted to kcal/mol
-# ------------------------------------------------------------------
-analyzer.plot_properties(
-    properties=["potential", "kinetic", "total"],
-    energy_units="kcal/mol",
-    save="energies_kcal_example_13.png",
-    show=False,
-    colors=["#61afef", "#98c379", "#e06c75"],
-)
-print("Energy plots (kcal/mol) saved: energies_kcal_example_13.png")
-
-# ------------------------------------------------------------------
-# 3. Temperature and density as separate figures
-# ------------------------------------------------------------------
-analyzer.plot_properties(
-    properties=["temp", "density"],
-    separate_plots=True,
-    save="temp_density_example_13",
-    show=False,
-)
-print("Separate figures saved: temp_density_example_13_temp.png, temp_density_example_13_density.png")
+--8<-- "tests/analysis_examples/analysis_example_13.py"
 ```
 
 ---
@@ -2107,67 +1472,7 @@ print("Separate figures saved: temp_density_example_13_temp.png, temp_density_ex
 Calculate and plot the area per lipid using the default **FATSLiM** CLI (`exclude_sel="protein"` → interacting group). Requires companion `fatslim` — see `scripts/install_fatslim_env.sh`. For the experimental freud path use `apl_method="evapl"`.
 
 ```python
-from pathlib import Path
-
-from gatewizard.utils.lipid_bilayer_analysis import BilayerTrajectoryAnalyzer, run_bilayer_analysis
-
-script_dir = Path(__file__).parent
-data_dir = script_dir / "equilibration_folder"
-
-topology_file = data_dir / "system.pdb"
-trajectory_files = [
-    data_dir / "step1_equilibration.dcd",
-    data_dir / "step2_equilibration.dcd",
-    data_dir / "step3_equilibration.dcd",
-]
-
-# POPC headgroup phosphorus atoms in the AMBER lipid parametrization
-LIPID_SEL = "resname PC and name P31"
-
-file_times = {
-    "step1_equilibration.dcd": 0.1,  # 0.1 ns
-    "step2_equilibration.dcd": 0.1,  # 0.1 ns
-    "step3_equilibration.dcd": 0.1,  # 0.1 ns
-}
-
-# ------------------------------------------------------------------
-# 1. Class API — calculate area per lipid
-# ------------------------------------------------------------------
-analyzer = BilayerTrajectoryAnalyzer(
-    topology_file,
-    trajectory_files,
-    file_times=file_times,
-)
-data = analyzer.calculate_area_per_lipid(lipid_sel=LIPID_SEL)
-
-mean_area = float(data["mean_area_per_lipid"].mean())
-print(f"Mean area per lipid: {mean_area:.1f} Å²")
-print(f"Lipids analysed: {len(data['resids'])}")
-print(f"Frames analysed: {data['areas'].shape[1]}")
-
-# ------------------------------------------------------------------
-# 2. Plot mean area per lipid time series
-# ------------------------------------------------------------------
-analyzer.plot_area_per_lipid(
-    lipid_sel=LIPID_SEL,
-    series="mean",
-    time_units="ns",
-    save="area_per_lipid_example_14.png",
-    show=False,
-)
-print("Plot saved: area_per_lipid_example_14.png")
-
-# ------------------------------------------------------------------
-# 3. JSON API — run_bilayer_analysis()
-# ------------------------------------------------------------------
-result = run_bilayer_analysis(
-    topology_file,
-    trajectory_files,
-    analysis_type="area_per_lipid",
-    lipid_sel=LIPID_SEL,
-    file_times=file_times,
-)
-print(f"JSON API mean area: {result['stats']['mean']:.1f} Å²")
+--8<-- "tests/analysis_examples/analysis_example_14.py"
 ```
 
 For other force fields, adjust `lipid_sel` to match your headgroup atoms, e.g. `"name GL1 GL2 ROH"` (MARTINI) or `"name PO4"` (all-atom CHARMM).
@@ -2179,72 +1484,109 @@ For other force fields, adjust `lipid_sel` to match your headgroup atoms, e.g. `
 Calculate and plot bilayer thickness as the mean interleaflet headgroup distance ([lipyphilic `MembThickness`](https://lipyphilic.readthedocs.io/en/latest/reference/analysis/memb_thickness.html)) on the same equilibration trajectories.
 
 ```python
-from pathlib import Path
-
-from gatewizard.utils.lipid_bilayer_analysis import BilayerTrajectoryAnalyzer, run_bilayer_analysis
-
-script_dir = Path(__file__).parent
-data_dir = script_dir / "equilibration_folder"
-
-topology_file = data_dir / "system.pdb"
-trajectory_files = [
-    data_dir / "step1_equilibration.dcd",
-    data_dir / "step2_equilibration.dcd",
-    data_dir / "step3_equilibration.dcd",
-]
-
-LIPID_SEL = "resname PC and name P31"
-
-file_times = {
-    "step1_equilibration.dcd": 0.1,  # 0.1 ns
-    "step2_equilibration.dcd": 0.1,  # 0.1 ns
-    "step3_equilibration.dcd": 0.1,  # 0.1 ns
-}
-
-# ------------------------------------------------------------------
-# 1. Class API — calculate membrane thickness
-# ------------------------------------------------------------------
-analyzer = BilayerTrajectoryAnalyzer(
-    topology_file,
-    trajectory_files,
-    file_times=file_times,
-)
-data = analyzer.calculate_membrane_thickness(lipid_sel=LIPID_SEL)
-
-mean_thickness = float(data["thickness"].mean())
-print(f"Mean membrane thickness: {mean_thickness:.1f} Å")
-print(f"Frames analysed: {len(data['thickness'])}")
-
-# ------------------------------------------------------------------
-# 2. Plot membrane thickness time series
-# ------------------------------------------------------------------
-analyzer.plot_membrane_thickness(
-    lipid_sel=LIPID_SEL,
-    time_units="ns",
-    save="membrane_thickness_example_15.png",
-    show=False,
-)
-print("Plot saved: membrane_thickness_example_15.png")
-
-# ------------------------------------------------------------------
-# 3. JSON API — run_bilayer_analysis()
-# ------------------------------------------------------------------
-result = run_bilayer_analysis(
-    topology_file,
-    trajectory_files,
-    analysis_type="membrane_thickness",
-    lipid_sel=LIPID_SEL,
-    file_times=file_times,
-)
-print(f"JSON API mean thickness: {result['stats']['mean']:.1f} Å")
+--8<-- "tests/analysis_examples/analysis_example_15.py"
 ```
 
 To exclude cholesterol from a mixed bilayer thickness calculation, pass `leaflet_filter_sel="resname DPPC DOPC"` and set `lipid_sel` to the headgroup atoms of the lipids included in the calculation.
 
 ---
 
+## Class: GROMACSLogEnergyAnalyzer
+
+```python
+from gatewizard.utils.gromacs_analysis import GROMACSLogEnergyAnalyzer
+
+analyzer = GROMACSLogEnergyAnalyzer(log_files, file_times=None, file_strides=None)
+```
+
+Parse GROMACS `.log` energy blocks. Same plotting surface as `EnergyAnalyzer`: `get_statistics()`, `plot_energy()`, `plot_properties()`.
+
+## Class: AmberLogEnergyAnalyzer
+
+```python
+from gatewizard.utils.amber_analysis import AmberLogEnergyAnalyzer
+
+analyzer = AmberLogEnergyAnalyzer(mdout_files, file_times=None, file_strides=None)
+```
+
+Parse Amber `mdout` energy frames. Use `run_amber_energetic_analysis` for the one-shot helper.
+
+### run_energetic_analysis
+
+```python
+from gatewizard.utils.namd_analysis import run_energetic_analysis
+
+data = run_energetic_analysis(log_files, properties=["TEMP", "PRESSURE"])
+```
+
+One-shot NAMD energetic analysis used by the GUI and scripts. Returns series data for `plot_spec` rendering.
+
+### run_openmm_energetic_analysis
+
+```python
+from gatewizard.utils.openmm_analysis import run_openmm_energetic_analysis
+```
+
+Same role as `run_energetic_analysis` for OpenMM StateDataReporter logs.
+
+### run_amber_energetic_analysis
+
+```python
+from gatewizard.utils.amber_analysis import run_amber_energetic_analysis
+```
+
+One-shot Amber mdout energetic analysis.
+
+### parse_namd_log
+
+```python
+from gatewizard.utils.namd_analysis import parse_namd_log
+```
+
+Low-level NAMD log parser used by `EnergyAnalyzer`.
+
+### prepare_structural_inputs
+
+```python
+from gatewizard.utils.trajectory_analysis import prepare_structural_inputs
+```
+
+Normalize topology/trajectory lists (split PDB-as-traj, fill missing box dimensions) before `TrajectoryAnalyzer`.
+
+### run_structural_analysis
+
+```python
+from gatewizard.utils.trajectory_analysis import run_structural_analysis
+```
+
+One-shot RMSD/RMSF/distance/Rg runner used by the Analysis page.
+
+### clear_analysis_cache
+
+```python
+analyzer.clear_analysis_cache()
+```
+
+Drop cached MDAnalysis universes / prepared frames on a `TrajectoryAnalyzer` after changing stride or inputs.
+
+### run_fatslim_apl
+
+```python
+from gatewizard.utils.fatslim_apl import run_fatslim_apl
+```
+
+Call the archived FATSLiM CLI (GPLv3 companion env). Discovery: `GATEWIZARD_FATSLIM` → `PATH` → conda env `fatslim-py38`. See [Analysis features](../analysis.md#where-the-install-scripts-live-read-this-first).
+
+### run_gridmat_md_apl
+
+```python
+from gatewizard.utils.gridmat_md_apl import run_gridmat_md_apl
+```
+
+Run original GridMAT-MD.pl (Perl). Requires `GATEWIZARD_GRIDMAT` or a clone on `PATH`.
+
 ## See Also
 
-- [User Guide](../user-guide.md) - Complete usage guide
+- [User Guide](../user-guide.md) - Desktop Analysis page
 - [Examples](https://github.com/maurobedoya/gatewizard/tree/main/tests/analysis_examples) - Working code examples
 - [Troubleshooting](../troubleshooting.md) - Common issues

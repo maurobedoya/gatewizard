@@ -31,17 +31,14 @@ MemPrO()
 
 ### Example 1: Create a MemPrO instance and check availability
 ```python
-from gatewizard.core.mempro import MemPrO
-
-mp = MemPrO()
-print(f"MemPrO available: {MemPrO.is_available()}")
+--8<-- "tests/mempro_examples/mempro_example_01.py"
 ```
 
 ---
 
 ## Static Methods
 
-### Method: is_available()
+### is_available
 
 Check whether the `mempro` executable is on PATH.
 
@@ -53,19 +50,14 @@ MemPrO.is_available() -> bool
 
 ### Example 2: Check if MemPrO is installed
 ```python
-from gatewizard.core.mempro import MemPrO
-
-if MemPrO.is_available():
-    print("MemPrO is installed and ready to use")
-else:
-    print("Install MemPrO: pip install git+https://github.com/pstansfeld/MemPrO.git")
+--8<-- "tests/mempro_examples/mempro_example_02.py"
 ```
 
 ---
 
 ## Core Methods
 
-### Method: run()
+### run
 
 Run MemPrO orientation on a PDB file.
 
@@ -122,55 +114,27 @@ Orient/
 
 ### Example 3: Run MemPrO with default settings
 ```python
-from gatewizard.core.mempro import MemPrO
-
-mp = MemPrO()
-if MemPrO.is_available():
-    results = mp.run("protein.pdb")
-    for r in results:
-        print(f"Rank {r.rank}: potential={r.relative_potential:.2f}, hits={r.hits_pct:.1f}%")
-        print(f"  PDB: {r.pdb_path}")
+--8<-- "tests/mempro_examples/mempro_example_03.py"
 ```
 
 ### Example 4: Run with custom parameters
 ```python
-from gatewizard.core.mempro import MemPrO
-
-mp = MemPrO()
-if MemPrO.is_available():
-    results = mp.run(
-        "protein.pdb",
-        output_dir="my_orient",
-        n_cpus=4,
-        n_iters=200,
-        grid_size=72,
-    )
-    print(f"Found {len(results)} orientations")
+--8<-- "tests/mempro_examples/mempro_example_04.py"
 ```
 
 ### Example 5: Run with dual membrane mode
 ```python
-from gatewizard.core.mempro import MemPrO
-
-mp = MemPrO()
-if MemPrO.is_available():
-    results = mp.run("protein.pdb", dual_membrane=True)
-    print(f"Dual membrane: {len(results)} orientations")
+--8<-- "tests/mempro_examples/mempro_example_05.py"
 ```
 
 ### Example 6: Run with peripheral mode
 ```python
-from gatewizard.core.mempro import MemPrO
-
-mp = MemPrO()
-if MemPrO.is_available():
-    results = mp.run("protein.pdb", peripheral=True)
-    print(f"Peripheral: {len(results)} orientations")
+--8<-- "tests/mempro_examples/mempro_example_06.py"
 ```
 
 ---
 
-### Method: parse_results()
+### parse_results
 
 Parse MemPrO results from an existing Orient directory (static method).
 
@@ -190,17 +154,12 @@ MemPrO.parse_results(orient_dir: str) -> List[OrientationResult]
 
 ### Example 7: Parse results from an existing Orient directory
 ```python
-from gatewizard.core.mempro import MemPrO
-
-results = MemPrO.parse_results("Orient")
-for r in results:
-    print(f"Rank {r.rank}: potential={r.relative_potential:.2f}, "
-          f"hits={r.hits_pct:.1f}%, pdb={r.pdb_path}")
+--8<-- "tests/mempro_examples/mempro_example_07.py"
 ```
 
 ---
 
-### Method: get_oriented_pdb()
+### get_oriented_pdb
 
 Get the path to an oriented PDB file for a specific rank (static method).
 
@@ -221,18 +180,12 @@ MemPrO.get_oriented_pdb(orient_dir: str, rank: int = 1) -> str
 
 ### Example 8: Get the best oriented PDB
 ```python
-from gatewizard.core.mempro import MemPrO
-
-try:
-    pdb = MemPrO.get_oriented_pdb("Orient", rank=1)
-    print(f"Best orientation: {pdb}")
-except FileNotFoundError as e:
-    print(f"Not found: {e}")
+--8<-- "tests/mempro_examples/mempro_example_08.py"
 ```
 
 ---
 
-### Method: build_command()
+### build_command
 
 Build the MemPrO command line without executing it.
 
@@ -250,12 +203,7 @@ Accepts the same parameters as `run()`.
 
 ### Example 9: Build and inspect command
 ```python
-from gatewizard.core.mempro import MemPrO
-
-mp = MemPrO()
-if MemPrO.is_available():
-    cmd = mp.build_command("protein.pdb", n_cpus=4, dual_membrane=True)
-    print("Command:", " ".join(cmd))
+--8<-- "tests/mempro_examples/mempro_example_09.py"
 ```
 
 ---
@@ -278,21 +226,36 @@ Data class representing a single ranked orientation from a MemPrO run.
 
 ### Example 10: Inspect OrientationResult attributes
 ```python
-from gatewizard.core.mempro import MemPrO
-
-results = MemPrO.parse_results("Orient")
-if results:
-    best = results[0]
-    print(f"Rank: {best.rank}")
-    print(f"Relative potential: {best.relative_potential}")
-    print(f"Hits: {best.hits_pct}%")
-    print(f"Re-rank potential: {best.rerank_potential}")
-    print(f"Re-rank depth: {best.rerank_depth}")
-    print(f"Re-rank value: {best.rerank_value}")
-    print(f"PDB path: {best.pdb_path}")
+--8<-- "tests/mempro_examples/mempro_example_10.py"
 ```
 
 ---
+
+### compute_orientation_transform
+
+```python
+from gatewizard.core.mempro import compute_orientation_transform
+
+R, t = compute_orientation_transform(source_pdb, oriented_pdb)
+```
+
+Compute the rigid transform that maps protein atoms in `source_pdb` onto a MemPrO `oriented_rank_*.pdb`. Matching uses standard amino-acid atoms keyed by `(chain, resid, atom_name)`.
+
+**Returns:** Rotation matrix `R` and translation `t` such that `oriented ≈ R @ source + t`.
+
+**Raises:** `MemProError` if fewer than three atom pairs match.
+
+### apply_orientation_transform
+
+```python
+from gatewizard.core.mempro import apply_orientation_transform
+
+out = apply_orientation_transform(source_pdb, oriented_pdb, output_pdb)
+```
+
+Apply the MemPrO transform to every atom in `source_pdb` (protein, ligands, water) and write `output_pdb`. Dummy MemPrO atoms are not copied.
+
+See [Example 12](#example-12-parse-existing-results-and-load-into-structuremanager) and [`StructureManager.apply_mempro_orientation`](structure_manager.md#apply_mempro_orientation).
 
 ## Class: MemProError
 
@@ -316,44 +279,10 @@ except MemProError as e:
 
 ### Example 11: Full orientation workflow
 ```python
-from gatewizard.core.mempro import MemPrO, MemProError
-
-mp = MemPrO()
-
-# Check availability
-if not MemPrO.is_available():
-    print("Install: pip install git+https://github.com/pstansfeld/MemPrO.git")
-else:
-    # Run orientation
-    try:
-        results = mp.run("protein.pdb", n_cpus=4)
-        print(f"Found {len(results)} orientations\n")
-
-        # Display results table
-        print(f"{'Rank':>4}  {'Potential':>10}  {'Hits%':>6}  {'Re-rank':>10}")
-        print("-" * 36)
-        for r in results:
-            print(f"{r.rank:>4d}  {r.relative_potential:>10.3f}  "
-                  f"{r.hits_pct:>5.1f}%  {r.rerank_potential:>10.3f}")
-
-        # Load the best orientation
-        if results and results[0].pdb_path:
-            print(f"\nBest PDB: {results[0].pdb_path}")
-    except MemProError as e:
-        print(f"Error: {e}")
+--8<-- "tests/mempro_examples/mempro_example_11.py"
 ```
 
 ### Example 12: Parse existing results and load into StructureManager
 ```python
-from gatewizard.core.mempro import MemPrO
-from gatewizard.core.structure_manager import StructureManager
-
-# Parse pre-computed results
-results = MemPrO.parse_results("Orient")
-
-# Load the best orientation into the viewer
-if results and results[0].pdb_path:
-    viewer = StructureManager()
-    info = viewer.load_structure(results[0].pdb_path)
-    print(f"Loaded rank 1: {info['n_atoms']} atoms, {info['n_chains']} chains")
+--8<-- "tests/mempro_examples/mempro_example_12.py"
 ```

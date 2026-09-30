@@ -28,10 +28,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **PlotSpec grid:** panels may list `series_keys` to draw multiple sets on one subplot (energetic compare-by-property / by-set Pub PNG).
 - **Publication plot export:** matplotlib uses the headless Agg backend in API/GUI export so Tk/Tcl is not touched from FastAPI worker threads (fixes `main thread is not in main loop` / `Tcl_AsyncDelete` log noise on WSL).
 
+### Fixed
+
 - **MemPro apply mismatch message:** when protein atoms cannot be matched, the error names the target structure file and the MemPro oriented PDB, and says to apply to the same structure used for the run.
 - **Preparation ASH/GLH protons:** `complete_missing_heavy_atoms` / GUI Prepare now run tleap **after** Amber protonation names (ASH, GLH, HIP, …). Completing on ASP and only renaming afterward left the extra carboxylic proton off — the names only mattered later at packmol-memgen parametrization.
+
 ### Added
 
+- **Docs header repos:** the MkDocs header (and drawer) now list both GitHub repositories — API (`maurobedoya/gatewizard`) and GUI (`franciscoadasme/gatewizard-gui`) — with latest tag, stars, and forks. API is stacked above GUI so the version tag stays visible.
+- **Docs brand:** header and favicon use the GateWizard emblem; the Home page has a teal banner with the splash lockup (`docs/images/splash.png`).
 - **Preparation complete missing protein atoms:** `complete_missing_heavy_atoms` uses Amber `tleap` templates to add missing side-chain heavy atoms on residues that already exist (not missing loops). GUI Prepare then runs `pdb4amber --reduce` for Amber hydrogens when `reduce` is installed.
 - **Preparation preserve residue numbers:** `PreparationManager.restore_original_residue_numbers` and `run_pdb4amber_with_cap_fix(..., preserve_residue_numbers=False)` rewrite Amber sequential ids back to the input (chain-aware remum; compose cap mapping so a 200/205 loop gap survives ACE/NME). New caps get N-terminus − 1 (residue **0** when the chain starts at 1) and C-terminus + 1. `parse_residue_mapping_by_chain` keeps per-chain ids.
 - **FATSLiM APL bridge:** `gatewizard.utils.fatslim_apl` resolves `fatslim`, exports centered GRO/XTC/NDX, runs `fatslim apl`, parses `apl_raw` CSV (nm²→Å²). Registered in `EXTERNAL_TOOL_REGISTRY`.

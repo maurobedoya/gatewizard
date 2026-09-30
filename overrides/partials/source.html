@@ -1,0 +1,32 @@
+{% import "partials/language.html" as lang with context %}
+{% set icon = config.theme.icon.repo or "fontawesome/brands/github" %}
+{% set repos = config.extra.repositories or [] %}
+{% if repos %}
+  {% for item in repos %}
+    <a
+      href="{{ item.url }}"
+      title="{{ item.name }}"
+      class="gw-source"
+      data-gw-repo="{{ item.repo }}"
+    >
+      <span class="gw-source__icon">
+        {% include ".icons/" ~ icon ~ ".svg" %}
+      </span>
+      <span class="gw-source__name">{{ item.name }}</span>
+      <ul class="md-source__facts gw-source__facts">
+        <li class="md-source__fact md-source__fact--version" hidden></li>
+        <li class="md-source__fact md-source__fact--stars" hidden></li>
+        <li class="md-source__fact md-source__fact--forks" hidden></li>
+      </ul>
+    </a>
+  {% endfor %}
+{% else %}
+  <a href="{{ config.repo_url }}" title="{{ lang.t('source') }}" class="md-source" data-md-component="source">
+    <div class="md-source__icon md-icon">
+      {% include ".icons/" ~ icon ~ ".svg" %}
+    </div>
+    <div class="md-source__repository">
+      {{ config.repo_name }}
+    </div>
+  </a>
+{% endif %}

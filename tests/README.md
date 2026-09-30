@@ -2,6 +2,8 @@
 
 This directory contains automated tests for GateWizard's core functionality.
 
+Documentation examples live in `<module>_examples/` and are executed **once** each by `example_runner.py` (parametrize per file). They are the public “copy this and it works” contract — keep paths portable. See [docs/CONTRIBUTING-docs.md](../docs/CONTRIBUTING-docs.md).
+
 ## Test Files
 
 ### Core Functionality Tests
@@ -9,7 +11,7 @@ This directory contains automated tests for GateWizard's core functionality.
 - **`test_builder.py`** - Builder core functionality and documentation examples
   - Core API tests (configuration, lipids, force fields)
   - Force field manager validation
-  - All documentation examples (Examples 1-17)
+  - Documentation examples (`builder_example_*.py`, once each)
   - Integration tests (require external tools)
   - Auto-discovers examples from `builder_examples/`
 
@@ -33,7 +35,7 @@ This directory contains automated tests for GateWizard's core functionality.
 
 ### Example Scripts
 
-- **`builder_examples/`** - Contains executable example scripts (01-17)
+- **`builder_examples/`** - Executable example scripts (01-26)
   - Each example matches the API documentation
   - Automatically tested by `test_builder.py`
   - Can be run individually or as a suite
@@ -68,7 +70,7 @@ python -m pytest tests/test_builder.py -v
 python -m pytest tests/test_builder.py::TestBuilderExamples -v
 
 # Run specific example (e.g., Example 08)
-python -m pytest tests/test_builder.py::TestBuilderExamples::test_individual_examples[08] -v
+python -m pytest tests/test_builder.py::TestBuilderExamples::test_example_script[builder_example_08.py] -v
 
 # Run examples manually (outside pytest)
 cd tests && python test_builder.py

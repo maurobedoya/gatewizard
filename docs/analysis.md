@@ -1,6 +1,6 @@
 # Analysis Features
 
-Detailed documentation of GateWizard's trajectory and energy analysis capabilities.
+Desktop steps live in the [User Guide → Analysis](user-guide.md#analysis). This page is the feature reference (formats, methods, FATSLiM / GridMAT install).
 
 ## Overview
 

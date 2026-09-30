@@ -15,6 +15,7 @@ copyright: Copyright &copy; 2025 Constanza González, Mauricio Bedoya
 # Theme
 theme:
   name: material
+  custom_dir: overrides
   palette:
     # Light mode
     - media: "(prefers-color-scheme: light)"
@@ -47,6 +48,9 @@ theme:
     - content.code.annotation
     - content.code.copy
     - toc.follow              # Sidebar table of contents follows scroll
+    - toc.integrate
+  logo: images/logo.png
+  favicon: images/favicon.png
   icon:
     repo: fontawesome/brands/github
 
@@ -56,9 +60,11 @@ nav:
   - Installation: installation.md
   - User Guide: user-guide.md
   - Analysis: analysis.md
+  - Study cases: study-cases/index.md
   - Troubleshooting: troubleshooting.md
-  - API Reference:
+  - API:
       - Overview: api/index.md
+      - Method dictionary: api/dictionary.md
       - Structure Manager: api/structure_manager.md
       - Preparation Module: api/preparation.md
       - Builder Module: api/builder.md
@@ -73,7 +79,10 @@ markdown_extensions:
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.inlinehilite
-  - pymdownx.snippets
+  - pymdownx.snippets:
+      base_path:
+        - .
+      check_paths: true
   - pymdownx.superfences
   - pymdownx.tabbed:
       alternate_style: true
@@ -101,9 +110,20 @@ plugins:
 
 # Extra
 extra:
+  repositories:
+    - name: API
+      repo: maurobedoya/gatewizard
+      url: https://github.com/maurobedoya/gatewizard
+    - name: GUI
+      repo: franciscoadasme/gatewizard-gui
+      url: https://github.com/franciscoadasme/gatewizard-gui
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/maurobedoya/gatewizard
+      name: API repository
+    - icon: fontawesome/brands/github
+      link: https://github.com/franciscoadasme/gatewizard-gui
+      name: GUI repository
   version:
     provider: mike
 
@@ -113,5 +133,6 @@ extra_css:
 
 # JavaScript
 extra_javascript:
+  - javascripts/repos.js
   - javascripts/mathjax.js
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js

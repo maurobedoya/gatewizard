@@ -1,4 +1,250 @@
+/* One header: logo | wrapping tabs | search + repos + theme flush right */
+:root,
+[data-md-color-scheme] {
+  --md-header-height: 2.75rem;
+}
+
+.md-header {
+  height: auto;
+  min-height: var(--md-header-height);
+  overflow: visible;
+}
+
+.md-header__inner.md-grid {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  width: 100%;
+  max-width: none;
+  height: auto;
+  min-height: var(--md-header-height);
+  margin: 0;
+  padding-left: 0.55rem;
+  padding-right: 0.35rem;
+  overflow: visible;
+}
+
+.md-header__title {
+  display: none;
+}
+
+.md-header__button.md-logo {
+  margin-top: 0;
+  padding-top: 0.2rem;
+  padding-bottom: 0.2rem;
+}
+
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+  height: 1.35rem;
+  width: 1.35rem;
+}
+
+.gw-header-tabs {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: auto;
+}
+
+.gw-header-tabs .md-tabs,
+.gw-header-tabs .md-grid {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  background: transparent;
+}
+
+.gw-header-tabs .md-tabs__list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  height: auto;
+  gap: 0;
+}
+
+.gw-header-tabs .md-tabs__item {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  height: 2.4rem;
+  padding-right: 0;
+}
+
+.gw-header-tabs .md-tabs__link {
+  display: flex;
+  align-items: center;
+  margin-top: 0;
+  padding: 0 0.3rem;
+  font-size: 0.72rem;
+  line-height: 1;
+  height: 2.4rem;
+  white-space: nowrap;
+}
+
+.md-search,
+.md-search__form {
+  display: flex;
+  align-items: center;
+}
+
+.md-header__source {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex: 0 0 auto;
+  gap: 0.12rem;
+  width: auto;
+  min-width: 12.5rem;
+  max-width: none;
+  margin-left: 0.35rem;
+}
+
+.md-header__option {
+  flex: 0 0 auto;
+  margin-left: 0.1rem;
+  margin-right: 0;
+}
+
+.md-nav__source {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0.35rem 0.8rem 0.9rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.gw-source {
+  display: flex;
+  align-items: center;
+  color: inherit;
+  font-size: 0.7rem;
+  line-height: 1.25;
+  text-decoration: none;
+}
+
+.gw-source:hover,
+.gw-source:focus {
+  opacity: 0.85;
+}
+
+.gw-source__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.78rem;
+  height: 0.78rem;
+  margin-right: 0.32rem;
+  flex: 0 0 auto;
+}
+
+.gw-source__icon svg {
+  width: 0.78rem;
+  height: 0.78rem;
+  fill: currentColor;
+}
+
+.gw-source__name {
+  margin-right: 0.35rem;
+  font-weight: 700;
+}
+
+.gw-source__facts {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  opacity: 0.85;
+}
+
+@media screen and (min-width: 60em) {
+  .md-search {
+    flex: 0 0 7.25rem;
+    width: 7.25rem;
+    position: static;
+    top: auto;
+    left: auto;
+    transform: none;
+    margin: 0 0.25rem 0 auto;
+    padding: 0;
+  }
+
+  .md-search__inner {
+    width: 7.25rem;
+    margin: 0;
+  }
+}
+
+.md-search__output,
+.md-search__scrollwrap,
+.md-search-result {
+  background-color: var(--md-default-bg-color);
+}
+
+.md-search-result__meta,
+.md-search-result__list,
+.md-search-result__item,
+.md-search-result__article {
+  background-color: var(--md-default-bg-color);
+}
+
+[data-md-toggle="search"]:checked ~ .md-header .md-search__inner,
+[data-md-toggle="search"]:checked ~ header .md-search__inner {
+  background-color: var(--md-default-bg-color);
+  border-radius: 0.2rem;
+}
+
+[data-md-toggle="search"]:checked ~ .md-header .md-search__form,
+[data-md-toggle="search"]:checked ~ header .md-search__form {
+  background-color: var(--md-default-bg-color);
+}
+
+[data-md-toggle="search"]:checked ~ .md-header .md-search__input,
+[data-md-toggle="search"]:checked ~ header .md-search__input {
+  background-color: var(--md-default-bg-color);
+  color: var(--md-default-fg-color);
+}
+
+.gw-hero {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 0 0 1rem;
+  padding: 1.15rem 1rem;
+  border-radius: 10px;
+  background: var(--md-primary-fg-color);
+}
+
+.gw-hero__logo {
+  display: block;
+  width: min(8.75rem, 48%);
+  height: auto;
+}
+
 /* GateWizard Custom Styles */
+
+/* Dense method dictionary */
+.md-typeset .api-dictionary h2 {
+    margin-top: 1.1em;
+    margin-bottom: 0.35em;
+}
+
+.md-typeset .api-dictionary ul {
+    columns: 2;
+    column-gap: 1.5rem;
+}
+
+.md-typeset .api-dictionary li {
+    break-inside: avoid;
+    margin: 0.05em 0;
+    font-size: 0.88em;
+}
 
 /* Example 1: Custom header colors (uncomment to test) */
 /*

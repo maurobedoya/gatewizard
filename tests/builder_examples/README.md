@@ -143,8 +143,8 @@ preparation — useful for scripting multiple sequential systems.
 ## See Also
 
 - [Builder API Documentation](../../docs/api/builder.md)
-- [User Guide](../../docs/user-guide.md#prepare-tab-system-building)
-- [Complete Workflow Example](../../examples/complete_workflow.py)
+- [User Guide](../../docs/user-guide.md#builder)
+- [Builder examples on GitHub](https://github.com/maurobedoya/gatewizard/tree/main/tests/builder_examples)
 - [Test Suite](../test_builder.py)
 """
 

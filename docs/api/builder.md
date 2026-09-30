@@ -44,23 +44,18 @@ Builder()
 | `anion` | `"Cl-"` | Anion type for salt |
 | `dist` | `12` | Minimum solute-to-box-boundary distance in Å |
 | `dist_wat` | `26` | Water layer thickness in Å |
-| `notprotonate` | `False` | Skip protonation (preserve residue names) |
+| `notprotonate` | `True` | Skip protonation (preserve PropKa residue names) |
 
 ### Example 1: Basic Configuration
 ```python
-from gatewizard.core.builder import Builder
-
-builder = Builder()
-print(f"Default water model: {builder.config['water_model']}")
-print(f"Default protein force field: {builder.config['protein_ff']}")
-print(f"Default lipid parameters: {builder.config['lipid_ff']}")
+--8<-- "tests/builder_examples/builder_example_01.py"
 ```
 
 ---
 
 ## Configuration Methods
 
-### Method: set_configuration()
+### set_configuration
 
 Update configuration parameters for system building.
 
@@ -82,97 +77,37 @@ set_configuration(**kwargs)
 | `anion` | `str` | `"Cl-"` | Anion type (Cl-, Br-, etc.) |
 | `dist` | `float` | `12` | Minimum solute-to-box-boundary distance in Å |
 | `dist_wat` | `float` | `26` | Water layer thickness in Å |
-| `notprotonate` | `bool` | `False` | Skip protonation during parametrization |
+| `notprotonate` | `bool` | `True` | Skip protonation during parametrization |
 | `add_salt` | `bool` | `True` | Whether to add salt to system |
 
 **Returns:** None
 
 ### Example 2: Custom Configuration
 ```python
-from gatewizard.core.builder import Builder
-
-builder = Builder()
-
-# Configure for specific system
-builder.set_configuration(
-    water_model="tip3p",
-    protein_ff="ff14SB",
-    lipid_ff="lipid21",
-    salt_concentration=0.15,
-    cation="Na+",
-    anion="Cl-",
-    dist=12,  # Minimum distance to box boundaries
-    dist_wat=20.0,  # Larger water layer
-    preoriented=True
-)
+--8<-- "tests/builder_examples/builder_example_02.py"
 ```
 
 ### Example 3: Available Water Models
 ```python
-from gatewizard.tools.force_fields import ForceFieldManager
-
-ff_manager = ForceFieldManager()
-
-# Get available water models
-water_models = ff_manager.get_water_models()
-
-print("\nAvailable Water Models:")
-for water in water_models:
-    print(f"  - {water}")
-
-print(f"\nTotal: {len(water_models)} water models available")
+--8<-- "tests/builder_examples/builder_example_03.py"
 ```
 
 Similarly can be done for lipids:
 
 ### Example 4: Available Lipid Models
 ```python
-from gatewizard.tools.force_fields import ForceFieldManager
-
-ff_manager = ForceFieldManager()
-
-# Get all available lipids
-lipids = ff_manager.get_available_lipids()
-
-print(f"Total available lipids: {len(lipids)}\n")
-
-for lipid in lipids:
-     print(f"  - {lipid}")
-
-print(f"\nTotal: {len(lipids)} lipid models available")
+--8<-- "tests/builder_examples/builder_example_04.py"
 ```
 
 
 ### Example 5: Available Protein Force Fields
 ```python
-from gatewizard.tools.force_fields import ForceFieldManager
-
-ff_manager = ForceFieldManager()
-
-# Get available protein force fields
-protein_ffs = ff_manager.get_protein_force_fields()
-
-print("\nAvailable Protein Force Fields:")
-for protein_ff in protein_ffs:
-    print(f"  - {protein_ff}")
-
-print(f"\nTotal: {len(protein_ffs)} protein force fields available")
+--8<-- "tests/builder_examples/builder_example_05.py"
 ```
 
 ### Example 6: Available Lipid Force Fields
 ```python
-from gatewizard.tools.force_fields import ForceFieldManager
-
-ff_manager = ForceFieldManager()
-
-# Get available lipid force fields
-lipid_ffs = ff_manager.get_lipid_force_fields()
-
-print("\nAvailable Lipid Force Fields:")
-for lipid_ff in lipid_ffs:
-    print(f"  - {lipid_ff}")
-
-print(f"\nTotal: {len(lipid_ffs)} lipid force fields available")
+--8<-- "tests/builder_examples/builder_example_06.py"
 ```
 
 ---
@@ -181,7 +116,7 @@ print(f"\nTotal: {len(lipid_ffs)} lipid force fields available")
 
 Before preparing systems, you can validate your inputs and check force field compatibility.
 
-### Method: validate_system_inputs()
+### validate_system_inputs
 
 Validate all inputs before system preparation.
 
@@ -221,54 +156,19 @@ validate_system_inputs(
 
 ### Example 7: Input Validation
 ```python
-from gatewizard.core.builder import Builder
-
-builder = Builder()
-
-# Validate inputs before preparation
-valid, msg = builder.validate_system_inputs(
-    pdb_file="protein_protonated_prepared.pdb",
-    upper_lipids=["POPC", "POPE"],
-    lower_lipids=["POPC", "POPE"],
-    lipid_ratios="7:3//7:3",
-    water_model="tip3p",
-    protein_ff="ff14SB",
-    lipid_ff="lipid21"
-)
-
-if valid:
-    if "WARNING" in msg:
-        print(f"[!] Inputs valid with warning: {msg}")
-        print("You may proceed at your own risk")
-    else:
-        print("[OK] All inputs are valid, proceed with preparation")
-    # Now call prepare_system()
-else:
-    print(f"[ERROR] Validation failed: {msg}")
-    # Fix issues before proceeding
+--8<-- "tests/builder_examples/builder_example_07.py"
 ```
 
 ### Example 8: Force Field Validation
 ```python
-from gatewizard.tools.force_fields import ForceFieldManager
-
-ff_manager = ForceFieldManager()
-valid, message, is_warning = ff_manager.validate_combination("tip3p", "ff14SB", "lipid21")
-
-if valid:
-    if is_warning:
-        print(f"[!] Warning: {message}")
-    else:
-        print("[OK] Force field combination is compatible")
-else:
-    print(f"[ERROR] Incompatible: {message}")
+--8<-- "tests/builder_examples/builder_example_08.py"
 ```
 
 ---
 
 ## Core Preparation Methods
 
-### Method: prepare_system()
+### prepare_system
 
 Prepare a complete membrane protein system with lipid bilayer, water, and ions.
 
@@ -404,244 +304,95 @@ success, msg, job_dir = builder.generate_preparation_inputs(
 
 ### Example 9: Simple Symmetric Membrane
 ```python
-from gatewizard.core.builder import Builder
-
-builder = Builder()
-
-# Configure system
-builder.set_configuration(
-    water_model="tip3p",
-    protein_ff="ff14SB",
-    lipid_ff="lipid21",
-    salt_concentration=0.15,
-    cation="K+",
-    anion="Cl-"
-)
-
-# Prepare system with 100% POPC (symmetric)
-success, message, job_dir = builder.prepare_system(
-    pdb_file="protein_protonated_prepared.pdb",
-    working_dir="./systems",
-    upper_lipids=["POPC"],
-    lower_lipids=["POPC"],
-    lipid_ratios="1//1",  # 100% POPC both leaflets
-    output_folder_name="popc_membrane"
-)
-
-if success:
-    print(f"✓ System preparation started in background")
-    print(f"  {message}")
-    print(f"  Job directory: {job_dir}")
-    print(f"  Monitor progress: {job_dir / 'preparation.log'}")
-    print(f"  When complete, files will be at:")
-    print(f"    - Topology: {job_dir / 'system.prmtop'}")
-    print(f"    - Coordinates: {job_dir / 'system.inpcrd'}")
-else:
-    print(f"✗ Preparation failed: {message}")
+--8<-- "tests/builder_examples/builder_example_09.py"
 ```
 
 ### Example 10: Monitoring Job Progress
 ```python
-from gatewizard.core.job_monitor import JobMonitor
-from pathlib import Path
-
-# Create monitor for your working directory
-monitor = JobMonitor(working_directory=Path("./systems"))
-
-# Scan for jobs
-monitor.scan_for_jobs(force=True)
-
-# Get active jobs
-active_jobs = monitor.get_active_jobs()
-
-if active_jobs:
-    print(f"✓ Found {len(active_jobs)} active job(s)")
-    
-    for job_id, job_info in active_jobs.items():
-        print(f"Job: {job_info.job_dir.name}")
-        print(f"  Status: {job_info.status.value}")
-        print(f"  Progress: {job_info.progress:.1f}%")
-        print(f"  Current step: {job_info.current_step}")
-        print(f"  Elapsed: {job_info.elapsed_time:.1f}s")
-        
-        # Show completed steps
-        if job_info.steps_completed:
-            print(f"  Completed steps:")
-            for step in job_info.steps_completed:
-                print(f"    ✓ {step}")
-else:
-    print("No active jobs found")
-
-# Check for completed jobs
-completed_jobs = monitor.get_completed_jobs()
-if completed_jobs:
-    print(f"✓ Found {len(completed_jobs)} completed job(s)")
-    for job_id, job_info in completed_jobs.items():
-        print(f"  - {job_info.job_dir.name}: {job_info.status.value}")
+--8<-- "tests/builder_examples/builder_example_10.py"
 ```
 
 ### Example 11: Asymmetric Membrane with Multiple Lipids
 ```python
-from gatewizard.core.builder import Builder
-
-builder = Builder()
-
-# Configure for asymmetric membrane
-builder.set_configuration(
-    water_model="tip3p",
-    protein_ff="ff14SB",
-    lipid_ff="lipid21",
-    # Note: When using anionic lipids (POPS, POPG, etc.), the system may require
-    # a higher salt concentration for neutralization. If you get an error like:
-    # "The concentration of ions required to neutralize the system is higher than
-    # the concentration specified", increase salt_concentration or use add_salt=False.
-    # POPS is anionic (-1 charge), so 50% POPS in lower leaflet adds significant
-    # negative charge requiring more cations for neutralization.
-    salt_concentration=0.5,  # Increased from default 0.15 M due to anionic lipids
-    dist_wat=20.0  # Thicker water layer
-)
-
-# Upper leaflet: 70% POPC + 30% cholesterol
-# Lower leaflet: 50% POPE + 50% POPS (anionic)
-success, message, job_dir = builder.prepare_system(
-    pdb_file="protein_protonated_prepared.pdb",
-    working_dir="./systems",
-    upper_lipids=["POPC", "CHL1"],
-    lower_lipids=["POPE", "POPS"],
-    lipid_ratios="7:3//5:5",  # Ratios normalized automatically
-    output_folder_name="asymmetric_membrane"
-)
-
-if success:
-    print(f"✓ System preparation started in background")
-    print(f"  {message}")
-    print(f"  Upper leaflet: 70% POPC, 30% CHL1")
-    print(f"  Lower leaflet: 50% POPE, 50% POPS")
-    print(f"  Job directory: {job_dir}")
-    print(f"  Monitor: {job_dir / 'logs/preparation.log'}")
-else:
-    print(f"✗ Preparation failed: {message}")
+--8<-- "tests/builder_examples/builder_example_11.py"
 ```
 
 ### Example 12: Complex Composition (Plasma Membrane Mimic)
 ```python
-from gatewizard.core.builder import Builder
-
-builder = Builder()
-
-# Plasma membrane-like composition
-# Upper: PC-rich with cholesterol
-# Lower: PE/PS-rich (cytoplasmic side)
-success, message, job_dir = builder.prepare_system(
-    pdb_file="protein_protonated_prepared.pdb",
-    working_dir="./systems",
-    upper_lipids=["POPC", "POPE", "CHL1"],
-    lower_lipids=["POPE", "POPS", "CHL1"],
-    lipid_ratios="5:2:3//4:4:2",  # Upper: 50% POPC, 20% POPE, 30% CHL1
-                                   # Lower: 40% POPE, 40% POPS, 20% CHL1
-    output_folder_name="plasma_membrane",
-    salt_concentration=0.5,
-    cation="Na+",  # Use sodium instead of potassium
-    dist_wat=25.0  # Extra water for large protein
-)
-
-if success:
-    print(f"✓ System preparation started in background")
-    print(f"  {message}")
-    print(f"  Job directory: {job_dir}")
-    print(f"  Monitor: {job_dir / 'logs/preparation.log'}")
-else:
-    print(f"✗ Preparation failed: {message}")
+--8<-- "tests/builder_examples/builder_example_12.py"
 ```
 
 ### Example 13: Packing Only (No Parametrization)
 ```python
-from gatewizard.core.builder import Builder
-
-builder = Builder()
-
-# Only pack the system, don't parametrize
-# Useful for visual inspection before parametrization
-success, message, job_dir = builder.prepare_system(
-    pdb_file="protein_protonated_prepared.pdb",
-    working_dir="./systems",
-    upper_lipids=["POPC"],
-    lower_lipids=["POPC"],
-    lipid_ratios="1//1",
-    output_folder_name="packed_only",
-    parametrize=False  # Skip parametrization
-)
-
-if success:
-    print(f"✓ Packing started in background (no parametrization)")
-    print(f"  {message}")
-    print(f"  Job directory: {job_dir}")
-    print(f"  Monitor: {job_dir / 'logs/preparation.log'}")
-    print(f"  When complete, inspect: {job_dir / 'bilayer_*.pdb'}")
-else:
-    print(f"✗ Preparation failed: {message}")
+--8<-- "tests/builder_examples/builder_example_13.py"
 ```
 
 ### Example 14: Custom Salt Concentration
 ```python
-from gatewizard.core.builder import Builder
-
-builder = Builder()
-
-# High salt concentration for ionic strength studies
-success, message, job_dir = builder.prepare_system(
-    pdb_file="protein_protonated_prepared.pdb",
-    working_dir="./systems",
-    upper_lipids=["POPC", "POPS"],
-    lower_lipids=["POPC", "POPS"],
-    lipid_ratios="8:2//8:2",  # 80% POPC, 20% POPS
-    output_folder_name="high_salt",
-    salt_concentration=2.0,  # 2000 mM (high salt)
-    cation="Na+",
-    anion="Cl-"
-)
-
-if success:
-    print(f"✓ System preparation started in background")
-    print(f"  {message}")
-    print(f"  High salt: 2.0 M NaCl")
-    print(f"  Job directory: {job_dir}")
-    print(f"  Monitor: {job_dir / 'logs/preparation.log'}")
-else:
-    print(f"✗ Preparation failed: {message}")
+--8<-- "tests/builder_examples/builder_example_14.py"
 ```
 
 ### Example 15: No Salt (Charge Neutralization Only)
 ```python
-from gatewizard.core.builder import Builder
-
-builder = Builder()
-
-# Neutralize system charges only (no extra salt)
-success, message, job_dir = builder.prepare_system(
-    pdb_file="protein_protonated_prepared.pdb",
-    working_dir="./systems",
-    upper_lipids=["POPC"],
-    lower_lipids=["POPC"],
-    lipid_ratios="1//1",
-    output_folder_name="no_salt",
-    salt_concentration=0.0,  # Only neutralize, no extra salt
-    add_salt=True  # Still add ions for neutralization
-)
-
-if success:
-    print(f"✓ System preparation started in background")
-    print(f"  {message}")
-    print(f"  Neutralization only, no extra salt")
-    print(f"  Job directory: {job_dir}")
-    print(f"  Monitor: {job_dir / 'logs/preparation.log'}")
-else:
-    print(f"✗ Preparation failed: {message}")
+--8<-- "tests/builder_examples/builder_example_15.py"
 ```
 
 ---
 
-### Method: wait_for_completion()
+### run_preparation
+
+```python
+success, message = builder.run_preparation(job_dir)
+```
+
+Launch a previously generated preparation job (`run_preparation.sh` in `job_dir`). Returns `(False, ...)` if the script is missing or a job is already running.
+
+**Parameters:**
+- `job_dir` (str or Path): Job directory created by `prepare_system` / `generate_preparation_inputs`.
+
+### cancel_preparation
+
+```python
+result = builder.cancel_preparation(job_dir) -> dict
+```
+
+Cancel a running preparation job. Kills the detached `run_preparation.sh` process group (PID in `process.pid`) and marks `status.json` as `cancelled`. If the job already finished, returns `stopped=False` and the existing status.
+
+**Returns:** `{success, job_dir, stopped, status, message}`.
+
+### prepare_system_stage1_for_propka
+
+```python
+success, message, job_dir = builder.prepare_system_stage1_for_propka(
+    pdb_file, working_dir, upper_lipids, lower_lipids, lipid_ratios="", **kwargs
+)
+```
+
+Stage 1 of the two-stage PropKa workflow: pack only (`parametrize=False`). After packing, apply PropKa residue names, then call stage 2.
+
+### prepare_system_stage2_for_propka
+
+```python
+success, message, job_dir = builder.prepare_system_stage2_for_propka(
+    packed_pdb_file, working_dir, **kwargs
+)
+```
+
+Stage 2: parametrize a packed PDB that already has PropKa residue names (`notprotonate=True`).
+
+### modify_residue_names_for_propka
+
+```python
+ok, message = builder.modify_residue_names_for_propka(
+    packed_pdb_file, propka_results, output_file=None
+)
+```
+
+Rewrite residue names in a packed PDB from a `{resid: new_name}` (or similar) PropKa map before stage 2.
+
+See [Example 25](#example-25-blocking-synchronous-preparation-with-waittrue) for `wait=True` on `prepare_system`.
+
+### wait_for_completion
 
 Block until a preparation job completes or fails by polling `status.json`.
 
@@ -667,115 +418,72 @@ wait_for_completion(
 
 ### Example 25: Blocking (synchronous) Preparation with wait=True
 ```python
-"""
-Builder Example 25: Blocking (synchronous) preparation with wait=True
-
-Demonstrates how to run prepare_system() in blocking mode so that the
-Python script does not continue until the job finishes (or errors).
-This is especially useful for scripting multiple sequential preparations.
-
-Two approaches are shown:
-  A) Inline ``wait=True`` inside prepare_system()
-  B) Launch in background + call wait_for_completion() later
-
-NOTE: This example requires AmberTools and packmol-memgen.
-      It uses the real test PDB file tests/2MVJ_2ligs.pdb.
-"""
-
-from gatewizard.core.builder import Builder
-from gatewizard.tools.ligand_parametrization import (
-    detect_ligands,
-    parametrize_all_ligands,
-)
-
-pdb_file = "tests/2MVJ_2ligs.pdb"
-working_dir = "./systems"
-
-# ── Step 1: Detect and parametrize ligands (same as example 23) ──────
-print("Step 1: Detecting ligands...")
-ligands = detect_ligands(pdb_file)
-for lig in ligands:
-    print(f"  Found: {lig.name} ({lig.num_atoms} atoms, {lig.formula})")
-
-print("\nStep 2: Parametrizing ligands...")
-ligand_results = parametrize_all_ligands(
-    pdb_file=pdb_file,
-    output_dir=f"{working_dir}/ligand_params",
-    charges={"AAA": 0, "BBB": 0},
-    charge_method="bcc",
-)
-print(f"  Parametrized: {list(ligand_results.keys())}")
-
-# ── Step 3: Configure builder ────────────────────────────────────────
-builder = Builder()
-builder.set_configuration(
-    water_model="tip3p",
-    protein_ff="ff14SB",
-    lipid_ff="lipid21",
-    preoriented=True,
-    parametrize=True,
-    salt_concentration=0.15,
-    dist=12,
-    dist_wat=26,
-    notprotonate=True,
-    ligand_params=ligand_results,
-)
-
-# ── Approach A: inline wait ──────────────────────────────────────────
-# With wait=True the call blocks until the job finishes.
-# prepare_system returns (success, message, job_dir) where
-#   success reflects the *final* outcome, not just "launched OK".
-#
-# NOTE: The actual preparation is long-running.  Set a short timeout
-#       so the example returns quickly during tests; remove or increase
-#       the timeout for real production runs.
-print("\n── Approach A: prepare_system with wait=True ──")
-success_a, message_a, job_dir_a = builder.prepare_system(
-    pdb_file=pdb_file,
-    working_dir=working_dir,
-    upper_lipids=["POPC"],
-    lower_lipids=["POPC"],
-    lipid_ratios="1//1",
-    output_folder_name="membrane_2MVJ_wait",
-    wait=True,                # ← block until done or error
-    wait_timeout=10,          # short timeout for demo (use 3600+ for real runs)
-    wait_poll_interval=2,     # check every 2 s
-    wait_verbose=True,        # print elapsed time
-)
-print(f"Result : {success_a}")
-print(f"Message: {message_a}")
-
-# ── Approach B: launch then wait later ───────────────────────────────
-print("\n── Approach B: launch + wait_for_completion() ──")
-success_b, message_b, job_dir_b = builder.prepare_system(
-    pdb_file=pdb_file,
-    working_dir=working_dir,
-    upper_lipids=["POPC"],
-    lower_lipids=["POPC"],
-    lipid_ratios="1//1",
-    output_folder_name="membrane_2MVJ_bg",
-)
-
-if success_b and job_dir_b is not None:
-    # Do other work here …
-    print("Doing other work while system builds …")
-
-    # Then block until that specific job is done
-    completed, wait_msg = builder.wait_for_completion(
-        job_dir_b,
-        poll_interval=2,
-        timeout=10,          # short timeout for demo
-        verbose=True,
-    )
-    print(f"Completed: {completed}")
-    print(f"Message  : {wait_msg}")
-else:
-    print(f"Not launched: {message_b}")
-
-print("\nExample 25 finished.")
+--8<-- "tests/builder_examples/builder_example_25.py"
 ```
 
 ---
+
+## Class: ForceFieldManager
+
+```python
+from gatewizard.tools.force_fields import ForceFieldManager
+
+ff = ForceFieldManager()
+```
+
+### get_water_models
+
+```python
+ff.get_water_models() -> list[str]
+```
+
+See [Example 3](#example-3-available-water-models).
+
+### get_protein_force_fields
+
+See [Example 5](#example-5-available-protein-force-fields).
+
+### get_lipid_force_fields
+
+See [Example 6](#example-6-available-lipid-force-fields).
+
+### get_available_lipids
+
+Lipid residue names accepted by packmol-memgen / Lipid21.
+
+### get_available_cations
+
+### get_available_anions
+
+### validate_combination
+
+```python
+valid, message, is_warning = ff.validate_combination(water, protein_ff, lipid_ff)
+```
+
+See [Example 8](#example-8-force-field-validation).
+
+### get_recommendations
+
+```python
+ff.get_recommendations(system_type="membrane") -> dict
+```
+
+### get_force_field_info
+
+Return metadata for one force-field name.
+
+### validate_lipid
+
+```python
+ff.validate_lipid(lipid_name) -> bool
+```
+
+### validate_ion
+
+```python
+ok, charge = ff.validate_ion(ion_name)
+```
 
 ## Job Monitoring
 
@@ -787,10 +495,7 @@ Monitor and track system preparation jobs.
 
 ### Example 16: JobMonitor class
 ```python
-from gatewizard.core.job_monitor import JobMonitor
-from pathlib import Path
-
-monitor = JobMonitor(working_directory=Path("./systems"))
+--8<-- "tests/builder_examples/builder_example_16.py"
 ```
 
 **Constructor Parameters:**
@@ -803,7 +508,7 @@ monitor = JobMonitor(working_directory=Path("./systems"))
 
 ---
 
-### Method: scan_for_jobs()
+### scan_for_jobs
 
 Scan the working directory for preparation jobs.
 
@@ -823,7 +528,7 @@ monitor.scan_for_jobs(force=False)
 
 ---
 
-### Method: get_active_jobs()
+### get_active_jobs
 
 Get all currently running jobs.
 
@@ -838,7 +543,7 @@ active_jobs = monitor.get_active_jobs()
 
 ---
 
-### Method: get_completed_jobs()
+### get_completed_jobs
 
 Get all completed or errored jobs.
 
@@ -853,7 +558,7 @@ completed_jobs = monitor.get_completed_jobs()
 
 ---
 
-### Method: get_job()
+### get_job
 
 Get specific job by ID.
 
@@ -874,7 +579,33 @@ job = monitor.get_job(job_id)
 
 ---
 
-### Method: refresh_job()
+### remove_job
+
+```python
+removed = monitor.remove_job(job_id) -> bool
+```
+
+Drop a job from the in-memory monitor. Does **not** delete files on disk.
+
+### cleanup_stale_jobs
+
+```python
+monitor.cleanup_stale_jobs(max_age_seconds: float = 3600)
+```
+
+Remove jobs whose last update is older than `max_age_seconds`.
+
+### get_job_statistics
+
+```python
+stats = monitor.get_job_statistics() -> dict
+```
+
+Counts of `total`, `running`, `completed`, `error`, and `unknown` jobs.
+
+See [Example 16](#example-16-jobmonitor-class) and [Example 18](#example-18-monitoring-batch-job-management).
+
+### refresh_job
 
 Force refresh of a specific job's status.
 
@@ -923,49 +654,7 @@ Each job is represented by a `JobInfo` object with the following attributes:
 ### Example 17: Real-time Progress Tracking
 
 ```python
-from gatewizard.core.job_monitor import JobMonitor
-from pathlib import Path
-import time
-
-# Start a system preparation (runs in background)
-from gatewizard.core.builder import Builder
-
-builder = Builder()
-success, message, job_dir = builder.prepare_system(
-    pdb_file="protein_protonated_prepared.pdb",
-    working_dir="./systems",
-    upper_lipids=["POPC"],
-    lower_lipids=["POPC"],
-    lipid_ratios="1//1"
-)
-
-if success:
-    print(f"✓ Job started: {job_dir}")
-
-    # Monitor progress in real-time
-    monitor = JobMonitor(working_directory=Path("./systems"))
-
-    while True:
-        monitor.scan_for_jobs(force=True)
-        active_jobs = monitor.get_active_jobs()
-
-        if not active_jobs:
-            # Job completed
-            completed = monitor.get_completed_jobs()
-            if completed:
-                for job_id, job_info in completed.items():
-                    if str(job_dir) in job_id:
-                        print(f"\n✓ Job completed: {job_info.status.value}")
-                        print(f"  Total time: {job_info.elapsed_time:.1f}s")
-                        break
-            break
-
-        # Show progress
-        for job_id, job_info in active_jobs.items():
-            if str(job_dir) in job_id:
-                print(f"\rProgress: {job_info.progress:.1f}% - {job_info.current_step}", end="", flush=True)
-
-        time.sleep(2)  # Check every 2 seconds
+--8<-- "tests/builder_examples/builder_example_17.py"
 ```
 
 ---
@@ -973,40 +662,7 @@ if success:
 ### Example 18: Monitoring Batch Job Management
 
 ```python
-from gatewizard.core.job_monitor import JobMonitor
-from pathlib import Path
-
-# Monitor all jobs in a directory
-monitor = JobMonitor(working_directory=Path("./systems"))
-monitor.scan_for_jobs(force=True)
-
-# Check active jobs
-active_jobs = monitor.get_active_jobs()
-print(f"\n{'='*60}")
-print(f"ACTIVE JOBS: {len(active_jobs)}")
-print(f"{'='*60}")
-
-for job_id, job_info in active_jobs.items():
-    print(f"\n📁 {job_info.job_dir.name}")
-    print(f"   Status: {job_info.status.value}")
-    print(f"   Progress: {job_info.progress:.1f}%")
-    print(f"   Current: {job_info.current_step}")
-    print(f"   Runtime: {job_info.elapsed_time:.0f}s")
-
-    if job_info.steps_completed:
-        print(f"   Completed steps:")
-        for step in job_info.steps_completed:
-            print(f"     ✓ {step}")
-
-# Check completed jobs
-completed_jobs = monitor.get_completed_jobs()
-print(f"\n{'='*60}")
-print(f"COMPLETED JOBS: {len(completed_jobs)}")
-print(f"{'='*60}")
-
-for job_id, job_info in completed_jobs.items():
-    status_icon = "✓" if job_info.status.value == "completed" else "✗"
-    print(f"{status_icon} {job_info.job_dir.name}: {job_info.status.value} ({job_info.elapsed_time:.0f}s)")
+--8<-- "tests/builder_examples/builder_example_18.py"
 ```
 
 ---
@@ -1277,7 +933,7 @@ Information container for a detected ligand residue.
     software, not included in AmberTools). All other methods (`bcc`, `abcg2`, `gas`,
     `mul`, `cm2`) use **sqm**, which is bundled with AmberTools.
 
-### Function: detect_ligands()
+### detect_ligands
 
 Detect non-standard (ligand) residues in a PDB file by scanning HETATM records.
 
@@ -1298,35 +954,12 @@ detect_ligands(pdb_file: str) -> List[LigandInfo]
 ### Example 19: Detect Ligands
 
 ```python
-"""
-Builder Example 19: Detect ligands in a PDB file
-
-Demonstrates how to detect non-standard residues (ligands)
-in a PDB file using the ligand parametrization tools.
-"""
-
-from gatewizard.tools.ligand_parametrization import detect_ligands
-
-# Detect ligands in a PDB file with two ligands (AAA and BBB)
-pdb_file = "tests/2MVJ_2ligs.pdb"
-ligands = detect_ligands(pdb_file)
-
-print(f"Detected {len(ligands)} ligand(s) in {pdb_file}:")
-print(f"{'='*60}")
-
-for lig in ligands:
-    print(f"\nLigand: {lig.name}")
-    print(f"  Chain: {lig.chain}")
-    print(f"  Residue ID: {lig.res_id}")
-    print(f"  Number of atoms: {lig.num_atoms}")
-    print(f"  Molecular formula: {lig.formula}")
-    print(f"  Elements: {lig.elements}")
-    print(f"  As dict: {lig.to_dict()}")
+--8<-- "tests/builder_examples/builder_example_19.py"
 ```
 
 ---
 
-### Function: extract_ligand_pdb()
+### extract_ligand_pdb
 
 Extract a single ligand from a PDB file into its own file.
 
@@ -1349,43 +982,12 @@ extract_ligand_pdb(pdb_file: str, ligand_name: str, output_dir: str) -> str
 ### Example 20: Extract a Ligand
 
 ```python
-"""
-Builder Example 20: Extract a ligand from a PDB file
-
-Demonstrates how to extract a specific ligand into its own PDB file
-for individual parametrization.
-"""
-
-from pathlib import Path
-from gatewizard.tools.ligand_parametrization import detect_ligands, extract_ligand_pdb
-
-pdb_file = "tests/2MVJ_2ligs.pdb"
-output_dir = "./systems/ligand_extraction"
-
-# First detect ligands
-ligands = detect_ligands(pdb_file)
-print(f"Detected ligands: {[l.name for l in ligands]}")
-
-# Extract each ligand to its own subdirectory
-for lig in ligands:
-    lig_dir = str(Path(output_dir) / lig.name)
-    extracted_pdb = extract_ligand_pdb(pdb_file, lig.name, lig_dir)
-
-    # Verify extraction
-    with open(extracted_pdb) as f:
-        lines = [l for l in f if l.startswith("HETATM")]
-
-    print(f"\nExtracted {lig.name}:")
-    print(f"  Output: {extracted_pdb}")
-    print(f"  Atoms: {len(lines)}")
-    print(f"  First line: {lines[0].strip()[:60]}...")
-
-print(f"\nAll extracted ligands saved in: {output_dir}")
+--8<-- "tests/builder_examples/builder_example_20.py"
 ```
 
 ---
 
-### Function: parametrize_ligand()
+### parametrize_ligand
 
 Parametrize a single ligand using the AMBER/GAFF workflow (antechamber → parmchk2 → tleap).
 
@@ -1433,7 +1035,7 @@ parametrize_ligand(
 
 ---
 
-### Function: parametrize_all_ligands()
+### parametrize_all_ligands
 
 Detect and parametrize all ligands in a PDB file in one call.
 
@@ -1462,68 +1064,12 @@ parametrize_all_ligands(
 ### Example 22: Parametrize All Ligands
 
 ```python
-"""
-Builder Example 22: Parametrize all ligands in a PDB file
-
-Demonstrates the full ligand parametrization workflow:
-1. Detect ligands from PDB
-2. Extract each ligand
-3. Run antechamber + parmchk2 + tleap for each
-4. Collect .frcmod and .lib files
-
-NOTE: This example requires AmberTools (antechamber, parmchk2, tleap)
-to be installed and accessible in the PATH.
-"""
-
-from pathlib import Path
-from gatewizard.tools.ligand_parametrization import (
-    parametrize_all_ligands,
-    build_ligand_param_args,
-    build_tleap_ligand_lines,
-)
-
-pdb_file = "tests/2MVJ_2ligs.pdb"
-output_dir = "./systems/ligand_params"
-
-# Set charges for each ligand (default is 0 if not specified)
-charges = {
-    'AAA': 0,
-    'BBB': 0,
-}
-
-print(f"Output directory: {output_dir}")
-
-# Parametrize all ligands
-results = parametrize_all_ligands(
-    pdb_file=pdb_file,
-    output_dir=output_dir,
-    charges=charges,
-    charge_method='bcc',  # AM1-BCC charges
-    atom_type='gaff2',    # GAFF2 atom types (recommended with abcg2; bcc also works)
-)
-
-print(f"\nParametrized {len(results)} ligand(s):")
-for name, files in results.items():
-    print(f"\n  {name}:")
-    for file_type, file_path in files.items():
-        exists = Path(file_path).exists()
-        print(f"    {file_type}: {file_path} ({'exists' if exists else 'MISSING'})")
-
-# Now these can be passed to Builder.prepare_system()
-print("\n\npackmol-memgen arguments:")
-pmm_args = build_ligand_param_args(results)
-print(f"  {' '.join(pmm_args)}")
-
-print("\ntleap ligand lines:")
-tleap_lines = build_tleap_ligand_lines(results)
-print(tleap_lines)
-
-print(f"\nAll parameter files saved in: {output_dir}")
+--8<-- "tests/builder_examples/builder_example_22.py"
 ```
 
 ---
 
-### Function: get_ligand_2d_image()
+### get_ligand_2d_image
 
 Generate a publication-quality 2D molecular structure image using RDKit.
 
@@ -1581,7 +1127,7 @@ get_ligand_2d_image(
 | `_DEFAULT_DARK_PALETTE` | (used automatically) | Dark backgrounds |
 | `LIGHT_PALETTE` | `from gatewizard.tools.ligand_parametrization import LIGHT_PALETTE` | White / light backgrounds |
 
-### Function: get_ligand_2d_image_from_pdb_lines()
+### get_ligand_2d_image_from_pdb_lines
 
 Generate a 2D image directly from PDB HETATM lines (no file required).
 All keyword arguments are forwarded to `get_ligand_2d_image`.
@@ -1611,96 +1157,12 @@ get_ligand_2d_image_from_pdb_lines(
 ### Example 24: Generate 2D Structure Images
 
 ```python
-"""
-Builder Example 24: Generate 2D structure images of ligands
-
-Demonstrates generating 2D molecular structure images from PDB files
-using RDKit, including options for hydrogen removal, DPI control,
-custom colour palettes, and transparent backgrounds.
-"""
-
-from pathlib import Path
-from gatewizard.tools.ligand_parametrization import (
-    detect_ligands,
-    get_ligand_2d_image_from_pdb_lines,
-    get_ligand_2d_image,
-    extract_ligand_pdb,
-    LIGHT_PALETTE,
-)
-
-pdb_file = "tests/2MVJ_2ligs.pdb"
-output_dir = "./systems/ligand_images"
-Path(output_dir).mkdir(parents=True, exist_ok=True)
-
-# Detect ligands
-ligands = detect_ligands(pdb_file)
-print(f"Detected {len(ligands)} ligands\n")
-
-for lig in ligands:
-    # --- Style 1: Default (dark background, non-polar H removed) --------
-    img = str(Path(output_dir) / f"{lig.name}_default.png")
-    result = get_ligand_2d_image_from_pdb_lines(
-        lig.pdb_lines, img, width=400, height=300,
-        remove_nonpolar_h=True,           # cleaner look (default)
-    )
-    if result:
-        print(f"{lig.name} default : {Path(result).stat().st_size:>6} bytes")
-
-    # --- Style 2: All hydrogens removed ----------------------------------
-    img = str(Path(output_dir) / f"{lig.name}_no_h.png")
-    result = get_ligand_2d_image_from_pdb_lines(
-        lig.pdb_lines, img, width=400, height=300,
-        remove_all_h=True,                # skeleton only
-    )
-    if result:
-        print(f"{lig.name} no-H    : {Path(result).stat().st_size:>6} bytes")
-
-    # --- Style 3: High-DPI for publication (white background) ------------
-    img = str(Path(output_dir) / f"{lig.name}_hires.png")
-    lig_dir = str(Path(output_dir) / lig.name)
-    extracted_pdb = extract_ligand_pdb(pdb_file, lig.name, lig_dir)
-    result = get_ligand_2d_image(
-        extracted_pdb, img,
-        width=800, height=600,
-        dpi=300,                           # high DPI
-        remove_all_h=True,
-        background_color=(1, 1, 1, 1),     # white
-        atom_palette=LIGHT_PALETTE,        # colours for light background
-        bond_line_width=1.5,
-    )
-    if result:
-        print(f"{lig.name} hi-res  : {Path(result).stat().st_size:>6} bytes")
-
-    # --- Style 4: Transparent background ---------------------------------
-    img = str(Path(output_dir) / f"{lig.name}_transparent.png")
-    result = get_ligand_2d_image_from_pdb_lines(
-        lig.pdb_lines, img, width=400, height=300,
-        remove_nonpolar_h=True,
-        transparent_background=True,
-    )
-    if result:
-        print(f"{lig.name} transp. : {Path(result).stat().st_size:>6} bytes")
-
-    # --- Style 5: All hydrogens visible, thicker bonds -------------------
-    img = str(Path(output_dir) / f"{lig.name}_all_h.png")
-    result = get_ligand_2d_image_from_pdb_lines(
-        lig.pdb_lines, img, width=500, height=400,
-        remove_nonpolar_h=False,
-        remove_all_h=False,
-        bond_line_width=3.5,
-        padding=0.2,
-    )
-    if result:
-        print(f"{lig.name} all-H   : {Path(result).stat().st_size:>6} bytes")
-
-    print()
-
-print(f"All images saved in: {output_dir}")
+--8<-- "tests/builder_examples/builder_example_24.py"
 ```
 
 ---
 
-### Function: build_ligand_param_args()
+### build_ligand_param_args
 
 Build `--ligand_param` command-line arguments for packmol-memgen.
 
@@ -1722,7 +1184,7 @@ build_ligand_param_args(
     packmol-memgen requires a **separate** `--ligand_param` flag per ligand.
     Combining multiple ligands into a single flag will not work.
 
-### Function: build_tleap_ligand_lines()
+### build_tleap_ligand_lines
 
 Build tleap input lines to load GAFF/GAFF2 and ligand parameters. Insert these **before** `loadPDB`.
 
@@ -1745,51 +1207,7 @@ build_tleap_ligand_lines(
 ### Example 21: Build packmol-memgen and tleap Arguments
 
 ```python
-"""
-Builder Example 21: Build packmol-memgen and tleap commands with ligand parameters
-
-Demonstrates how to construct the packmol-memgen --ligand_param arguments
-and tleap input lines for systems with ligands.
-"""
-
-from gatewizard.tools.ligand_parametrization import (
-    build_ligand_param_args,
-    build_tleap_ligand_lines,
-)
-
-# Simulated parametrization results (paths to .frcmod and .lib files)
-ligand_files = {
-    'AAA': {
-        'frcmod': 'ligand_params/AAA/AAA.frcmod',
-        'lib': 'ligand_params/AAA/AAA.lib',
-        'mol2': 'ligand_params/AAA/AAA.mol2',
-    },
-    'BBB': {
-        'frcmod': 'ligand_params/BBB/BBB.frcmod',
-        'lib': 'ligand_params/BBB/BBB.lib',
-        'mol2': 'ligand_params/BBB/BBB.mol2',
-    },
-}
-
-# Build packmol-memgen arguments
-# Each ligand gets its own --ligand_param flag (CANNOT combine in one flag)
-pmm_args = build_ligand_param_args(ligand_files)
-print("packmol-memgen arguments:")
-for i in range(0, len(pmm_args), 2):
-    print(f"  {pmm_args[i]} {pmm_args[i+1]}")
-
-print()
-
-# Build tleap input lines
-# These go BEFORE loadPDB in the tleap input
-tleap_lines = build_tleap_ligand_lines(ligand_files)
-print("tleap input lines:")
-print(tleap_lines)
-
-# With GAFF atom types instead of GAFF2
-tleap_lines_gaff = build_tleap_ligand_lines(ligand_files, atom_type='gaff')
-print("\ntleap input lines (GAFF):")
-print(tleap_lines_gaff)
+--8<-- "tests/builder_examples/builder_example_21.py"
 ```
 
 ---
@@ -1822,160 +1240,13 @@ config['ligand_params'] = {
 ### Example 23: Full Membrane System with Ligand Parametrization
 
 ```python
-"""
-Builder Example 23: Full membrane system with ligand parametrization
-
-Demonstrates setting up a complete membrane system that includes
-non-standard ligands. The ligand .frcmod/.lib files are passed
-to both packmol-memgen and the final tleap parametrization.
-
-NOTE: This example requires AmberTools and packmol-memgen.
-"""
-
-from gatewizard.core.builder import Builder
-from gatewizard.tools.ligand_parametrization import (
-    detect_ligands,
-    parametrize_all_ligands,
-)
-
-# Create builder
-builder = Builder()
-
-pdb_file = "tests/2MVJ_2ligs.pdb"
-working_dir = "./systems"
-
-# Step 1: Detect and parametrize ligands
-print("Step 1: Detecting ligands...")
-ligands = detect_ligands(pdb_file)
-for lig in ligands:
-    print(f"  Found: {lig.name} ({lig.num_atoms} atoms, {lig.formula})")
-
-print("\nStep 2: Parametrizing ligands...")
-ligand_results = parametrize_all_ligands(
-    pdb_file=pdb_file,
-    output_dir=f"{working_dir}/ligand_params",
-    charges={'AAA': 0, 'BBB': 0},
-    charge_method='bcc',
-    atom_type='gaff2',    # GAFF2 atom types
-)
-
-print(f"  Parametrized: {list(ligand_results.keys())}")
-
-# Step 3: Configure builder with ligand parameters
-builder.set_configuration(
-    water_model='tip3p',
-    protein_ff='ff14SB',
-    lipid_ff='lipid21',
-    preoriented=True,
-    parametrize=True,
-    salt_concentration=0.15,
-    dist=12,
-    dist_wat=26,
-    notprotonate=True,
-    ligand_params=ligand_results,  # Pass parametrized ligand files
-)
-
-print("\nStep 3: Builder configured with ligand parameters")
-print(f"  Ligands in config: {list(builder.config['ligand_params'].keys())}")
-
-# Step 4: Prepare system
-success, message, job_dir = builder.prepare_system(
-    pdb_file=pdb_file,
-    working_dir=working_dir,
-    upper_lipids=['POPC'],
-    lower_lipids=['POPC'],
-    lipid_ratios='1.0//1.0',
-)
-print(f"\nResult: {message}")
-
-# The builder will:
-# 1. Add --ligand_param AAA/AAA.frcmod:AAA/AAA.lib to packmol-memgen
-# 2. Add --ligand_param BBB/BBB.frcmod:BBB/BBB.lib to packmol-memgen
-# 3. Add --gaff2 to packmol-memgen
-# 4. Load ligand .frcmod and .lib in the tleap parametrization step
-print("\nWorkflow complete. The builder will pass ligand params to:")
-print("  - packmol-memgen (--ligand_param flags)")
-print("  - tleap (loadamberparams/loadoff commands)")
+--8<-- "tests/builder_examples/builder_example_23.py"
 ```
 
 ### Example 26: Atom Type Selection and Recommended Pairings
 
 ```python
-"""
-Builder Example 26: Atom type selection and recommended pairings
-
-Demonstrates how to choose between GAFF and GAFF2 atom types,
-check recommended pairings per the AMBER manual, and use
-the ABCG2 charge method with GAFF2.
-
-NOTE: This example requires AmberTools (antechamber, parmchk2, tleap)
-to be installed and accessible in the PATH.
-"""
-
-from gatewizard.tools.ligand_parametrization import (
-    parametrize_all_ligands,
-    build_tleap_ligand_lines,
-    ATOM_TYPES,
-    CHARGE_METHODS,
-    DEFAULT_ATOM_TYPE,
-    DEFAULT_CHARGE_METHOD,
-    RECOMMENDED_COMBOS,
-    NON_RECOMMENDED_COMBOS,
-)
-
-# ── Available options ────────────────────────────────────────────────
-print("Available atom types:")
-for key, label in ATOM_TYPES.items():
-    default = " (default)" if key == DEFAULT_ATOM_TYPE else ""
-    print(f"  {key}: {label}{default}")
-
-print("\nAvailable charge methods:")
-for key, label in CHARGE_METHODS.items():
-    default = " (default)" if key == DEFAULT_CHARGE_METHOD else ""
-    print(f"  {key}: {label}{default}")
-
-# ── Recommended pairings ─────────────────────────────────────────────
-print("\nRecommended pairings (AMBER manual):")
-for at, cm in sorted(RECOMMENDED_COMBOS):
-    print(f"  {at} + {cm}  ✓")
-
-print("\nNon-recommended pairings (will show warning):")
-for at, cm in sorted(NON_RECOMMENDED_COMBOS):
-    print(f"  {at} + {cm}  ✗")
-
-# ── Check a pairing before parametrizing ─────────────────────────────
-atom_type = 'gaff2'
-charge_method = 'abcg2'
-
-if (atom_type, charge_method) in RECOMMENDED_COMBOS:
-    print(f"\n{atom_type}/{charge_method} is a recommended pairing.")
-elif (atom_type, charge_method) in NON_RECOMMENDED_COMBOS:
-    print(f"\nWARNING: {atom_type}/{charge_method} is NOT recommended.")
-else:
-    print(f"\n{atom_type}/{charge_method} has no specific recommendation.")
-
-# ── Parametrize with gaff2/abcg2 (recommended) ──────────────────────
-pdb_file = "tests/2MVJ_2ligs.pdb"
-output_dir = "./systems/ligand_params_gaff2_abcg2"
-
-results = parametrize_all_ligands(
-    pdb_file=pdb_file,
-    output_dir=output_dir,
-    charges={'AAA': 0, 'BBB': 0},
-    charge_method='abcg2',   # ABCG2 charges
-    atom_type='gaff2',       # GAFF2 atom types (recommended with abcg2)
-)
-
-print(f"\nParametrized {len(results)} ligand(s) with gaff2/abcg2:")
-for name, files in results.items():
-    print(f"  {name}: {files.get('frcmod', 'N/A')}")
-
-# ── tleap lines reflect the chosen atom type ─────────────────────────
-tleap_gaff2 = build_tleap_ligand_lines(results, atom_type='gaff2')
-print(f"\ntleap lines (GAFF2):\n{tleap_gaff2}")
-
-tleap_gaff = build_tleap_ligand_lines(results, atom_type='gaff')
-print(f"\ntleap lines (GAFF):\n{tleap_gaff}")
+--8<-- "tests/builder_examples/builder_example_26.py"
 ```
 
 ### Ligand Parametrization Troubleshooting
@@ -2025,4 +1296,4 @@ print(f"\ntleap lines (GAFF):\n{tleap_gaff}")
 - [Preparation Module](preparation.md) - Protonation state analysis
 - [Equilibration Module](equilibration.md) - MD equilibration protocols
 - [User Guide - Builder Tab](../user-guide.md#builder-tab-system-building) - GUI workflow
-- [Examples on GitHub](https://github.com/maurobedoya/gatewizard/tree/main/examples) - Complete workflow examples
+- [Builder examples](https://github.com/maurobedoya/gatewizard/tree/main/tests/builder_examples) - Numbered scripts included on this page
