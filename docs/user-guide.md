@@ -2,8 +2,6 @@
 
 This guide matches the **[gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui)** desktop app (Electron). The `gatewizard` pip package is the Python API only — it does not open this window.
 
-Recapture the PNGs under `docs/images/user-guide/` at 1920×1080 or 1600×900, dark theme, full window. Names are fixed so the page does not drift.
-
 ## Pages
 
 The left **activity bar** switches pages:
@@ -16,10 +14,6 @@ The left **activity bar** switches pages:
 | **Equilibration** | NAMD / GROMACS / OpenMM / Amber schemes, Generate, Watch / Pull, cluster |
 | **Tools** | Fix PBC and other trajectory utilities |
 | **Analysis** | Structural (RMSD/RMSF/APL) and energetic log plots |
-
-Across the top: **working-directory** bar (project folder). 
-Gear icon: **Settings** (clusters, GPU, paths). 
-Status bar: backend health and **RAM**.
 
 ![Visualize workspace](images/user-guide/visualize_workspace.png)
 
@@ -136,4 +130,4 @@ The footer shows backend connectivity and **system RAM** (not polled while you s
 
 ## Python API
 
-For scripts, use the [API reference](api/index.md) and [method dictionary](api/dictionary.md). Copy any `tests/<module>_examples/*_example_NN.py` — those files are what pytest runs and what the docs include.
+For scripts, use the [API reference](api/index.md) and [method dictionary](api/dictionary.md). Worked examples are the `tests/<module>_examples/` scripts in the API repository.

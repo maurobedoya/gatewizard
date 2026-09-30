@@ -486,7 +486,3 @@ A: DCD, XTC, TRR, NetCDF, and others via MDAnalysis.
 
 **Q: How do I cite GateWizard?**
 A: Citation information to be added.
-
----
-
-*This troubleshooting guide is continuously updated. Last update: October 2025*

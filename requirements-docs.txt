@@ -1,0 +1,2 @@
+# Documentation site. Zensical reads mkdocs.yml (classic Material variant).
+zensical==0.0.66

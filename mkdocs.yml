@@ -15,6 +15,7 @@ copyright: Copyright &copy; 2025 Constanza González, Mauricio Bedoya
 # Theme
 theme:
   name: material
+  variant: classic
   custom_dir: overrides
   palette:
     # Light mode
@@ -117,13 +118,17 @@ extra:
     - name: GUI
       repo: franciscoadasme/gatewizard-gui
       url: https://github.com/franciscoadasme/gatewizard-gui
+  generator: false
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/maurobedoya/gatewizard
-      name: API repository
+      name: API
     - icon: fontawesome/brands/github
       link: https://github.com/franciscoadasme/gatewizard-gui
-      name: GUI repository
+      name: GUI
+    - icon: fontawesome/brands/github
+      link: https://github.com/maurobedoya/gatewizard/discussions
+      name: Discussions
   version:
     provider: mike
 
