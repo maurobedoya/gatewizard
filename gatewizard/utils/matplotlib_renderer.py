@@ -921,34 +921,13 @@ def render_energetic(
             legend_cfg.get("manual_items") or [],
         )
         if handles:
-            if extra_row and legend_row is not None:
-                lax = fig.add_subplot(gs[legend_row, :])
-            else:
-                lax = fig.add_subplot(gs[:, legend_col])
-            lax.axis("off")
-            align = str(legend_cfg.get("align") or "center").lower()
-            if legend_loc in ("left", "right"):
-                loc_map = {
-                    "start": "upper center",
-                    "center": "center",
-                    "end": "lower center",
-                }
-            else:
-                loc_map = {
-                    "start": "center left",
-                    "center": "center",
-                    "end": "center right",
-                }
             border_w = float(legend_cfg.get("border_width") or 0)
             title_fs = _legend_fontsize(
                 legend_cfg.get("title_fontsize")
                 if legend_cfg.get("title_fontsize") not in (None, "")
                 else legend_cfg.get("fontsize") or 8
             )
-            leg = lax.legend(
-                handles,
-                labels,
-                loc=loc_map.get(align, "center"),
+            legend_kwargs = dict(
                 ncol=int(legend_cfg.get("ncol") or 1),
                 fontsize=_legend_fontsize(legend_cfg.get("fontsize") or 8),
                 title=legend_cfg.get("title") or None,
@@ -966,6 +945,42 @@ def render_energetic(
                     0.4, float(legend_cfg.get("swatch_height") or 12.0) / 10.0
                 ),
             )
+            if legend_loc == "custom":
+                gx = max(-0.2, min(1.2, float(legend_cfg.get("x") or 62.0) / 100.0))
+                gy = max(-0.2, min(1.2, 1.0 - float(legend_cfg.get("y") or 4.0) / 100.0))
+                leg = fig.legend(
+                    handles,
+                    labels,
+                    loc="upper left",
+                    bbox_to_anchor=(gx, gy),
+                    bbox_transform=fig.transFigure,
+                    **legend_kwargs,
+                )
+            else:
+                if extra_row and legend_row is not None:
+                    lax = fig.add_subplot(gs[legend_row, :])
+                else:
+                    lax = fig.add_subplot(gs[:, legend_col])
+                lax.axis("off")
+                align = str(legend_cfg.get("align") or "center").lower()
+                if legend_loc in ("left", "right"):
+                    loc_map = {
+                        "start": "upper center",
+                        "center": "center",
+                        "end": "lower center",
+                    }
+                else:
+                    loc_map = {
+                        "start": "center left",
+                        "center": "center",
+                        "end": "center right",
+                    }
+                leg = lax.legend(
+                    handles,
+                    labels,
+                    loc=loc_map.get(align, "center"),
+                    **legend_kwargs,
+                )
             if leg:
                 plt.setp(leg.get_texts(), color=text_color)
                 if leg.get_title():

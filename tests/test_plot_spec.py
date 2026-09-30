@@ -310,6 +310,51 @@ def test_normalize_legend_accepts_manual_items():
     assert items[1]["marker"] == "none"
 
 
+def test_normalize_legend_custom_anchor():
+    spec = normalize_plot_spec(
+        {
+            "layout": "grid",
+            "legend": {"mode": "outside", "loc": "custom", "x": 12.5, "y": 80},
+            "panels": [{"key": "p0"}],
+        }
+    )
+    assert spec["legend"]["loc"] == "custom"
+    assert spec["legend"]["x"] == 12.5
+    assert spec["legend"]["y"] == 80.0
+
+
+def test_render_custom_outside_legend(sample_data):
+    spec = {
+        "layout": "grid",
+        "cols": 2,
+        "legend": {
+            "mode": "outside",
+            "loc": "custom",
+            "x": 40,
+            "y": 10,
+            "entries": "sets",
+        },
+        "panels": [
+            {"key": "temp", "title": "T"},
+            {"key": "press", "title": "P"},
+        ],
+    }
+    fig = render_energetic(sample_data, spec)
+    try:
+        plot_axes = [ax for ax in fig.axes if ax.lines]
+        assert len(plot_axes) == 2
+        assert all(ax.get_legend() is None for ax in plot_axes)
+        assert len(fig.legends) == 1
+        anchor = fig.legends[0].get_bbox_to_anchor()
+        # GUI Y is from the top; 10% down is 0.9 in figure coordinates.
+        assert abs(anchor.x0 / fig.bbox.width - 0.4) < 1e-3
+        assert abs(anchor.y0 / fig.bbox.height - 0.9) < 1e-3
+    finally:
+        import matplotlib.pyplot as plt
+
+        plt.close(fig)
+
+
 def test_render_outside_manual_legend(sample_data):
     spec = {
         "layout": "grid",

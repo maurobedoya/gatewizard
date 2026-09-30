@@ -265,8 +265,15 @@ def _normalize_legend(raw: Any) -> Dict[str, Any]:
     if mode not in ("each", "one", "outside", "none", ""):
         mode = ""
     loc = str(src.get("loc") or "bottom").lower()
-    if loc not in ("top", "bottom", "left", "right"):
+    if loc not in ("top", "bottom", "left", "right", "custom"):
         loc = "bottom"
+
+    def _anchor(raw: Any, default: float) -> float:
+        try:
+            n = float(raw) if raw is not None and raw != "" else default
+        except (TypeError, ValueError):
+            n = default
+        return max(-20.0, min(120.0, n))
     align = str(src.get("align") or "center").lower()
     if align not in ("start", "center", "end"):
         align = "center"
@@ -314,6 +321,8 @@ def _normalize_legend(raw: Any) -> Dict[str, Any]:
         "cell": max(0, cell),
         "loc": loc,
         "align": align,
+        "x": _anchor(src.get("x"), 62.0),
+        "y": _anchor(src.get("y"), 4.0),
         "entries": entries,
         "fontsize": fontsize,
         "ncol": ncol,

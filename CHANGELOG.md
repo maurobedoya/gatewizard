@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **PlotSpec custom legend:** an outside legend can sit at a chosen spot (`loc: "custom"`, `x` and `y` as percent from the top-left of the figure). Publication PNG and PDF use that position instead of only the top, bottom, left, or right strip.
 - **Docs header repos:** the MkDocs header (and drawer) now list both GitHub repositories — API (`maurobedoya/gatewizard`) and GUI (`franciscoadasme/gatewizard-gui`) — with latest tag, stars, and forks. API is stacked above GUI so the version tag stays visible.
 - **Docs brand:** header and favicon use the GateWizard emblem; the Home page has a teal banner with the splash lockup (`docs/images/splash.png`).
 - **Preparation complete missing protein atoms:** `complete_missing_heavy_atoms` uses Amber `tleap` templates to add missing side-chain heavy atoms on residues that already exist (not missing loops). GUI Prepare then runs `pdb4amber --reduce` for Amber hydrogens when `reduce` is installed.
