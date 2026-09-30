@@ -479,7 +479,7 @@ A: **OpenMM** can use CUDA when `openmm` + `cudatoolkit` are installed and an NV
 A: Python API is available for scripting (see API documentation).
 
 **Q: conda/micromamba GROMACS CUDA install hangs — do I need to accept a license?**
-A: No. EULA / Terms-of-Service lines in the log are not interactive prompts (`-y` is already used). The hang is almost always the dependency solver. Cancel and install CPU `gromacs`, or for the GUI leave the default / see `GATEWIZARD_CONDA_GROMACS_CUDA` in [Installation](installation.md#desktop-gui-runtime-gromacs--cuda).
+A: No. EULA / Terms-of-Service lines in the log are not interactive prompts (`-y` is already used). The hang is almost always the dependency solver. Cancel and install CPU `gromacs`, or for the GUI leave the default / see `GATEWIZARD_CONDA_GROMACS_CUDA` in [Installation](installation.md#desktop-gui-runtime-gromacs-cuda).
 
 **Q: What trajectory formats are supported?**
 A: DCD, XTC, TRR, NetCDF, and others via MDAnalysis.

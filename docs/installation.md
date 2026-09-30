@@ -28,7 +28,7 @@ pip install gatewizard
 python -c "import gatewizard; print(gatewizard.__version__)"
 ```
 
-For the **desktop app**, install [gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui/releases) separately. On first launch the GUI embeds its own micromamba runtime (Python, AmberTools, OpenMM, GROMACS, and `gatewizard` via pip). See [Desktop GUI runtime (GROMACS / CUDA)](#desktop-gui-runtime-gromacs--cuda) below.
+For the **desktop app**, install [gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui/releases) separately. On first launch the GUI embeds its own micromamba runtime (Python, AmberTools, OpenMM, GROMACS, and `gatewizard` via pip). See [Desktop GUI runtime (GROMACS / CUDA)](#desktop-gui-runtime-gromacs-cuda) below.
 
 ## Alternative: Development Installation
 
@@ -233,7 +233,7 @@ conda install -c conda-forge gromacs -y
 # Optional: use a system CUDA GROMACS / GMXRC instead of the conda CUDA build
 ```
 
-For **gatewizard-gui**, leave the default (CPU GROMACS). Only set `GATEWIZARD_CONDA_GROMACS_CUDA=1` if you explicitly want the timed CUDA attempt. See [Desktop GUI runtime (GROMACS / CUDA)](installation.md#desktop-gui-runtime-gromacs--cuda).
+For **gatewizard-gui**, leave the default (CPU GROMACS). Only set `GATEWIZARD_CONDA_GROMACS_CUDA=1` if you explicitly want the timed CUDA attempt. See [Desktop GUI runtime (GROMACS / CUDA)](installation.md#desktop-gui-runtime-gromacs-cuda).
 
 ### Issue: ImportError with numpy.compat
 

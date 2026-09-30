@@ -101,3 +101,16 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 - **Constanza González**
 - **Mauricio Bedoya**
+
+## Citation
+
+If you use GateWizard in your research, please cite:
+
+```
+[Citation information to be added]
+```
+
+---
+
+*Last updated: September 2026*
+

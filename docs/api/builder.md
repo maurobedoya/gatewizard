@@ -1295,5 +1295,5 @@ config['ligand_params'] = {
 
 - [Preparation Module](preparation.md) - Protonation state analysis
 - [Equilibration Module](equilibration.md) - MD equilibration protocols
-- [User Guide - Builder Tab](../user-guide.md#builder-tab-system-building) - GUI workflow
+- [User Guide - Builder](../user-guide.md#builder) - GUI workflow
 - [Builder examples](https://github.com/maurobedoya/gatewizard/tree/main/tests/builder_examples) - Numbered scripts included on this page
