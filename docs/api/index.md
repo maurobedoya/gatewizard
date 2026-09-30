@@ -11,11 +11,12 @@ A–Z index of public classes and functions. Click a name to jump to its heading
 Load, inspect, edit, and save PDB structures (selections, chain/residue edits, MemPrO orientation).
 
 **Key Features:**
-- Load from disk or PDB ID
-- MDAnalysis selections and criteria helpers
-- Rename / renumber / delete atoms
-- Secondary structure assignment
-- Apply a MemPrO orientation to the full system
+
+- Load from disk or PDB ID 
+- MDAnalysis selections and criteria helpers  
+- Rename / renumber / delete atoms 
+- Secondary structure assignment 
+- Apply a MemPrO orientation to the full system 
 
 **Main Classes:** `StructureManager`
 
@@ -25,6 +26,7 @@ Load, inspect, edit, and save PDB structures (selections, chain/residue edits, M
 Module for predicting pKa values and managing protonation states in protein structures.
 
 **Key Features:**
+
 - pKa prediction and analysis
 - Protonation state assignment based on pH
 - Disulfide bond detection and application
@@ -41,6 +43,7 @@ Module for predicting pKa values and managing protonation states in protein stru
 Module for building and preparing molecular dynamics simulation systems.
 
 **Key Features:**
+
 - System configuration and setup
 - Integration with CHARMM-GUI
 - Membrane protein system preparation
@@ -53,6 +56,7 @@ Module for building and preparing molecular dynamics simulation systems.
 Module for orienting membrane proteins using MemPrO.
 
 **Key Features:**
+
 - Membrane protein orientation
 - Ranked orientation results with scoring
 - Oriented PDB file access by rank
@@ -66,6 +70,7 @@ Module for orienting membrane proteins using MemPrO.
 Module for cavity hydration with standalone PACKMOL (AmberTools TIP3P waters).
 
 **Key Features:**
+
 - PACKMOL availability check
 - Hydrogen status detection (heavy-atom-safe mode)
 - Cavity volume estimation inside a 3D box
@@ -80,6 +85,7 @@ Module for cavity hydration with standalone PACKMOL (AmberTools TIP3P waters).
 Module for managing equilibration protocols and workflows for NAMD, GROMACS, OpenMM, and Amber.
 
 **Key Features:**
+
 - NAMD equilibration protocol generation (CHARMM-GUI template integration)
 - GROMACS equilibration protocol generation
 - OpenMM equilibration protocol generation
@@ -97,6 +103,7 @@ Module for managing equilibration protocols and workflows for NAMD, GROMACS, Ope
 Module for analyzing simulation results and monitoring equilibration progress.
 
 **Key Features:**
+
 - NAMD log file parsing and energy analysis
 - OpenMM StateDataReporter log parsing
 - MDAnalysis-based trajectory analysis (RMSD, RMSF, distances, radius of gyration)
