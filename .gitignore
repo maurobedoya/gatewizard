@@ -146,6 +146,9 @@ status.json
 logs/
 
 # tests output
+tests/preparation_examples/output/
+tests/preparation_examples/propka_titration_curves.png
+tests/preparation_examples/protein_capped_convenient_gatewizard_residue_mapping.txt
 tests/equilibration_examples/popc_membrane/level*/
 tests/equilibration_examples/popc_membrane/openmm_example_*/
 *.tmp.*
