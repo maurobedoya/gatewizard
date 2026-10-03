@@ -55,6 +55,34 @@ PROTONATION_STATES = {
     "CTE": {"capped": "NME", "deprotonated": "COO"},  # C-terminus caps
 }
 
+# PropKa titrates the standard PDB names only (HIS-CG, ASP, …). Amber
+# protonation labels are rewritten on the copy sent to PropKa.
+PROPKA_RESIDUE_ALIASES = {
+    "HIE": "HIS",
+    "HID": "HIS",
+    "HIP": "HIS",
+    "ASH": "ASP",
+    "GLH": "GLU",
+    "LYN": "LYS",
+    "TYM": "TYR",
+    "CYM": "CYS",
+    "CYX": "CYS",
+}
+
+
+def rename_residue_for_propka(line: str) -> str:
+    """Map an Amber protonation name to the PDB name PropKa recognizes.
+
+    ATOM, HETATM, ANISOU, and TER records are updated in columns 18–20.
+    Other lines, and names PropKa already accepts, are returned unchanged.
+    """
+    if len(line) < 20 or not line.startswith(("ATOM", "HETATM", "ANISOU", "TER")):
+        return line
+    mapped = PROPKA_RESIDUE_ALIASES.get(line[17:20].strip().upper())
+    if not mapped:
+        return line
+    return f"{line[:17]}{mapped:<3.3}{line[20:]}"
+
 # Standard / Amber protein residues (+ caps). Used to strip protein H only —
 # ligands, waters, ions, and other hetero residues are left untouched.
 # Extended with D-aa / formyl / ethanolamine via peptide_residues.
@@ -460,10 +488,9 @@ class PreparationManager:
             output_directory = pdb_path.parent
             expected_output_file = pdb_path.with_suffix(".pka")
 
-        # Create a propka-safe copy of the PDB by stripping OXT atoms.
-        # Propka 3.5.1 has a bug in CtermGroup.setup_atoms() where OXT atoms
-        # cause a ValueError in the C-terminal carboxyl group detection.
-        # OXT atoms are not needed for pKa prediction.
+        # Copy the PDB for PropKa: drop OXT (PropKa 3.5.1 crashes on it) and
+        # rename Amber protonation labels (HIE, ASH, …) to HIS, ASP, ….
+        # The caller's file is not modified.
         propka_pdb = None
         try:
             propka_pdb = self._prepare_pdb_for_propka(pdb_path, output_directory)
@@ -547,33 +574,34 @@ class PreparationManager:
 
     @staticmethod
     def _prepare_pdb_for_propka(pdb_path: Path, output_dir: Path) -> str:
-        """Create a propka-safe copy of a PDB file by stripping OXT atoms.
+        """Write a PropKa input copy of a PDB file.
 
-        Propka 3.5.1 has a bug in CtermGroup.setup_atoms() that crashes on
-        OXT atoms when its distance-based bond detection produces asymmetric
-        results. OXT atoms are not required for pKa prediction, so removing
-        them is a safe workaround.
+        Two changes are applied only to this copy:
+
+        * OXT atoms are removed. PropKa 3.5.1 crashes in
+          ``CtermGroup.setup_atoms()`` when a C-terminal OXT is present, and
+          that atom is not used for the pKa.
+        * Amber protonation names are rewritten to the standard PDB names
+          PropKa titrates (HIE/HID/HIP → HIS, ASH → ASP, GLH → GLU, LYN → LYS,
+          TYM → TYR, CYM/CYX → CYS).
 
         Args:
             pdb_path: Path to the original PDB file.
             output_dir: Directory to write the temporary file.
 
         Returns:
-            Path to the temporary propka-safe PDB file.
+            Path to the temporary PropKa input PDB file.
         """
         safe_pdb = output_dir / f"{pdb_path.stem}_propka_tmp.pdb"
-        with open(pdb_path, "r") as fin, open(safe_pdb, "w") as fout:
+        with open(pdb_path, "r", encoding="utf-8", errors="replace") as fin, open(
+            safe_pdb, "w", encoding="utf-8", newline="\n"
+        ) as fout:
             for line in fin:
                 # Skip OXT atoms (C-terminal extra oxygen) and their ANISOU
-                if line.startswith(("ATOM  ", "HETATM")):
-                    atom_name = line[12:16].strip()
-                    if atom_name == "OXT":
+                if line.startswith(("ATOM", "HETATM", "ANISOU")) and len(line) >= 16:
+                    if line[12:16].strip() == "OXT":
                         continue
-                elif line.startswith("ANISOU"):
-                    atom_name = line[12:16].strip()
-                    if atom_name == "OXT":
-                        continue
-                fout.write(line)
+                fout.write(rename_residue_for_propka(line))
         return str(safe_pdb)
 
     def extract_summary(
@@ -745,8 +773,10 @@ class PreparationManager:
                             chain_id = line[21:22].strip()
                             res_name = line[17:20].strip()
 
-                            # Only store for protonable residue types
-                            if res_name in [
+                            # PropKa reports the standard name, including after
+                            # HIE/ASH/… were renamed on the analysis copy.
+                            canonical = PROPKA_RESIDUE_ALIASES.get(res_name, res_name)
+                            if canonical in {
                                 "ASP",
                                 "GLU",
                                 "HIS",
@@ -754,9 +784,8 @@ class PreparationManager:
                                 "TYR",
                                 "CYS",
                                 "ARG",
-                            ]:
-                                # Create key using res_id:res_name
-                                key = f"{res_id}:{res_name}"
+                            }:
+                                key = f"{res_id}:{canonical}"
                                 if key not in chain_info:
                                     chain_info[key] = []
                                 if chain_id not in chain_info[key]:
@@ -990,6 +1019,43 @@ class PreparationManager:
             curves[residue_id] = curve
 
         return curves
+
+    def build_titration_figure(
+        self,
+        pdb_file: str,
+        *,
+        target_ph: float = 7.0,
+        ph_min: float = 0.0,
+        ph_max: float = 14.0,
+        ph_step: float = 0.5,
+        exclude_ids: Optional[List[str]] = None,
+        curve_ids: Optional[List[str]] = None,
+        type_filter: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """PropKa titration payload plus the same panels the GUI draws.
+
+        ``exclude_ids`` drop residues from the pKa distribution and the
+        protonation bars (panels A and B). Curves stay in ``curves`` so panel
+        C can still show them. ``curve_ids`` selects panel C; omit it to keep
+        every curve. A name may be ``CYS77``, ``CYS77:A``, or the figure id.
+        ``type_filter`` limits A, B, and C to those residue names.
+        Cysteines in a disulfide bond are always left out of panels A and B.
+        ``disulfide_warning`` says why: PropKa's pKa 99.99 is a bridge
+        placeholder, not a titration constant.
+        """
+        from gatewizard.core.titration import run_titration
+
+        return run_titration(
+            pdb_file,
+            target_ph=target_ph,
+            ph_min=ph_min,
+            ph_max=ph_max,
+            ph_step=ph_step,
+            exclude_ids=exclude_ids,
+            curve_ids=curve_ids,
+            type_filter=type_filter,
+            manager=self,
+        )
 
     def detect_disulfide_bonds(
         self, pdb_file: str, distance_threshold: float = 2.5

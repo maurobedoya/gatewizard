@@ -537,6 +537,43 @@ You can visualize titration curves using matplotlib. For readability, it's best 
 
 ---
 
+### build_titration_figure
+
+Run PropKa and return the residue list, every curve, and the figure panels the GUI draws.
+
+```python
+build_titration_figure(
+    pdb_file: str,
+    *,
+    target_ph: float = 7.0,
+    ph_min: float = 0.0,
+    ph_max: float = 14.0,
+    ph_step: float = 0.5,
+    exclude_ids: Optional[List[str]] = None,
+    curve_ids: Optional[List[str]] = None,
+    type_filter: Optional[List[str]] = None,
+) -> Dict[str, Any]
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `pdb_file` | `str` | — | PDB path |
+| `target_ph` | `float` | `7.0` | pH used to mark a residue protonated (`pH < pKa`) |
+| `ph_min` | `float` | `0.0` | First pH on the curves |
+| `ph_max` | `float` | `14.0` | Last pH on the curves |
+| `ph_step` | `float` | `0.5` | pH spacing |
+| `exclude_ids` | `List[str]` | `None` | Residues left out of panels A and B. Each entry may be `CYS77`, `CYS77:A`, or the figure id |
+| `curve_ids` | `List[str]` | `None` | Residues drawn in panel C. Omit to keep every curve |
+| `type_filter` | `List[str]` | `None` | Residue names kept in A, B, and C. Empty means all types |
+
+**Returns:** `Dict[str, Any]` — `residues` and `curves` are the full set. `figure` holds `types` (panels A and B), `curves` (panel C), and `excluded_ids`. Cysteines in a disulfide (SG–SG within 2.5 Å, or an SSBOND record) are omitted from panels A and B. `disulfide_warning` explains that PropKa writes pKa 99.99 for those residues as a cysteine-bridge placeholder, not a titration constant. `disulfide_hidden` lists the omitted residues.
+
+`gatewizard.render_titration_png(spec)` draws that figure. Pass `layout.pixels` (each panel's on-screen width and height) so font sizes match the GUI. `c_ypad` is extra space above and below the panel C Y limits; ticks stay on the limits.
+
+---
+
 **Alternative: Plot pKa Distribution with Protonation States:**
 
 ```python

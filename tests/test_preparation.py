@@ -516,6 +516,41 @@ class TestPropkaComplexStructures:
                 print(f"  {r['id']}: {r['shift']:+.2f} units")
 
 
+class TestPreparePdbForPropka:
+    """Amber names are renamed only on the file PropKa reads."""
+
+    def test_amber_names_become_standard_and_source_is_kept(self, tmp_path):
+        from gatewizard.core.preparation import PreparationManager
+
+        source = tmp_path / "protonated.pdb"
+        source.write_text(
+            "ATOM      1  CG  HIE A  72      26.206  94.860  58.005  1.00  0.00           C\n"
+            "ATOM      2  OD2 ASH A   3      10.000  10.000  10.000  1.00  0.00           O\n"
+            "ATOM      3  OE2 GLH A   4      11.000  11.000  11.000  1.00  0.00           O\n"
+            "ATOM      4  NZ  LYN A   5      12.000  12.000  12.000  1.00  0.00           N\n"
+            "ATOM      5  OH  TYM A   6      13.000  13.000  13.000  1.00  0.00           O\n"
+            "ATOM      6  SG  CYX A   7      14.000  14.000  14.000  1.00  0.00           S\n"
+            "ATOM      7  CA  ALA A   8      15.000  15.000  15.000  1.00  0.00           C\n"
+            "ATOM      8  OXT ALA A   8      16.000  16.000  16.000  1.00  0.00           O\n"
+            "END\n",
+            encoding="utf-8",
+        )
+        prepared = PreparationManager._prepare_pdb_for_propka(source, tmp_path)
+        text = Path(prepared).read_text(encoding="utf-8")
+        original = source.read_text(encoding="utf-8")
+
+        assert "HIE" in original and "ASH" in original
+        assert " HIE " not in text
+        assert " HIS " in text
+        assert " ASP " in text
+        assert " GLU " in text
+        assert " LYS " in text
+        assert " TYR " in text
+        assert " CYS " in text
+        assert " ALA " in text
+        assert "OXT" not in text
+
+
 class TestStripProteinHydrogens:
     """Protein-only hydrogen stripping (ligands / hetero H kept)."""
 

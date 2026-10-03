@@ -47,6 +47,7 @@ Regenerate with `python scripts/gen_api_dictionary.py`.
 - [`PreparationManager.__init__`](preparation.md#constructor)
 - [`PreparationManager.apply_disulfide_bonds`](preparation.md#apply_disulfide_bonds)
 - [`PreparationManager.apply_protonation_states`](preparation.md#apply_protonation_states)
+- [`PreparationManager.build_titration_figure`](preparation.md#build_titration_figure)
 - [`PreparationManager.complete_missing_heavy_atoms`](preparation.md#complete_missing_heavy_atoms)
 - [`PreparationManager.detect_disulfide_bonds`](preparation.md#detect_disulfide_bonds)
 - [`PreparationManager.extract_summary`](preparation.md#extract_summary)

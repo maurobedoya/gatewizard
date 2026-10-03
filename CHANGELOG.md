@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Titration figure:** `build_titration_figure` (also `run_titration` / `titration_figure`) returns the same panels as the GUI. Residues can be left out of the pKa and fraction panels, and the curves can be chosen. Disulfide cysteines are omitted on their own; PropKa’s 99.99 on those bridges is a placeholder, not a titration pKa.
+- **Titration figure PNG:** `render_titration_png` draws that figure. Font sizes can follow the on-screen panels, and axis line style, curve-axis padding, and the panel C legend border follow the same choices as the GUI.
 - **PlotSpec custom legend:** an outside legend can sit at a chosen spot (`loc: "custom"`, `x` and `y` as percent from the top-left of the figure). Publication PNG and PDF use that position instead of only the top, bottom, left, or right strip.
 - **Docs header repos:** the MkDocs header (and drawer) now list both GitHub repositories — API (`maurobedoya/gatewizard`) and GUI (`franciscoadasme/gatewizard-gui`) — with latest tag, stars, and forks. API is stacked above GUI so the version tag stays visible.
 - **Docs brand:** header and favicon use the GateWizard emblem; the Home page has a teal banner with the splash lockup (`docs/images/splash.png`).

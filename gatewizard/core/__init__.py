@@ -12,6 +12,7 @@ from gatewizard.core.preparation import (
     parse_summary_section,
     modify_pdb_based_on_summary,
 )
+from gatewizard.core.titration import render_titration_png, run_titration, titration_figure
 
 from gatewizard.core.builder import Builder
 from gatewizard.core.job_monitor import JobMonitor, JobStatus
@@ -23,6 +24,9 @@ __all__ = [
     "extract_summary_section",
     "parse_summary_section",
     "modify_pdb_based_on_summary",
+    "render_titration_png",
+    "run_titration",
+    "titration_figure",
     "Builder",
     "JobMonitor",
     "JobStatus",
