@@ -47,10 +47,12 @@ Documentation examples live in `<module>_examples/` and are executed **once** ea
 
 ## Running Tests
 
+On Windows, run these inside **WSL**, conda env `gatewizard` (`~/miniconda3/envs/gatewizard/bin/python`). Do not use Windows `python`.
+
 ### Run All Tests
 
 ```bash
-# From the main gatewizard directory
+# From the main gatewizard directory, after: conda activate gatewizard
 python -m pytest tests/
 
 # With verbose output

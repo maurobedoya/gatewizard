@@ -37,6 +37,11 @@ Regenerate with `python scripts/gen_api_dictionary.py`.
 - [`StructureManager.select_by_criteria`](structure_manager.md#select_by_criteria)
 - [`StructureManager.translate_atoms`](structure_manager.md#translate_atoms)
 
+## Biological assembly
+
+- [`build_assembly`](assembly.md#build_assembly)
+- [`list_assemblies`](assembly.md#list_assemblies)
+
 ## Preparation
 
 - [`complete_missing_heavy_atoms`](preparation.md#complete_missing_heavy_atoms)

@@ -67,6 +67,7 @@ nav:
       - Overview: api/index.md
       - Method dictionary: api/dictionary.md
       - Structure Manager: api/structure_manager.md
+      - Biological assembly: api/assembly.md
       - Preparation Module: api/preparation.md
       - Builder Module: api/builder.md
       - MemPrO Module: api/mempro.md

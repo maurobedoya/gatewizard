@@ -13,6 +13,7 @@ from gatewizard.core.preparation import (
     modify_pdb_based_on_summary,
 )
 from gatewizard.core.titration import render_titration_png, run_titration, titration_figure
+from gatewizard.core.assembly import build_assembly, list_assemblies
 
 from gatewizard.core.builder import Builder
 from gatewizard.core.job_monitor import JobMonitor, JobStatus
@@ -27,6 +28,8 @@ __all__ = [
     "render_titration_png",
     "run_titration",
     "titration_figure",
+    "list_assemblies",
+    "build_assembly",
     "Builder",
     "JobMonitor",
     "JobStatus",

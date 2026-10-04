@@ -22,6 +22,18 @@ Load, inspect, edit, and save PDB structures (selections, chain/residue edits, M
 
 ---
 
+### [Biological assembly](assembly.md)
+Expand the oligomer or capsid from operators already stored in a PDB or mmCIF file.
+
+**Key Features:**
+
+- List biological assemblies and their chain and atom counts
+- Build an assembly as mmCIF with chain names such as `A1` and `A2`
+- Leave out crystal waters unless requested
+- Leave a file that is already the biological unit unchanged
+
+---
+
 ### [Preparation Module](preparation.md)
 Module for predicting pKa values and managing protonation states in protein structures.
 

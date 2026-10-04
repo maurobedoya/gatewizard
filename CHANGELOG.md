@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Biological assembly:** `list_assemblies` and `build_assembly` expand the oligomer or capsid from the operators already in a PDB or mmCIF file. Crystal waters are left out unless requested. A file that is already the biological unit is not duplicated. The result is mmCIF so each copy keeps a chain name such as A1 or A2. Hetatms that land on the same point (ions on a symmetry axis) are counted, and `drop_overlaps` keeps one of each.
 - **Titration figure:** `build_titration_figure` (also `run_titration` / `titration_figure`) returns the same panels as the GUI. Residues can be left out of the pKa and fraction panels, and the curves can be chosen. Disulfide cysteines are omitted on their own; PropKa’s 99.99 on those bridges is a placeholder, not a titration pKa.
 - **Titration figure PNG:** `render_titration_png` draws that figure. Font sizes can follow the on-screen panels, and axis line style, curve-axis padding, and the panel C legend border follow the same choices as the GUI.
 - **PlotSpec custom legend:** an outside legend can sit at a chosen spot (`loc: "custom"`, `x` and `y` as percent from the top-left of the figure). Publication PNG and PDF use that position instead of only the top, bottom, left, or right strip.
