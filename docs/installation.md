@@ -167,6 +167,7 @@ GateWizard equilibration works with either a **CPU** or **CUDA** `gmx`. Prefer t
 - **GROMACS CUDA (opt-in):** set `GATEWIZARD_CONDA_GROMACS_CUDA=1` before launching the GUI. The bootstrap tries a frozen CUDA install with a short timeout, then falls back to CPU GROMACS if the solve stalls.
 - Quitting mid-install kills leftover `micromamba` processes for that env so a relaunch is not blocked by an orphaned solver.
 - Linux/WSL log: `~/.config/gatewizard-gui/runtime-install.log` (look for `[gromacs] starting…` / `failed` / `installed`).
+- The embedded env is `~/.config/gatewizard-gui/mamba-env`. `sudo apt remove gatewizard-gui-linux` leaves it. `sudo apt purge gatewizard-gui-linux` deletes that directory for the user who ran sudo. It does not remove a separate conda env such as `~/miniconda3/envs/gatewizard`.
 
 Manual API environments should follow the same preference: install **CPU** `gromacs` by default; only add the CUDA matchspec if you accept a long or fragile solve.
 ## Verifying Installation
