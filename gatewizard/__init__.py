@@ -19,6 +19,7 @@ from gatewizard.core.preparation import (
 )
 from gatewizard.core.titration import render_titration_png, run_titration, titration_figure
 from gatewizard.core.assembly import build_assembly, list_assemblies
+from gatewizard.core.structure_checker import apply_altloc_choices, diagnose_structure
 
 from gatewizard.core.builder import Builder
 from gatewizard.core.job_monitor import JobMonitor
@@ -45,6 +46,8 @@ __all__ = [
     "titration_figure",
     "list_assemblies",
     "build_assembly",
+    "diagnose_structure",
+    "apply_altloc_choices",
     "Builder",
     "JobMonitor",
     "StructureManager",

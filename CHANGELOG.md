@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Structure checker:** `diagnose_structure` reports missing heavy atoms, residue-number gaps, SEQRES residues without coordinates, backbone breaks, alternate conformations grouped by residue, and protein chains that differ by a substitution or by length. The most likely conformation is the highest occupancy. `apply_altloc_choices` writes a PDB that keeps that letter, or a letter you choose, and leaves the original file unchanged.
 - **Biological assembly:** `list_assemblies` and `build_assembly` expand the oligomer or capsid from the operators already in a PDB or mmCIF file. Crystal waters are left out unless requested. A file that is already the biological unit is not duplicated. The result is mmCIF so each copy keeps a chain name such as A1 or A2. Hetatms that land on the same point (ions on a symmetry axis) are counted, and `drop_overlaps` keeps one of each.
 - **Titration figure:** `build_titration_figure` (also `run_titration` / `titration_figure`) returns the same panels as the GUI. Residues can be left out of the pKa and fraction panels, and the curves can be chosen. Disulfide cysteines are omitted on their own; PropKa’s 99.99 on those bridges is a placeholder, not a titration pKa.
 - **Titration figure PNG:** `render_titration_png` draws that figure. Font sizes can follow the on-screen panels, and axis line style, curve-axis padding, and the panel C legend border follow the same choices as the GUI.

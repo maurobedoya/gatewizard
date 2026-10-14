@@ -22,6 +22,18 @@ Load, inspect, edit, and save PDB structures (selections, chain/residue edits, M
 
 ---
 
+### [Structure checker](structure_checker.md)
+Report missing atoms, gaps, alternate conformations, and chain differences in a PDB or mmCIF file.
+
+**Key Features:**
+
+- Missing heavy atoms, numbering gaps, SEQRES gaps, and backbone breaks
+- Alternate conformations, with the highest occupancy marked as the most likely
+- Protein chains that match, differ by a substitution, or differ in length
+- Write a PDB that keeps one conformation and leaves the original file unchanged
+
+---
+
 ### [Biological assembly](assembly.md)
 Expand the oligomer or capsid from operators already stored in a PDB or mmCIF file.
 

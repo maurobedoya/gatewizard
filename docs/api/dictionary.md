@@ -37,6 +37,11 @@ Regenerate with `python scripts/gen_api_dictionary.py`.
 - [`StructureManager.select_by_criteria`](structure_manager.md#select_by_criteria)
 - [`StructureManager.translate_atoms`](structure_manager.md#translate_atoms)
 
+## Structure checker
+
+- [`apply_altloc_choices`](structure_checker.md#apply_altloc_choices)
+- [`diagnose_structure`](structure_checker.md#diagnose_structure)
+
 ## Biological assembly
 
 - [`build_assembly`](assembly.md#build_assembly)

@@ -1,0 +1,743 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025 Constanza González and Mauricio Bedoya
+
+"""Report missing atoms, gaps, alternate conformations, and chain differences.
+
+The likelihood of an alternate conformation is the PDB occupancy, the column
+just before the B-factor. The altLoc letter is column 17. The most likely
+letter is the highest occupancy. A tie keeps the earlier letter.
+"""
+
+from __future__ import annotations
+
+import os
+from collections import defaultdict
+from difflib import SequenceMatcher
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+
+import numpy as np
+
+from gatewizard.utils.peptide_residues import PEPTIDE_POLYMER_RESIDUES
+from gatewizard.utils.trajectory_tools import _AMBER_LIPID_RESNAMES
+
+_HEAVY: Dict[str, frozenset] = {
+    "ALA": frozenset({"N", "CA", "C", "O", "CB"}),
+    "ARG": frozenset({"N", "CA", "C", "O", "CB", "CG", "CD", "NE", "CZ", "NH1", "NH2"}),
+    "ASN": frozenset({"N", "CA", "C", "O", "CB", "CG", "OD1", "ND2"}),
+    "ASP": frozenset({"N", "CA", "C", "O", "CB", "CG", "OD1", "OD2"}),
+    "CYS": frozenset({"N", "CA", "C", "O", "CB", "SG"}),
+    "GLN": frozenset({"N", "CA", "C", "O", "CB", "CG", "CD", "OE1", "NE2"}),
+    "GLU": frozenset({"N", "CA", "C", "O", "CB", "CG", "CD", "OE1", "OE2"}),
+    "GLY": frozenset({"N", "CA", "C", "O"}),
+    "HIS": frozenset({"N", "CA", "C", "O", "CB", "CG", "ND1", "CD2", "CE1", "NE2"}),
+    "ILE": frozenset({"N", "CA", "C", "O", "CB", "CG1", "CG2", "CD1"}),
+    "LEU": frozenset({"N", "CA", "C", "O", "CB", "CG", "CD1", "CD2"}),
+    "LYS": frozenset({"N", "CA", "C", "O", "CB", "CG", "CD", "CE", "NZ"}),
+    "MET": frozenset({"N", "CA", "C", "O", "CB", "CG", "SD", "CE"}),
+    "PHE": frozenset({"N", "CA", "C", "O", "CB", "CG", "CD1", "CD2", "CE1", "CE2", "CZ"}),
+    "PRO": frozenset({"N", "CA", "C", "O", "CB", "CG", "CD"}),
+    "SER": frozenset({"N", "CA", "C", "O", "CB", "OG"}),
+    "THR": frozenset({"N", "CA", "C", "O", "CB", "OG1", "CG2"}),
+    "TRP": frozenset(
+        {"N", "CA", "C", "O", "CB", "CG", "CD1", "CD2", "NE1", "CE2", "CE3", "CZ2", "CZ3", "CH2"}
+    ),
+    "TYR": frozenset({"N", "CA", "C", "O", "CB", "CG", "CD1", "CD2", "CE1", "CE2", "CZ", "OH"}),
+    "VAL": frozenset({"N", "CA", "C", "O", "CB", "CG1", "CG2"}),
+    "MSE": frozenset({"N", "CA", "C", "O", "CB", "CG", "SE", "CE"}),
+    "SEC": frozenset({"N", "CA", "C", "O", "CB", "SE"}),
+}
+
+_HEAVY_PARENT: Dict[str, str] = {
+    "HID": "HIS",
+    "HIE": "HIS",
+    "HIP": "HIS",
+    "HSD": "HIS",
+    "HSE": "HIS",
+    "HSP": "HIS",
+    "ASH": "ASP",
+    "GLH": "GLU",
+    "LYN": "LYS",
+    "CYX": "CYS",
+    "CYM": "CYS",
+    "TYM": "TYR",
+    "DAL": "ALA",
+    "DAR": "ARG",
+    "DAS": "ASP",
+    "DCY": "CYS",
+    "DGL": "GLU",
+    "DGN": "GLN",
+    "DHI": "HIS",
+    "DIL": "ILE",
+    "DLE": "LEU",
+    "DLY": "LYS",
+    "DPN": "PHE",
+    "DPR": "PRO",
+    "DSN": "SER",
+    "DTH": "THR",
+    "DTR": "TRP",
+    "DTY": "TYR",
+    "DVA": "VAL",
+}
+
+_WATERS = frozenset({"HOH", "WAT", "DOD", "TIP", "TIP3", "TIP4", "SOL", "H2O"})
+_IONS = frozenset(
+    {
+        "NA",
+        "CL",
+        "K",
+        "MG",
+        "ZN",
+        "CA",
+        "FE",
+        "MN",
+        "CU",
+        "NI",
+        "CO",
+        "ION",
+        "NA+",
+        "CL-",
+        "BR",
+        "IOD",
+        "CS",
+        "RB",
+        "LI",
+        "CD",
+        "HG",
+    }
+)
+_NUCLEOTIDES = frozenset(
+    {
+        "A",
+        "C",
+        "G",
+        "U",
+        "I",
+        "DA",
+        "DC",
+        "DG",
+        "DT",
+        "DI",
+        "ADE",
+        "CYT",
+        "GUA",
+        "THY",
+        "URA",
+        "URI",
+        "RA",
+        "RC",
+        "RG",
+        "RU",
+    }
+)
+_KNOWN = frozenset(PEPTIDE_POLYMER_RESIDUES) | _WATERS | _IONS | _NUCLEOTIDES | frozenset(
+    _AMBER_LIPID_RESNAMES
+)
+_BACKBONE_BREAK_A = 2.0
+_CHAIN_IDENTITY = 0.8
+
+
+def _heavy_names(resname: str) -> Optional[frozenset]:
+    name = resname.upper()
+    parent = _HEAVY_PARENT.get(name, name)
+    return _HEAVY.get(parent)
+
+
+def _is_hydrogen(name: str, element: str) -> bool:
+    if element == "H":
+        return True
+    if element:
+        return False
+    return name.startswith("H") and name not in {"HG"}
+
+
+def _selection(chain: str, resid: int, atom: str = "") -> str:
+    parts = []
+    if chain:
+        parts.append(f"chainID {chain}")
+    parts.append(f"resid {int(resid)}")
+    if atom:
+        parts.append(f"name {atom}")
+    return " and ".join(parts)
+
+
+def _or_selection(chain: str, resids: Sequence[int]) -> str:
+    body = " or ".join(f"resid {int(resid)}" for resid in resids)
+    if chain:
+        return f"chainID {chain} and ({body})"
+    return body
+
+
+def _count_models(path: str) -> int:
+    count = 0
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                if line.startswith("MODEL"):
+                    count += 1
+                elif line.startswith(("data_", "loop_", "_atom_site.")):
+                    return 0
+    except OSError:
+        return 0
+    return count
+
+
+def _parse_seqres(path: str) -> Dict[str, List[str]]:
+    chains: Dict[str, List[str]] = {}
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                if not line.startswith("SEQRES") or len(line) < 20:
+                    continue
+                chain = line[11:12].strip() or "_"
+                names = [part.upper() for part in line[19:].split() if part.strip()]
+                chains.setdefault(chain, []).extend(names)
+    except OSError:
+        return {}
+    return chains
+
+
+def _atom_field(atom: Any, name: str, default: str = "") -> str:
+    try:
+        value = getattr(atom, name)
+    except Exception:
+        return default
+    if value is None:
+        return default
+    return str(value).strip()
+
+
+def _load_atoms(path: str) -> Tuple[Any, List[Dict[str, Any]], int]:
+    import MDAnalysis as mda
+
+    universe = mda.Universe(path)
+    n_frames = int(getattr(universe.trajectory, "n_frames", 1) or 1)
+    if n_frames > 1:
+        universe.trajectory[0]
+    rows: List[Dict[str, Any]] = []
+    for index, atom in enumerate(universe.atoms):
+        chain = _atom_field(atom, "chainID")
+        if not chain or chain.upper() in {"SYSTEM", "SEGID"}:
+            chain = _atom_field(atom, "segid")
+        if chain.upper() in {"SYSTEM", "SEGID"}:
+            chain = ""
+        name = _atom_field(atom, "name").upper()
+        element = _atom_field(atom, "element").upper()
+        if element in {"", "DUMMY"}:
+            element = ""
+        try:
+            occupancy = float(atom.occupancy)
+        except Exception:
+            occupancy = 1.0
+        try:
+            bfactor = float(atom.tempfactor)
+        except Exception:
+            bfactor = 0.0
+        try:
+            resid = int(atom.resid)
+        except Exception:
+            resid = 0
+        icode = _atom_field(atom, "icode")
+        altloc = _atom_field(atom, "altLoc").upper()
+        resname = _atom_field(atom, "resname").upper()
+        try:
+            coord = np.asarray(atom.position, dtype=float)
+        except Exception:
+            coord = np.zeros(3)
+        rows.append(
+            {
+                "index": index,
+                "chain": chain,
+                "resid": resid,
+                "icode": icode,
+                "resname": resname,
+                "name": name,
+                "element": element,
+                "altloc": altloc,
+                "occupancy": occupancy,
+                "bfactor": bfactor,
+                "coord": coord,
+            }
+        )
+    return universe, rows, n_frames
+
+
+def _most_likely(options: Sequence[Mapping[str, Any]]) -> str:
+    ordered = sorted(
+        options,
+        key=lambda item: (-float(item["occupancy"]), str(item["altloc"])),
+    )
+    return str(ordered[0]["altloc"]) if ordered else ""
+
+
+def _residues_by_chain(rows: Sequence[Mapping[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    grouped: Dict[Tuple[str, int, str, str], Dict[str, Any]] = {}
+    order: List[Tuple[str, int, str, str]] = []
+    for row in rows:
+        if row["resname"] not in PEPTIDE_POLYMER_RESIDUES:
+            continue
+        key = (str(row["chain"]), int(row["resid"]), str(row["icode"]), str(row["resname"]))
+        slot = grouped.get(key)
+        if slot is None:
+            slot = {
+                "chain": key[0],
+                "resid": key[1],
+                "icode": key[2],
+                "resname": key[3],
+                "names": set(),
+                "c": None,
+                "n": None,
+            }
+            grouped[key] = slot
+            order.append(key)
+        if not _is_hydrogen(str(row["name"]), str(row["element"])):
+            slot["names"].add(str(row["name"]))
+        if row["name"] == "C" and (not row["altloc"] or slot["c"] is None):
+            slot["c"] = row["coord"]
+        if row["name"] == "N" and (not row["altloc"] or slot["n"] is None):
+            slot["n"] = row["coord"]
+    chains: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for key in order:
+        chains[key[0]].append(grouped[key])
+    for chain in chains:
+        chains[chain].sort(key=lambda item: (int(item["resid"]), str(item["icode"])))
+    return chains
+
+
+def _missing_atoms(chains: Mapping[str, Sequence[Mapping[str, Any]]]) -> List[Dict[str, Any]]:
+    missing: List[Dict[str, Any]] = []
+    for residues in chains.values():
+        for residue in residues:
+            expected = _heavy_names(str(residue["resname"]))
+            if not expected:
+                continue
+            absent = sorted(expected - set(residue["names"]))
+            for atom in absent:
+                missing.append(
+                    {
+                        "chain": residue["chain"],
+                        "resid": residue["resid"],
+                        "icode": residue["icode"],
+                        "resname": residue["resname"],
+                        "atom": atom,
+                        "selection": _selection(str(residue["chain"]), int(residue["resid"]), atom),
+                    }
+                )
+    return missing
+
+
+def _numbering_gaps(chains: Mapping[str, Sequence[Mapping[str, Any]]]) -> List[Dict[str, Any]]:
+    gaps: List[Dict[str, Any]] = []
+    for residues in chains.values():
+        for prev, nxt in zip(residues, residues[1:]):
+            if prev["icode"] or nxt["icode"]:
+                continue
+            span = int(nxt["resid"]) - int(prev["resid"])
+            if span <= 1:
+                continue
+            missing_ids = list(range(int(prev["resid"]) + 1, int(nxt["resid"])))
+            gaps.append(
+                {
+                    "chain": prev["chain"],
+                    "after_resid": prev["resid"],
+                    "before_resid": nxt["resid"],
+                    "count": len(missing_ids),
+                    "missing": missing_ids[:30],
+                    "selection": _or_selection(str(prev["chain"]), [int(prev["resid"]), int(nxt["resid"])]),
+                }
+            )
+    return gaps
+
+
+def _seqres_gaps(path: str, chains: Mapping[str, Sequence[Mapping[str, Any]]]) -> List[Dict[str, Any]]:
+    seqres = _parse_seqres(path)
+    found: List[Dict[str, Any]] = []
+    for chain, expected in seqres.items():
+        built = [str(residue["resname"]) for residue in chains.get(chain, [])]
+        if not expected or expected == built:
+            continue
+        matcher = SequenceMatcher(a=expected, b=built, autojunk=False)
+        for tag, i1, i2, _j1, _j2 in matcher.get_opcodes():
+            if tag not in {"delete", "replace"} or i2 <= i1:
+                continue
+            names = expected[i1:i2]
+            found.append(
+                {
+                    "chain": "" if chain == "_" else chain,
+                    "source": "seqres",
+                    "count": len(names),
+                    "resnames": names[:30],
+                    "selection": _selection(chain, int(chains[chain][0]["resid"])) if chains.get(chain) else "",
+                }
+            )
+    return found
+
+
+def _backbone_breaks(chains: Mapping[str, Sequence[Mapping[str, Any]]]) -> List[Dict[str, Any]]:
+    breaks: List[Dict[str, Any]] = []
+    for residues in chains.values():
+        for prev, nxt in zip(residues, residues[1:]):
+            if prev["icode"] or nxt["icode"]:
+                continue
+            if int(nxt["resid"]) - int(prev["resid"]) != 1:
+                continue
+            if prev["c"] is None or nxt["n"] is None:
+                continue
+            distance = float(np.linalg.norm(np.asarray(nxt["n"]) - np.asarray(prev["c"])))
+            if distance <= _BACKBONE_BREAK_A:
+                continue
+            breaks.append(
+                {
+                    "chain": prev["chain"],
+                    "resid_a": prev["resid"],
+                    "resname_a": prev["resname"],
+                    "resid_b": nxt["resid"],
+                    "resname_b": nxt["resname"],
+                    "distance": round(distance, 2),
+                    "selection": _or_selection(str(prev["chain"]), [int(prev["resid"]), int(nxt["resid"])]),
+                }
+            )
+    return breaks
+
+
+def _altloc_groups(rows: Sequence[Mapping[str, Any]]) -> List[Dict[str, Any]]:
+    """One entry per residue that has two or more altLoc letters."""
+    grouped: Dict[Tuple[str, int, str, str], List[Mapping[str, Any]]] = defaultdict(list)
+    for row in rows:
+        if not row["altloc"]:
+            continue
+        key = (str(row["chain"]), int(row["resid"]), str(row["icode"]), str(row["resname"]))
+        grouped[key].append(row)
+    groups: List[Dict[str, Any]] = []
+    for key, members in grouped.items():
+        by_letter: Dict[str, List[Mapping[str, Any]]] = defaultdict(list)
+        for member in members:
+            by_letter[str(member["altloc"])].append(member)
+        if len(by_letter) < 2:
+            continue
+        options = []
+        for letter, atoms in sorted(by_letter.items()):
+            counts: Dict[float, int] = defaultdict(int)
+            for atom in atoms:
+                counts[round(float(atom["occupancy"]), 2)] += 1
+            occupancy = max(counts.items(), key=lambda item: (item[1], item[0]))[0]
+            options.append(
+                {
+                    "altloc": letter,
+                    "occupancy": occupancy,
+                    "atoms": len(atoms),
+                }
+            )
+        default = _most_likely(options)
+        chain, resid, icode, resname = key
+        groups.append(
+            {
+                "id": f"{chain}|{resid}|{icode}",
+                "chain": chain,
+                "resid": resid,
+                "icode": icode,
+                "resname": resname,
+                "default": default,
+                "options": [{**option, "likely": option["altloc"] == default} for option in options],
+                "selection": _selection(chain, resid),
+            }
+        )
+    groups.sort(key=lambda item: (str(item["chain"]), int(item["resid"]), str(item["icode"])))
+    return groups
+
+
+def _chain_pairs(chains: Mapping[str, Sequence[Mapping[str, Any]]]) -> List[Dict[str, Any]]:
+    names = [chain for chain, residues in chains.items() if residues]
+    pairs: List[Dict[str, Any]] = []
+    for i, left in enumerate(names):
+        for right in names[i + 1 :]:
+            seq_a = list(chains[left])
+            seq_b = list(chains[right])
+            names_a = [str(item["resname"]) for item in seq_a]
+            names_b = [str(item["resname"]) for item in seq_b]
+            longest = max(len(names_a), len(names_b), 1)
+            length_close = abs(len(names_a) - len(names_b)) <= max(2, round(0.1 * longest))
+            matcher = SequenceMatcher(a=names_a, b=names_b, autojunk=False)
+            matches = sum(i2 - i1 for tag, i1, i2, _j1, _j2 in matcher.get_opcodes() if tag == "equal")
+            identity = matches / longest
+            if identity < _CHAIN_IDENTITY and not length_close:
+                continue
+            substitutions = []
+            length_notes = []
+            for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+                if tag == "equal":
+                    continue
+                if tag == "replace" and (i2 - i1) == (j2 - j1):
+                    for offset in range(i2 - i1):
+                        residue_a = seq_a[i1 + offset]
+                        residue_b = seq_b[j1 + offset]
+                        substitutions.append(
+                            {
+                                "resname_a": residue_a["resname"],
+                                "resid_a": residue_a["resid"],
+                                "resname_b": residue_b["resname"],
+                                "resid_b": residue_b["resid"],
+                                "selection": _selection(left, int(residue_a["resid"])),
+                            }
+                        )
+                    continue
+                length_notes.append(
+                    {
+                        "chain_a": left,
+                        "from_resid_a": seq_a[i1]["resid"] if i1 < len(seq_a) else None,
+                        "to_resid_a": seq_a[i2 - 1]["resid"] if i1 < i2 else None,
+                        "chain_b": right,
+                        "from_resid_b": seq_b[j1]["resid"] if j1 < len(seq_b) else None,
+                        "to_resid_b": seq_b[j2 - 1]["resid"] if j1 < j2 else None,
+                        "count_a": i2 - i1,
+                        "count_b": j2 - j1,
+                    }
+                )
+            if len(names_a) == len(names_b):
+                length_text = "Same length."
+            elif len(names_a) > len(names_b):
+                length_text = f"Chain {left} is {len(names_a) - len(names_b)} residues longer."
+            else:
+                length_text = f"Chain {right} is {len(names_b) - len(names_a)} residues longer."
+            pairs.append(
+                {
+                    "chain_a": left,
+                    "chain_b": right,
+                    "length_a": len(names_a),
+                    "length_b": len(names_b),
+                    "identity": round(identity, 3),
+                    "same": not substitutions and not length_notes and len(names_a) == len(names_b),
+                    "length_note": length_text,
+                    "substitutions": substitutions,
+                    "length_differences": length_notes,
+                    "selection": _selection(left, int(seq_a[0]["resid"])) if seq_a else "",
+                }
+            )
+    return pairs
+
+
+def _other_issues(
+    path: str,
+    rows: Sequence[Mapping[str, Any]],
+    chains: Mapping[str, Sequence[Mapping[str, Any]]],
+    n_frames: int,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    issues: List[Dict[str, Any]] = []
+    model_count = max(_count_models(path), n_frames if n_frames > 1 else 0)
+    if model_count > 1:
+        issues.append(
+            {
+                "kind": "models",
+                "message": f"{model_count} models are in the file. This check uses the first one.",
+                "selection": "all",
+            }
+        )
+    seen: Dict[Tuple[Any, ...], int] = {}
+    hydrogen_count = 0
+    heavy_count = 0
+    unknown: Dict[str, Dict[str, Any]] = {}
+    for row in rows:
+        protein = row["resname"] in PEPTIDE_POLYMER_RESIDUES
+        if protein and _is_hydrogen(str(row["name"]), str(row["element"])):
+            hydrogen_count += 1
+        elif protein:
+            heavy_count += 1
+        key = (row["chain"], row["resid"], row["icode"], row["name"], row["altloc"])
+        seen[key] = seen.get(key, 0) + 1
+        if row["altloc"] == "" and float(row["occupancy"]) <= 0.0:
+            issues.append(
+                {
+                    "kind": "occupancy",
+                    "message": (
+                        f"{row['resname']} {row['chain']}{row['resid']} {row['name']} has occupancy 0."
+                    ),
+                    "selection": _selection(str(row["chain"]), int(row["resid"]), str(row["name"])),
+                }
+            )
+        if row["resname"] and row["resname"] not in _KNOWN:
+            slot = unknown.setdefault(
+                str(row["resname"]),
+                {"count": 0, "chains": set()},
+            )
+            slot["count"] += 1
+            if row["chain"]:
+                slot["chains"].add(str(row["chain"]))
+    for key, count in seen.items():
+        if count < 2:
+            continue
+        chain, resid, _icode, atom, altloc = key
+        letter = f" altLoc {altloc}" if altloc else ""
+        issues.append(
+            {
+                "kind": "duplicate",
+                "message": f"{chain}{resid} {atom}{letter} is recorded {count} times.",
+                "selection": _selection(str(chain), int(resid), str(atom)),
+            }
+        )
+    for resname, slot in sorted(unknown.items()):
+        chains_text = ", ".join(sorted(slot["chains"])) or "no chain id"
+        issues.append(
+            {
+                "kind": "unknown",
+                "message": f"{resname} is not a standard residue ({slot['count']} atoms, {chains_text}).",
+                "selection": f"resname {resname}",
+            }
+        )
+    if heavy_count and hydrogen_count == 0:
+        issues.append(
+            {
+                "kind": "hydrogens",
+                "message": "No hydrogens are present on the protein. That is normal for many PDB files.",
+                "selection": "protein",
+            }
+        )
+    elif heavy_count and hydrogen_count:
+        residues_with_h = {
+            (row["chain"], row["resid"], row["icode"])
+            for row in rows
+            if row["resname"] in PEPTIDE_POLYMER_RESIDUES
+            and _is_hydrogen(str(row["name"]), str(row["element"]))
+        }
+        protein_residues = sum(len(residues) for residues in chains.values())
+        if residues_with_h and len(residues_with_h) < protein_residues:
+            issues.append(
+                {
+                    "kind": "hydrogens",
+                    "message": (
+                        f"Hydrogens are present on {len(residues_with_h)} of {protein_residues} residues."
+                    ),
+                    "selection": "byres element H",
+                }
+            )
+    hydrogens = {
+        "protein_heavy": heavy_count,
+        "protein_hydrogen": hydrogen_count,
+    }
+    return issues, hydrogens
+
+
+def diagnose_structure(path: str) -> Dict[str, Any]:
+    """Report missing atoms, gaps, alternate conformations, and chain differences.
+
+    PDB and mmCIF are read with MDAnalysis. GRO files still report missing
+    atoms and gaps. They have no altLoc. Only the first model is inspected.
+    """
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f"Structure not found: {path}")
+    _universe, rows, n_frames = _load_atoms(path)
+    chains = _residues_by_chain(rows)
+    missing_atoms = _missing_atoms(chains)
+    numbering = _numbering_gaps(chains)
+    seqres = _seqres_gaps(path, chains)
+    missing_residues = numbering + seqres
+    breaks = _backbone_breaks(chains)
+    altlocs = _altloc_groups(rows)
+    pairs = _chain_pairs(chains)
+    issues, hydrogens = _other_issues(path, rows, chains, n_frames)
+    residue_count = sum(item.get("count", 1) for item in missing_residues)
+    return {
+        "path": os.path.abspath(path),
+        "summary": {
+            "missing_atoms": len(missing_atoms),
+            "missing_residues": residue_count,
+            "gaps": len(breaks),
+            "altlocs": len(altlocs),
+            "chain_pairs": len(pairs),
+            "chain_differences": sum(1 for pair in pairs if not pair["same"]),
+            "other": len(issues),
+        },
+        "hydrogens": hydrogens,
+        "missing_atoms": missing_atoms,
+        "missing_residues": missing_residues,
+        "gaps": breaks,
+        "altlocs": altlocs,
+        "chain_pairs": pairs,
+        "issues": issues,
+    }
+
+
+def _choice_map(
+    choices: Optional[Iterable[Mapping[str, Any]]],
+) -> Tuple[Dict[Tuple[str, int, str, str], str], Dict[Tuple[str, int, str], str]]:
+    """Atom choices win over a residue-wide letter."""
+    by_atom: Dict[Tuple[str, int, str, str], str] = {}
+    by_residue: Dict[Tuple[str, int, str], str] = {}
+    for choice in choices or []:
+        altloc = str(choice.get("altloc") or "").strip().upper()
+        if not altloc:
+            continue
+        try:
+            resid = int(choice.get("resid"))
+        except (TypeError, ValueError):
+            continue
+        residue = (
+            str(choice.get("chain") or "").strip(),
+            resid,
+            str(choice.get("icode") or "").strip(),
+        )
+        atom = str(choice.get("atom") or "").strip().upper()
+        if atom:
+            by_atom[(*residue, atom)] = altloc
+        else:
+            by_residue[residue] = altloc
+    return by_atom, by_residue
+
+
+def apply_altloc_choices(
+    path: str,
+    choices: Optional[Sequence[Mapping[str, Any]]] = None,
+    output_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Write a PDB that keeps one altLoc for each disordered atom.
+
+    A choice is ``{chain, resid, icode, altloc}`` for the whole residue, or the
+    same fields plus ``atom`` for one atom. A residue without a choice keeps the
+    highest occupancy. The original file is not changed.
+    """
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f"Structure not found: {path}")
+    universe, rows, _n_frames = _load_atoms(path)
+    by_atom, by_residue = _choice_map(choices)
+    residue_defaults = {
+        (group["chain"], int(group["resid"]), str(group["icode"])): group["default"]
+        for group in _altloc_groups(rows)
+    }
+    keep: List[int] = []
+    removed = 0
+    for row in rows:
+        if not row["altloc"]:
+            keep.append(int(row["index"]))
+            continue
+        residue = (str(row["chain"]), int(row["resid"]), str(row["icode"]))
+        wanted = (
+            by_atom.get((*residue, str(row["name"])))
+            or by_residue.get(residue)
+            or residue_defaults.get(residue)
+            or row["altloc"]
+        )
+        if str(row["altloc"]).upper() == str(wanted).upper():
+            keep.append(int(row["index"]))
+        else:
+            removed += 1
+    if not keep:
+        raise ValueError("No atoms left after applying alternate conformations.")
+    kept = universe.atoms[np.array(keep, dtype=int)]
+    try:
+        letters = np.array(kept.altLocs, dtype=object)
+        occupancies = np.array(kept.occupancies, dtype=float)
+        for index, letter in enumerate(letters):
+            if str(letter).strip():
+                letters[index] = " "
+                occupancies[index] = 1.0
+        kept.altLocs = letters
+        kept.occupancies = occupancies
+    except Exception:
+        pass
+    destination = output_path or str(Path(path).with_name(f"{Path(path).stem}_checked.pdb"))
+    Path(destination).parent.mkdir(parents=True, exist_ok=True)
+    kept.write(destination)
+    return {
+        "output_file": os.path.abspath(destination),
+        "atoms_kept": len(keep),
+        "atoms_removed": removed,
+    }
