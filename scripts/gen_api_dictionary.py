@@ -27,6 +27,13 @@ INVENTORY: list[tuple[str, str, str, list[str], list[str]]] = [
         ["parse_pdb", "assign_secondary_structure_map"],
     ),
     (
+        "Structure checker",
+        "structure_checker.md",
+        "gatewizard/core/structure_checker.py",
+        [],
+        ["diagnose_structure", "apply_altloc_choices"],
+    ),
+    (
         "Biological assembly",
         "assembly.md",
         "gatewizard/core/assembly.py",
