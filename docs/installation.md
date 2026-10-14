@@ -10,45 +10,44 @@ Before installing GateWizard, ensure you have:
 - **Git** (for cloning the repository): [Download here](https://git-scm.com/downloads)
 - **Python 3.8+** (will be installed via conda)
 
-## Quick Installation from PyPI (Recommended)
+## Full API installation (Linux or WSL)
 
-This is the fastest way to get GateWizard up and running:
+Use this when the new machine should build membranes, orient with MemPrO, and run OpenMM or GROMACS. NAMD stays a separate download.
 
 ```bash
-# 1. Create conda environment with scientific dependencies
-conda create -n gatewizard -c conda-forge python sqlite ambertools=24 parmed=4.3.0 -y
-
-# 2. Activate the environment
+conda create -n gatewizard -c conda-forge python sqlite ambertools=24 parmed=4.3.0 openmm cudatoolkit gromacs -y
 conda activate gatewizard
-
-# 3. Install GateWizard from PyPI
-pip install gatewizard
-
-# 4. Verify the API package
+pip install "gatewizard[full]"
+pip install "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.1.0"
 python -c "import gatewizard; print(gatewizard.__version__)"
+which pdb4amber
+which mempro
 ```
 
-For the **desktop app**, install [gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui/releases) separately. On first launch the GUI embeds its own micromamba runtime (Python, AmberTools, OpenMM, GROMACS, and `gatewizard` via pip). See [Desktop GUI runtime (GROMACS / CUDA)](#desktop-gui-runtime-gromacs-cuda) below.
+On macOS, omit `cudatoolkit`. Prefer the CPU `gromacs` package. A CUDA GROMACS build in this same environment often stalls in the solver; see [GROMACS: CPU vs CUDA](#gromacs-cpu-vs-cuda-conda-forge).
 
-## Alternative: Development Installation
-
-For developers or to install from source:
+The same stack from a git checkout:
 
 ```bash
-# 1. Clone the repository
 git clone https://github.com/maurobedoya/gatewizard.git
 cd gatewizard
-
-# 2. Create environment from file
 conda env create -f environment.yml
-
-# 3. Activate the environment
 conda activate gatewizard
+pip install -r requirements-orientation.txt
+```
 
-# 4. Install in development mode
-pip install -e .
+`environment.yml` already installs the package with `pip install -e ".[full]"`. The requirements file adds MemPrO, which PyPI cannot list inside the `[full]` extra.
 
-# 5. Verify the API package
+For the **desktop app**, install [gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui/releases) separately. On first launch the GUI embeds its own micromamba runtime. That runtime is not this conda env. See [Desktop GUI runtime (GROMACS / CUDA)](#desktop-gui-runtime-gromacs-cuda) below.
+
+## API package only
+
+This installs the Python library without OpenMM or MemPrO:
+
+```bash
+conda create -n gatewizard -c conda-forge python sqlite ambertools=24 parmed=4.3.0 -y
+conda activate gatewizard
+pip install gatewizard
 python -c "import gatewizard; print(gatewizard.__version__)"
 ```
 
@@ -109,15 +108,20 @@ If Windows Task Manager shows `VmmemWSL` using several GB after you close the ap
 
 ### Core Python Dependencies
 
-Automatically installed via pip:
+Installed by `pip install gatewizard`:
 
 - **Python** ≥ 3.8
-- **CustomTkinter** ≥ 5.0.0 - Modern GUI framework
-- **NumPy** ≥ 1.21.0 - Numerical computing
-- **Matplotlib** ≥ 3.5.0 - Plotting and visualization
-- **MDAnalysis** ≥ 2.0.0 - Molecular analysis toolkit
-- **Propka** ≥ 3.2.0 - pKa calculations
-- **RDKit** ≥ 2023.3.1 - Ligand 2D structure visualization
+- **NumPy** ≥ 1.21.0
+- **Matplotlib** ≥ 3.5.0
+- **MDAnalysis** ≥ 2.0.0
+- **lipyphilic** ≥ 0.12.0
+- **freud-analysis** ≥ 2.5.0
+- **Propka** ≥ 3.2.0
+- **RDKit** ≥ 2023.3.1
+- **gemmi** ≥ 0.6.5
+- **psique** ≥ 1.2.1
+
+`pip install "gatewizard[full]"` also installs ParmEd and OpenMM. MemPrO is a separate pip line (`requirements-orientation.txt` or the GitHub tag `v0.1.0`). AmberTools, the conda ParmEd build, OpenMM’s CUDA toolkit, and CPU GROMACS come from conda, not from that pip extra.
 
 ### Scientific Computing Dependencies
 
@@ -182,9 +186,9 @@ conda activate gatewizard
 python --version  # Should be 3.8+
 
 # Check key dependencies
-python -c "import customtkinter; print('CustomTkinter:', customtkinter.__version__)"
 python -c "import MDAnalysis; print('MDAnalysis:', MDAnalysis.__version__)"
 python -c "import parmed; print('ParmEd:', parmed.__version__)"
+python -c "import openmm; print([openmm.Platform.getPlatform(i).getName() for i in range(openmm.Platform.getNumPlatforms())])"
 
 # Check AmberTools
 which pdb4amber  # Should show path in conda environment
@@ -259,22 +263,6 @@ conda activate gatewizard
 conda install -c conda-forge ambertools=24
 ```
 
-### Issue: CustomTkinter GUI not appearing
-
-**Cause:** Display configuration or tkinter missing.
-
-**Solution:**
-```bash
-# On Linux
-sudo apt-get install python3-tk
-
-# Reinstall CustomTkinter
-pip install --force-reinstall customtkinter
-
-# Check display
-echo $DISPLAY  # Should show something like :0 or localhost:10.0
-```
-
 ### Issue: Module not found errors
 
 **Cause:** Installation incomplete or wrong environment.
@@ -284,9 +272,10 @@ echo $DISPLAY  # Should show something like :0 or localhost:10.0
 # Ensure you're in the correct environment
 conda activate gatewizard
 
-# Reinstall in development mode
+# Reinstall the API
 cd /path/to/gatewizard
-pip install -e . --force-reinstall
+pip install -e ".[full]" --force-reinstall
+pip install -r requirements-orientation.txt
 ```
 
 **Tip:** GateWizard follows [semantic versioning](https://semver.org/). Check the [releases page](https://github.com/maurobedoya/gatewizard/releases) for changelog and new features.
@@ -304,7 +293,8 @@ git pull origin main
 conda env update -f environment.yml
 
 # Reinstall
-pip install -e . --force-reinstall
+pip install -e ".[full]" --force-reinstall
+pip install -r requirements-orientation.txt
 
 # Re-verify import
 python -c "import gatewizard; print(gatewizard.__version__)"

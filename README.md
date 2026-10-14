@@ -26,10 +26,18 @@ If you want a desktop app, use **[gatewizard-gui](https://github.com/franciscoad
 ## Install
 
 ```bash
-conda create -n gatewizard -c conda-forge python sqlite ambertools=24 parmed=4.3.0 openmm cudatoolkit -y
+conda create -n gatewizard -c conda-forge python sqlite ambertools=24 parmed=4.3.0 openmm cudatoolkit gromacs -y
 conda activate gatewizard
 pip install "gatewizard[full]"
 pip install -r requirements-orientation.txt
+```
+
+That conda line is for Linux or WSL with an NVIDIA driver. On macOS, leave out `cudatoolkit`. NAMD is not in this environment; install it separately and put `namd3` on `PATH` if you run NAMD equilibration.
+
+`requirements-orientation.txt` is in the git checkout. Without a clone, install MemPrO with:
+
+```bash
+pip install "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.1.0"
 ```
 
 MemPrO is installed from the [MemPrO GitHub release](https://github.com/pstansfeld/MemPrO/releases) (`v0.1.0`).
@@ -40,14 +48,14 @@ For optional extras without OpenMM (NAMD/GROMACS only):
 pip install gatewizard
 ```
 
-From source (includes `openmm` + `cudatoolkit` via conda):
+From a git checkout (`environment.yml` already runs `pip install -e ".[full]"`, including CPU GROMACS, OpenMM, and `cudatoolkit`):
 
 ```bash
 git clone https://github.com/maurobedoya/gatewizard.git
 cd gatewizard
 conda env create -f environment.yml
 conda activate gatewizard
-pip install -e .
+pip install -r requirements-orientation.txt
 ```
 
 Check the version:
