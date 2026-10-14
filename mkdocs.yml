@@ -61,7 +61,9 @@ nav:
   - Installation: installation.md
   - User Guide: user-guide.md
   - Analysis: analysis.md
-  - Study cases: study-cases/index.md
+  - Study cases:
+      - Overview: study-cases/index.md
+      - Prepare systems: study-cases/prepare-systems.md
   - Troubleshooting: troubleshooting.md
   - API:
       - Overview: api/index.md

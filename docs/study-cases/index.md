@@ -1,5 +1,5 @@
 # Study cases
 
-End-to-end walkthroughs (principle → prepared system → equilibration → analysis) will land here. They will reuse the same numbered scripts under `tests/<module>_examples/` that the API pages already include.
+End-to-end walkthroughs live here. API method pages still include the numbered scripts under `tests/<module>_examples/`.
 
-Until then, start from the [User Guide](../user-guide.md) and the [API examples](../api/dictionary.md).
+- [Prepare systems](prepare-systems.md) — time MemPrO, protonation, ligand parameters, and repeated POPC builds. The page uses six manuscript PDBs as the filled-in example.
