@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Preparation reduce log:** `pdb4amber --reduce` writes `reduce_info.log` next to the prepared PDB. It no longer appears in the directory where Python was started.
 - **MemPro apply mismatch message:** when protein atoms cannot be matched, the error names the target structure file and the MemPro oriented PDB, and says to apply to the same structure used for the run.
 - **Preparation ASH/GLH protons:** `complete_missing_heavy_atoms` / GUI Prepare now run tleap **after** Amber protonation names (ASH, GLH, HIP, …). Completing on ASP and only renaming afterward left the extra carboxylic proton off — the names only mattered later at packmol-memgen parametrization.
 

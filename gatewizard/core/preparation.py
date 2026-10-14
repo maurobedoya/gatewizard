@@ -1330,6 +1330,11 @@ class PreparationManager:
 
             logger.info(f"Running pdb4amber: {' '.join(cmd)}")
 
+            # Amber reduce writes reduce_info.log in the process working
+            # directory. Keep that log next to the prepared PDB.
+            reduce_cwd = str(Path(output_pdb).resolve().parent)
+            Path(reduce_cwd).mkdir(parents=True, exist_ok=True)
+
             try:
                 result = subprocess.run(
                     cmd,
@@ -1337,6 +1342,7 @@ class PreparationManager:
                     text=True,
                     check=True,
                     env=get_clean_env(),
+                    cwd=reduce_cwd,
                 )
 
                 logger.info("pdb4amber completed successfully")
