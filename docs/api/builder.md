@@ -247,6 +247,8 @@ In `{output_folder_name}/` directory:
 - `status.json` - Job status tracking
 - `run_preparation.sh` - Execution script
 
+A packed PDB with residue numbers past 9998 or atom serials past 99999 is rewritten before `pdb4amber`. The leap input sets the CRYST1 box, because `loadPDB` does not copy it, and adds disulfide bonds for CYX SG atoms. `system.pdb` is rewritten after `savePDB` when tleap shifts the columns, so equilibration restraints can read it.
+
 **Raises:**
 
 - `FileNotFoundError` - If input PDB file doesn't exist

@@ -17,20 +17,41 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
+import shutil
 import statistics
+import subprocess
+import sys
 import time
 import traceback
 import urllib.request
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 
 from gatewizard.core.builder import Builder
 from gatewizard.core.mempro import MemPrO, compute_orientation_transform
-from gatewizard.core.preparation import PreparationError, PreparationManager
+from gatewizard.core.preparation import (
+    PreparationError,
+    PreparationManager,
+    complete_missing_heavy_atoms,
+    resolve_reduce_executable,
+    strip_protein_hydrogens,
+)
+from gatewizard.core.structure_checker import diagnose_structure
 from gatewizard.core.structure_manager import StructureManager
+from gatewizard.tools.equilibration import (
+    AmberEquilibrationManager,
+    GROMACSEquilibrationManager,
+    NAMDEquilibrationManager,
+    OpenMMEquilibrationManager,
+    _build_universal_membrane_stages,
+)
 from gatewizard.tools.ligand_parametrization import parametrize_ligand_from_system_pdb
 from gatewizard.utils.ions import is_ion_resname
+from gatewizard.utils.large_pdb import read_cryst1_box
+from gatewizard.utils.peptide_residues import remap_pdb_peptide_resnames
 
 # Outputs follow the working directory, so a checkout of this file can be
 # launched from any benchmark folder.
@@ -43,22 +64,37 @@ BUILDER_REPLICAS = 3
 # PropKa target used when residue names are rewritten before pdb4amber.
 PH = 7.4
 
+# Membrane MD after a successful build. This stays off, so running the
+# script only prepares the system. Turn it on for one PDB by setting
+# ``protocol`` on that entry in SYSTEMS. ``engine`` is amber, gromacs,
+# openmm, or namd. An empty ``engine_executable`` is looked up on PATH
+# (openmm uses this Python). ``stage_ns`` replaces a stage length in
+# nanoseconds; None keeps the GateWizard membrane protocol. That protocol
+# is minimization (10000 steps), Equilibration 1–6, then production.
+# Equilibration 6 is 47.625 ns. A shorter test can set, for example,
+# ``"stage_ns": {"Equilibration 6": 0.1}``.
+# COM and rotation restraints stay off, matching the Equilibration page.
+PROTOCOL = {
+    "enabled": False,
+    "engine": "openmm",
+    "engine_executable": "",
+    "openmm_platform": "",
+    "minimization": True,
+    "equilibration": True,
+    "production_ns": 0.0,
+    "ensemble": "NPT",
+    "temperature": 310.15,
+    "mini_steps": 10000,
+    "stage_ns": None,
+    "replicas": 1,
+}
+
 # Residues that stay out of GAFF. A kept name in this set needs
 # ``manual_params`` (frcmod + lib) on that system.
 NEEDS_MANUAL_PARAMS = frozenset({"OEX", "HEM"})
 
 # Crystal waters are rebuilt as TIP3P by the builder.
 WATER_NAMES = frozenset({"HOH", "WAT", "TIP", "SOL", "DOD"})
-
-# PDB ion names rewritten to the Amber residue names used at tleap.
-AMBER_ION_NAMES = {
-    "K": "K+",
-    "POT": "K+",
-    "NA": "NA+",
-    "SOD": "NA+",
-    "CL": "CL-",
-    "CLA": "CL-",
-}
 
 # Organic cofactors and crystal lipids present in 3WU2. They are listed
 # here so a run can opt into them; the default ``keep_hetero`` does not.
@@ -90,6 +126,17 @@ SYSTEMS = [
         "parametrize": {},
         # Amphipathic peptide. Transmembrane MemPrO is the wrong mode.
         "peripheral": True,
+        # Smallest system. Minimization, every equilibration stage, and
+        # 1 ns of production. Edit this dict, or PROTOCOL above, to change
+        # the engine, the lengths, or to turn the run off.
+        "protocol": {
+            "enabled": True,
+            "engine": "openmm",
+            "minimization": True,
+            "equilibration": True,
+            "production_ns": 1.0,
+            "openmm_platform": "CUDA",
+        },
     },
     {
         "pdb_id": "1AFO",
@@ -111,10 +158,14 @@ SYSTEMS = [
         # build that trimer.
         "chains": "A",
         # RET stays. Crystal lipids LI1 and SQU are omitted (POPC replaces them).
-        # RET is parametrized as a separate residue. The Lys–retinal Schiff
-        # base is a LINK in the PDB and is not rebuilt as a covalent bond.
+        # The deposited formula is neutral retinal (C20H28O), but the oxygen
+        # is absent: LINK bonds C15 to Lys216 NZ. After hydrogens are added
+        # the residue is C20H27. Charge 0 then has an odd electron count and
+        # antechamber refuses a singlet. The protonated Schiff base is +1,
+        # which is the charge passed to GAFF. The lysine stays LYS, and the
+        # LINK is not rebuilt as a bond.
         "keep_hetero": ["RET"],
-        "parametrize": {"RET": 0},
+        "parametrize": {"RET": 1},
         "peripheral": False,
     },
     {
@@ -204,6 +255,7 @@ def run_system(spec: dict, replicas: int, fresh: bool) -> list[dict]:
     def timed(stage: str, fn, replica: int | None = None):
         row = run_stage(folder, pdb_id, stage, fn, replica=replica, fresh=fresh)
         rows.append(row)
+        persist_rows(rows, replicas)
         label = stage if replica is None else f"{stage} replica {replica}"
         if row["ok"]:
             print(f"  {label}: {row['seconds']:.1f} s")
@@ -225,6 +277,16 @@ def run_system(spec: dict, replicas: int, fresh: bool) -> list[dict]:
     if not row["ok"]:
         return rows
 
+    timed(
+        "structure_check_before",
+        lambda: write_structure_check(
+            subset,
+            folder / "structure_check_before",
+            seqres_from=source,
+            chains=set(spec["chains"]),
+        ),
+    )
+
     oriented = folder / "oriented.pdb"
     row = timed(
         "mempro",
@@ -238,6 +300,11 @@ def run_system(spec: dict, replicas: int, fresh: bool) -> list[dict]:
     if not row["ok"]:
         return rows
 
+    timed(
+        "structure_check_after",
+        lambda: write_structure_check(prepared, folder / "structure_check_after"),
+    )
+
     row = timed(
         "ligand_parameters",
         lambda: parametrize_kept_ligands(prepared, spec, folder),
@@ -247,9 +314,10 @@ def run_system(spec: dict, replicas: int, fresh: bool) -> list[dict]:
     ligand_params = row.get("ligand_params") or {}
 
     protein_atoms = count_records(prepared)[0]
+    protocol = resolved_protocol(spec)
     for replica in range(1, replicas + 1):
         job_name = f"builder_rep{replica}"
-        timed(
+        row = timed(
             "builder",
             lambda replica=replica, job_name=job_name: build_once(
                 prepared,
@@ -259,6 +327,19 @@ def run_system(spec: dict, replicas: int, fresh: bool) -> list[dict]:
             ),
             replica=replica,
         )
+        if (
+            row.get("ok")
+            and protocol["enabled"]
+            and replica <= int(protocol.get("replicas") or 1)
+        ):
+            timed(
+                "protocol",
+                lambda replica=replica, job_name=job_name, protocol=protocol: run_protocol(
+                    folder / job_name,
+                    protocol,
+                ),
+                replica=replica,
+            )
     return rows
 
 
@@ -348,10 +429,6 @@ def write_subset(source: Path, subset: Path, protein_only: Path, spec: dict) -> 
             continue
         if line.startswith("HETATM") and resname not in keep:
             continue
-        if line.startswith("HETATM"):
-            renamed = AMBER_ION_NAMES.get(resname)
-            if renamed:
-                line = f"{line[:17]}{renamed[:3]:>3}{line[20:]}"
         kept_lines.append(line if line.endswith("\n") else line + "\n")
         if line.startswith("ATOM"):
             protein_lines.append(kept_lines[-1])
@@ -406,8 +483,22 @@ def protonate(source: Path, dest: Path, folder: Path) -> dict:
         named.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
     else:
         manager.apply_protonation_states(str(source), str(named), ph=PH)
+    # Same order as Preparation → Prepare. Bridged cysteines become CYX
+    # before hydrogens are rebuilt, so reduce does not add a thiol hydrogen
+    # that the CYX template cannot accept.
+    remap_pdb_peptide_resnames(str(named), str(named))
+    n_bridges = manager.apply_disulfide_bonds(str(named), str(named))
+    completed = folder / "heavy_atoms_completed.pdb"
+    complete_info = complete_missing_heavy_atoms(str(named), str(completed))
+    amber_input = completed
+    removed_h = 0
+    if resolve_reduce_executable():
+        stripped = folder / "protein_h_removed.pdb"
+        strip_info = strip_protein_hydrogens(str(amber_input), str(stripped))
+        removed_h = int(strip_info.get("removed") or 0)
+        amber_input = stripped
     result = manager.run_pdb4amber_with_cap_fix(
-        str(named),
+        str(amber_input),
         str(dest),
         fix_caps=True,
         preserve_residue_numbers=True,
@@ -421,7 +512,173 @@ def protonate(source: Path, dest: Path, folder: Path) -> dict:
         "protein_atoms": protein_atoms,
         "hetero_atoms": hetero_atoms,
         "ph": PH,
+        "disulfide_bonds": n_bridges,
+        "heavy_atoms_added": int(complete_info.get("atoms_added") or 0),
+        "protein_hydrogens_removed": removed_h,
     }
+
+
+def write_structure_check(
+    pdb_path: Path,
+    folder: Path,
+    seqres_from: Path | None = None,
+    chains: set[str] | None = None,
+) -> dict:
+    """Write the same report as Visualize → Structure checker.
+
+    The check before preparation keeps SEQRES lines for the selected chains,
+    so unmodeled residues are listed. The check after preparation does not:
+    protonation renames residues (ASH, HIE, CYX) and those names would look
+    like sequence differences. A finding does not stop the later stages.
+    """
+    folder.mkdir(parents=True, exist_ok=True)
+    target = pdb_path
+    if seqres_from is not None and chains and seqres_from.is_file():
+        header = [
+            line if line.endswith("\n") else line + "\n"
+            for line in seqres_from.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+            if line.startswith("SEQRES") and len(line) >= 12 and line[11:12] in chains
+        ]
+        if header:
+            target = folder / "with_seqres.pdb"
+            target.write_text(
+                "".join(header) + pdb_path.read_text(encoding="utf-8", errors="replace"),
+                encoding="utf-8",
+            )
+    report = diagnose_structure(str(target))
+    text = render_structure_check(pdb_path, report)
+    (folder / "report.txt").write_text(text, encoding="utf-8")
+    (folder / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    summary = report["summary"]
+    print(
+        "    "
+        f"{summary['missing_atoms']} missing atoms, "
+        f"{summary['missing_residues']} missing residues, "
+        f"{summary['gaps']} breaks, "
+        f"{summary['altlocs']} alternate conformations, "
+        f"{summary['chain_differences']} chain differences, "
+        f"{summary['other']} other"
+    )
+    print(f"    {folder / 'report.txt'}")
+    return {"path": str(pdb_path), "report": str(folder / "report.txt"), **summary}
+
+
+def _place(chain: str, resid: object, icode: str = "", resname: str = "") -> str:
+    return f"{chain or '?'}{resid}{icode or ''}{f' {resname}' if resname else ''}"
+
+
+def render_structure_check(pdb_path: Path, report: dict) -> str:
+    """Plain-text form of the Structure checker panel."""
+    summary = report["summary"]
+    lines = [
+        f"Structure checker: {pdb_path}",
+        (
+            f"{summary['missing_atoms']} missing atoms · "
+            f"{summary['missing_residues']} missing residues · "
+            f"{summary['gaps']} breaks · "
+            f"{summary['altlocs']} alternate conformations · "
+            f"{summary['chain_differences']} chain differences · "
+            f"{summary['other']} other"
+        ),
+        "",
+    ]
+    quiet = not any(summary.get(key) for key in (
+        "missing_atoms",
+        "missing_residues",
+        "gaps",
+        "altlocs",
+        "chain_differences",
+        "other",
+    ))
+    if quiet:
+        lines.append(
+            "Nothing to report. The loaded model has no missing heavy atoms, "
+            "gaps, alternate conformations, or chain differences."
+        )
+        return "\n".join(lines) + "\n"
+
+    missing_atoms = report.get("missing_atoms") or []
+    if missing_atoms:
+        lines.append(f"Missing atoms ({len(missing_atoms)})")
+        for row in missing_atoms:
+            lines.append(
+                f"  {_place(row['chain'], row['resid'], row.get('icode') or '', row['resname'])} "
+                f"is missing {row['atom']}"
+            )
+        lines.append("")
+
+    missing_residues = report.get("missing_residues") or []
+    if missing_residues:
+        lines.append(f"Missing residues ({len(missing_residues)})")
+        for row in missing_residues:
+            if row.get("source") == "seqres":
+                names = " ".join(row.get("resnames") or [])
+                extra = f": {names}" if names else ""
+                lines.append(
+                    f"  Chain {row.get('chain') or '?'} SEQRES has {row['count']} "
+                    f"names without coordinates{extra}."
+                )
+            else:
+                plural = "residue" if row["count"] == 1 else "residues"
+                listed = ", ".join(str(item) for item in (row.get("missing") or []))
+                extra = f" ({listed})" if listed else ""
+                lines.append(
+                    f"  Chain {row['chain']} is missing {row['count']} {plural} "
+                    f"between {row['after_resid']} and {row['before_resid']}{extra}."
+                )
+        lines.append("")
+
+    gaps = report.get("gaps") or []
+    if gaps:
+        lines.append(f"Backbone breaks ({len(gaps)})")
+        for row in gaps:
+            lines.append(
+                f"  Chain {row['chain']}: {row['resname_a']} {row['resid_a']} to "
+                f"{row['resname_b']} {row['resid_b']} is {row['distance']} Å"
+            )
+        lines.append("")
+
+    altlocs = report.get("altlocs") or []
+    if altlocs:
+        lines.append(f"Alternate conformations ({len(altlocs)})")
+        for group in altlocs:
+            lines.append(
+                f"  {_place(group['chain'], group['resid'], group.get('icode') or '', group['resname'])}"
+            )
+            for option in group.get("options") or []:
+                likely = " · most likely" if option.get("likely") else ""
+                lines.append(f"    {option['altloc']} {float(option['occupancy']):.2f}{likely}")
+        lines.append("")
+
+    pairs = report.get("chain_pairs") or []
+    if pairs:
+        lines.append(f"Chains ({len(pairs)})")
+        for pair in pairs:
+            lines.append(
+                f"  Chain {pair['chain_a']} ({pair['length_a']}) and chain "
+                f"{pair['chain_b']} ({pair['length_b']})"
+            )
+            note = "These chains match." if pair.get("same") else pair.get("length_note") or ""
+            lines.append(f"    {note} Identity {round(float(pair['identity']) * 100)}%.")
+            for sub in pair.get("substitutions") or []:
+                lines.append(
+                    f"    {pair['chain_a']}{sub['resid_a']} {sub['resname_a']} differs from "
+                    f"{pair['chain_b']}{sub['resid_b']} {sub['resname_b']}"
+                )
+            for diff in pair.get("length_differences") or []:
+                lines.append(
+                    f"    {diff['count_a']} residues on {diff['chain_a']} line up with "
+                    f"{diff['count_b']} on {diff['chain_b']}."
+                )
+        lines.append("")
+
+    issues = report.get("issues") or []
+    if issues:
+        lines.append(f"Other ({len(issues)})")
+        for issue in issues:
+            lines.append(f"  {issue.get('message') or ''}")
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def parametrize_kept_ligands(pdb_path: Path, spec: dict, folder: Path) -> dict:
@@ -444,8 +701,230 @@ def parametrize_kept_ligands(pdb_path: Path, spec: dict, folder: Path) -> dict:
     return {"ligand_params": ligand_params, "n_ligands": len(ligand_params)}
 
 
+# Same map as gatewizard.utils.ions. Kept here so a copied script still
+# fixes the ions when the installed package is older than this checkout.
+# Amber atomic_ions.lib: FE2 atom is FE2; FE3 is not a unit (Fe3+ is FE/FE).
+_ION_ATOM_BY_RESNAME = {
+    "FE2": "FE2",
+    "CU1": "CU",
+    "GD3": "GD",
+    "IOD": "I",
+    "NH4": "N",
+    "U4+": "U",
+    "HE+": "H",
+    "HZ+": "H",
+}
+_ION_RESIDUE_ALIAS = {"FE3": "FE"}
+
+
+def align_deposited_ion_names(pdb_path: Path) -> None:
+    """Match deposited monoatomic ions to Amber's ion-library atom names.
+
+    Residue FE2 keeps that name and its atom becomes FE2. Residue FE3
+    (Fe3+) becomes residue FE, atom FE. CA, CL, MG, and K are already
+    the names Amber expects and are left as deposited.
+    """
+    lines = pdb_path.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+    changed = False
+    out = []
+    for line in lines:
+        if line.startswith(("ATOM", "HETATM")) and len(line) >= 20:
+            resname = line[17:20].strip().upper()
+            target = _ION_RESIDUE_ALIAS.get(resname, resname)
+            expected = _ION_ATOM_BY_RESNAME.get(target)
+            if target != resname and expected is None:
+                expected = target
+            current = line[12:16].strip().upper()
+            if expected and (current != expected or target != resname):
+                atom = f"{expected:<4}"[:4]
+                residue = f"{target:<3}"[:3]
+                line = f"{line[:12]}{atom}{line[16:17]}{residue}{line[20:]}"
+                changed = True
+        out.append(line if line.endswith("\n") else line + "\n")
+    if changed:
+        pdb_path.write_text("".join(out), encoding="utf-8")
+
+
+def resolved_protocol(spec: dict) -> dict:
+    """PROTOCOL with this system's ``protocol`` dict laid on top."""
+    merged = dict(PROTOCOL)
+    merged.update(spec.get("protocol") or {})
+    return merged
+
+
+def protocol_stages(protocol: dict):
+    """Minimization, equilibration, and production selected for this system."""
+    production_ns = float(protocol.get("production_ns") or 0.0)
+    stages = _build_universal_membrane_stages(
+        str(protocol.get("ensemble") or "NPT"),
+        float(protocol.get("temperature") or 310.15),
+        include_minimization=bool(protocol.get("minimization")),
+        include_production=production_ns > 0,
+        mini_steps=int(protocol.get("mini_steps") or 10000),
+        production_ns=production_ns or 1.0,
+    )
+    if not protocol.get("equilibration"):
+        mini = [stage for stage in stages if stage.stage_kind == "minimization"]
+        production = [stage for stage in stages if stage.stage_kind == "production"]
+        engine = str(protocol.get("engine") or "").lower()
+        if mini and engine in {"openmm", "namd"}:
+            # Those engines fold minimization into the next MD stage.
+            holder = next(stage for stage in stages if stage.name == "Equilibration 1")
+            stages = mini + [replace(holder, time_ns=0.0, steps=0)] + production
+        else:
+            stages = mini + production
+    overrides = protocol.get("stage_ns") or {}
+    updated = []
+    for stage in stages:
+        if stage.name in overrides:
+            ns = float(overrides[stage.name])
+            steps = int(round(ns * 1_000_000 / stage.timestep)) if ns > 0 else 0
+            stage = replace(stage, time_ns=ns, steps=steps)
+        updated.append(stage)
+    if not updated:
+        raise RuntimeError("protocol is enabled but no stages were selected")
+    return updated
+
+
+def resolve_engine_executable(protocol: dict) -> str:
+    override = str(protocol.get("engine_executable") or "").strip()
+    if override:
+        return override
+    engine = str(protocol.get("engine") or "openmm").lower()
+    if engine == "openmm":
+        return sys.executable
+    name = {"amber": "sander", "gromacs": "gmx", "namd": "namd3"}.get(engine)
+    if name is None:
+        raise RuntimeError("engine must be amber, gromacs, openmm, or namd")
+    found = shutil.which(name)
+    if not found:
+        raise RuntimeError(
+            f"{engine} executable {name!r} was not found on PATH. "
+            "Set engine_executable in this system's protocol."
+        )
+    return found
+
+
+def collect_job_files(job_dir: Path) -> dict:
+    prmtop = next(job_dir.glob("*.prmtop"), None)
+    inpcrd = next(job_dir.glob("*.inpcrd"), None)
+    if prmtop is None or inpcrd is None:
+        raise RuntimeError(f"No system.prmtop / system.inpcrd in {job_dir}")
+    files = {"prmtop": str(prmtop), "inpcrd": str(inpcrd)}
+    pdb = job_dir / "system.pdb"
+    if pdb.is_file():
+        files["pdb"] = str(pdb)
+    bilayer = None
+    candidates = [
+        *job_dir.glob("bilayer*_lipid.pdb"),
+        *(
+            path
+            for path in job_dir.glob("bilayer_*.pdb")
+            if path.name != "bilayer_for_pdb4amber.pdb"
+        ),
+    ]
+    for path in candidates:
+        if read_cryst1_box(path) is not None:
+            bilayer = path
+            break
+    if bilayer is None:
+        for path in candidates:
+            bilayer = path
+            break
+    if bilayer is not None:
+        files["bilayer_pdb"] = str(bilayer)
+    return files
+
+
+def find_built_job(job_root: Path) -> Path:
+    if (job_root / "system.prmtop").is_file():
+        return job_root
+    matches = sorted(path.parent for path in job_root.glob("02_build*/system.prmtop"))
+    if not matches:
+        raise RuntimeError(f"No parametrized build under {job_root}")
+    return matches[-1]
+
+
+def run_protocol(job_root: Path, protocol: dict) -> dict:
+    """Write and run the GateWizard membrane protocol for one build."""
+    job_dir = find_built_job(job_root)
+    files = collect_job_files(job_dir)
+    stages = [stage.to_dict() for stage in protocol_stages(protocol)]
+    engine = str(protocol.get("engine") or "openmm").lower()
+    executable = resolve_engine_executable(protocol)
+    scheme = str(protocol.get("ensemble") or "NPT")
+    output_name = "protocol"
+    if engine == "openmm":
+        manager = OpenMMEquilibrationManager(job_dir)
+        result = manager.setup_openmm_equilibration(
+            system_files=files,
+            stage_params_list=stages,
+            output_name=output_name,
+            scheme_type=scheme,
+            add_com_restraint=False,
+            add_rotation_restraint=False,
+        )
+    elif engine == "amber":
+        manager = AmberEquilibrationManager(job_dir, amber_executable=executable)
+        result = manager.setup_amber_equilibration(
+            system_files=files,
+            stage_params_list=stages,
+            output_name=output_name,
+            scheme_type=scheme,
+            amber_executable=executable,
+        )
+    elif engine == "gromacs":
+        manager = GROMACSEquilibrationManager(job_dir)
+        result = manager.setup_gromacs_equilibration(
+            system_files=files,
+            stage_params_list=stages,
+            output_name=output_name,
+            scheme_type=scheme,
+            gmx_executable=executable,
+            add_com_restraint=False,
+            add_rotation_restraint=False,
+        )
+    elif engine == "namd":
+        manager = NAMDEquilibrationManager(job_dir, executable)
+        result = manager.setup_namd_equilibration(
+            system_files=files,
+            stage_params_list=stages,
+            output_name=output_name,
+            scheme_type=scheme,
+            namd_executable=executable,
+            add_com_restraint=False,
+            add_rotation_restraint=False,
+        )
+    else:
+        raise RuntimeError("engine must be amber, gromacs, openmm, or namd")
+    script = Path(result.get("run_script") or (job_dir / output_name / "run_equilibration.sh"))
+    if not script.is_file():
+        raise RuntimeError(f"run_equilibration.sh was not written in {job_dir / output_name}")
+    env = os.environ.copy()
+    env["PYTHON"] = sys.executable
+    platform = str(protocol.get("openmm_platform") or "").strip()
+    if engine == "openmm" and platform:
+        env["PLATFORM"] = platform
+    print(f"  running {engine} protocol: {script}")
+    completed = subprocess.run(
+        ["bash", str(script)],
+        cwd=str(script.parent),
+        env=env,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(f"{script.name} exited {completed.returncode}")
+    return {
+        "engine": engine,
+        "script": str(script),
+        "stages": [stage["name"] for stage in stages],
+        "production_ns": protocol.get("production_ns"),
+    }
+
+
 def build_once(pdb_path: Path, job_root: Path, ligand_params: dict, protein_atoms: int) -> dict:
     job_root.mkdir(parents=True, exist_ok=True)
+    align_deposited_ion_names(pdb_path)
     builder = Builder()
     ok, message, job_dir = builder.prepare_system(
         pdb_file=str(pdb_path),
@@ -462,6 +941,10 @@ def build_once(pdb_path: Path, job_root: Path, ligand_params: dict, protein_atom
         preoriented=True,
         parametrize=True,
         notprotonate=True,
+        # reduce names the GLH alpha hydrogen HCA. The Builder checkbox
+        # "Remove protein hydrogens" drops those names; tleap puts HA back.
+        # Ligand hydrogens, including RET, stay.
+        remove_protein_h=True,
         ligand_params=ligand_params,
         wait=True,
         wait_verbose=True,
@@ -530,6 +1013,11 @@ def merge_saved_rows(rows: list[dict]) -> list[dict]:
     return merged
 
 
+def persist_rows(rows: list[dict], replicas: int) -> None:
+    """Write the timing table after each finished stage or replica."""
+    write_report(merge_saved_rows(rows), replicas)
+
+
 def write_report(rows: list[dict], replicas: int) -> None:
     RESULTS.mkdir(parents=True, exist_ok=True)
     fieldnames = [
@@ -590,6 +1078,25 @@ def render_summary(rows: list[dict], replicas: int) -> str:
         lines.append(
             f"| {row['pdb_id']} | {row['stage']} | {replica} | {float(row['seconds']):.1f} | {row['ok']} |"
         )
+    checks = [
+        row
+        for row in rows
+        if row.get("stage") in {"structure_check_before", "structure_check_after"} and row.get("ok")
+    ]
+    if checks:
+        lines.extend(["", "## Structure check", ""])
+        for row in checks:
+            when = "before preparation" if row["stage"].endswith("before") else "after preparation"
+            lines.append(
+                f"- {row['pdb_id']} {when}: "
+                f"{row.get('missing_atoms', 0)} missing atoms, "
+                f"{row.get('missing_residues', 0)} missing residues, "
+                f"{row.get('gaps', 0)} breaks, "
+                f"{row.get('altlocs', 0)} alternate conformations, "
+                f"{row.get('chain_differences', 0)} chain differences, "
+                f"{row.get('other', 0)} other. "
+                f"Full list: `{row.get('report') or ''}`."
+            )
     failed = [row for row in rows if not row.get("ok")]
     if failed:
         lines.extend(["", "## Failures", ""])

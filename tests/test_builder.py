@@ -286,6 +286,11 @@ class TestBuilder:
         assert "--preoriented" not in command.split()
         assert status["status"] == "not_started"
         assert "MEMEMBED" not in status["steps"]
+        script = (job_dir / "run_preparation.sh").read_text(encoding="utf-8")
+        assert "rewrite-if-needed" in script
+        assert "finalize-for-tleap" in script
+        assert "repair-saved-pdb" in script
+        assert "source tleap_geometry.in" in script
     def test_generate_preparation_inputs_with_solute(self, builder, tmp_path):
         tea = tmp_path / "TEA.pdb"
         tea.write_text(

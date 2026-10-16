@@ -138,6 +138,60 @@ def resolve_amber_anion(anion: Optional[str]) -> str:
     return DEFAULT_ANION
 
 
+# Amber ``atomic_ions.lib`` atom name for a residue whose deposited atom
+# name differs. Residue FE2 is deposited with atom FE; tleap then adds a
+# second atom named FE2 and the original FE has no type. CU1, GD3, IOD,
+# NH4, U4+, HE+, and HZ+ have the same mismatch when the atom is the
+# residue name instead of the library atom.
+AMBER_ION_ATOM_BY_RESNAME = {
+    "FE2": "FE2",
+    "CU1": "CU",
+    "GD3": "GD",
+    "IOD": "I",
+    "NH4": "N",
+    "U4+": "U",
+    "HE+": "H",
+    "HZ+": "H",
+}
+
+# Residue FE3 is Fe3+. This Amber library has no FE3 unit. The Fe3+ unit
+# is residue FE, atom FE (charge +3). Residue FE2 stays FE2.
+AMBER_ION_RESIDUE_ALIAS = {
+    "FE3": "FE",
+}
+
+
+def align_amber_ion_atom_names(pdb_path: str) -> int:
+    """Rename deposited ion atoms to the Amber residue template name.
+
+    Residue FE3 is written as Amber residue FE, which is the Fe3+ unit.
+    Other residues keep the deposited name. Returns the number of atom
+    records changed.
+    """
+    path = pdb_path
+    changed = 0
+    lines_out: list[str] = []
+    with open(path, "r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            if line.startswith(("ATOM", "HETATM")) and len(line) >= 20:
+                resname = line[17:20].strip().upper()
+                target = AMBER_ION_RESIDUE_ALIAS.get(resname, resname)
+                expected = AMBER_ION_ATOM_BY_RESNAME.get(target)
+                if target != resname and expected is None:
+                    expected = target
+                current = line[12:16].strip().upper()
+                if expected and (current != expected or target != resname):
+                    atom = f"{expected:<4}"[:4]
+                    residue = f"{target:<3}"[:3]
+                    line = f"{line[:12]}{atom}{line[16:17]}{residue}{line[20:]}"
+                    changed += 1
+            lines_out.append(line if line.endswith("\n") else line + "\n")
+    if changed:
+        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.writelines(lines_out)
+    return changed
+
+
 def tleap_neutralization_lines(
     cation: Optional[str] = None,
     anion: Optional[str] = None,

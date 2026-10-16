@@ -10,12 +10,54 @@ from gatewizard.core.builder import Builder
 from gatewizard.utils.ions import (
     DEFAULT_ANION,
     DEFAULT_CATION,
+    align_amber_ion_atom_names,
     ion_mda_selection,
     is_ion_resname,
     resolve_amber_anion,
     resolve_amber_cation,
     tleap_neutralization_lines,
 )
+
+
+def test_fe2_atom_name_matches_amber_template(tmp_path: Path):
+    pdb = tmp_path / "fe.pdb"
+    pdb.write_text(
+        "HETATM    1 FE   FE2 A 402      34.802  -5.804 -15.720  1.00 26.89          FE\n"
+        "HETATM    2 CA   CA  A 403      30.000   0.000   0.000  1.00 20.00          CA\n"
+        "END\n",
+        encoding="utf-8",
+    )
+    assert align_amber_ion_atom_names(str(pdb)) == 1
+    text = pdb.read_text(encoding="utf-8")
+    assert "FE2  FE2" in text
+    assert "CA   CA " in text or "CA   CA" in text
+    assert align_amber_ion_atom_names(str(pdb)) == 0
+
+
+def test_fe3_and_other_library_mismatches_are_renamed(tmp_path: Path):
+    """FE3 is Amber residue FE. CU1 and IOD keep the residue and take the library atom."""
+    pdb = tmp_path / "ions.pdb"
+    pdb.write_text(
+        "HETATM    1 FE   FE3 A 404       1.000   2.000   3.000  1.00 20.00          FE\n"
+        "HETATM    2 CU1  CU1 A 405       1.000   2.000   3.000  1.00 20.00          CU\n"
+        "HETATM    3 IOD  IOD A 406       1.000   2.000   3.000  1.00 20.00           I\n"
+        "HETATM    4 CU   CU1 A 407       1.000   2.000   3.000  1.00 20.00          CU\n"
+        "HETATM    5 CA   CA  A 408       1.000   2.000   3.000  1.00 20.00          CA\n"
+        "END\n",
+        encoding="utf-8",
+    )
+    assert align_amber_ion_atom_names(str(pdb)) == 3
+    rows = [
+        line
+        for line in pdb.read_text(encoding="utf-8").splitlines()
+        if line.startswith("HETATM")
+    ]
+    assert rows[0][12:16].strip() == "FE" and rows[0][17:20].strip() == "FE"
+    assert rows[1][12:16].strip() == "CU" and rows[1][17:20].strip() == "CU1"
+    assert rows[2][12:16].strip() == "I" and rows[2][17:20].strip() == "IOD"
+    assert rows[3][12:16].strip() == "CU" and rows[3][17:20].strip() == "CU1"
+    assert rows[4][17:20].strip() == "CA"
+    assert align_amber_ion_atom_names(str(pdb)) == 0
 
 
 def test_is_ion_resname_amber_mixed_case():
