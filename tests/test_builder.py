@@ -449,10 +449,17 @@ class TestForceFieldManager:
     def test_available_lipids(self, ff_manager):
         """Test that lipids are available."""
         lipids = ff_manager.get_available_lipids()
-        assert len(lipids) > 0
+        assert len(lipids) >= 4000
         assert "POPC" in lipids
         assert "POPE" in lipids
         assert "CHL1" in lipids
+        assert "1LAC" in lipids
+        popc = next(
+            row for row in ff_manager.get_lipid_catalog() if row["name"] == "POPC"
+        )
+        assert popc["full_name"]
+        assert ff_manager.validate_lipid("POPC")
+        assert ff_manager.validate_lipid("NOT_A_LIPID") is False
 
     def test_validate_combination_valid(self, ff_manager):
         """Test validation of valid force field combination."""

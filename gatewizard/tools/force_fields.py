@@ -42,12 +42,24 @@ Validation Status:
 - ff15ipq: Only validated for proteins with SPC/Eb [3], no lipid validation
 """
 
+import json
+from importlib.resources import files
 from typing import Dict, List, Set, Tuple, Optional, Any
 from dataclasses import dataclass
 
 from gatewizard.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _load_packmol_lipid_catalog() -> List[Dict[str, Any]]:
+    """Read the stored ``packmol-memgen --available_lipids_all`` table."""
+    catalog_path = files("gatewizard.data").joinpath("packmol_memgen_lipids.json")
+    payload = json.loads(catalog_path.read_text(encoding="utf-8"))
+    lipids = payload["lipids"]
+    if not lipids:
+        raise ValueError("packmol-memgen lipid catalog is empty")
+    return lipids
 
 
 @dataclass
@@ -78,7 +90,8 @@ class ForceFieldManager:
         self._protein_force_fields = self._init_protein_force_fields()
         self._lipid_force_fields = self._init_lipid_force_fields()
         self._available_ions = self._init_available_ions()
-        self._available_lipids = self._init_available_lipids()
+        self._lipid_catalog = _load_packmol_lipid_catalog()
+        self._available_lipids = {item["name"] for item in self._lipid_catalog}
 
     def _init_water_models(self) -> Dict[str, ForceFieldInfo]:
         """Initialize water model definitions."""
@@ -347,74 +360,6 @@ class ForceFieldManager:
             },
         }
 
-    def _init_available_lipids(self) -> List[str]:
-        """Initialize list of available lipids."""
-        return [
-            # Phosphatidylcholine (PC) lipids
-            "DHPC",
-            "DLPC",
-            "DMPC",
-            "DPPC",
-            "DSPC",
-            "DOPC",
-            "POPC",
-            "PLPC",
-            "SOPC",
-            # Phosphatidylethanolamine (PE) lipids
-            "DHPE",
-            "DLPE",
-            "DMPE",
-            "DPPE",
-            "DSPE",
-            "DOPE",
-            "POPE",
-            "PLPE",
-            "SOPE",
-            # Phosphatidylserine (PS) lipids
-            "DHPS",
-            "DLPS",
-            "DMPS",
-            "DPPS",
-            "DSPS",
-            "DOPS",
-            "POPS",
-            "PLPS",
-            "SOPS",
-            # Phosphatidylglycerol (PG) lipids
-            "DHPG",
-            "DLPG",
-            "DMPG",
-            "DPPG",
-            "DSPG",
-            "DOPG",
-            "POPG",
-            "PLPG",
-            "SOPG",
-            # Phosphatidic acid (PA) lipids
-            "DHPA",
-            "DLPA",
-            "DMPA",
-            "DPPA",
-            "DSPA",
-            "DOPA",
-            "POPA",
-            "PLPA",
-            "SOPA",
-            # Sphingomyelins and other lipids
-            "PSM",
-            "ASM",
-            "LSM",
-            "MSM",
-            "HSM",
-            "OSM",
-            # Cholesterol
-            "CHL1",
-            # Other specialized lipids
-            "CARDIOLIPIN",
-            "PIP",
-            "PIP2",
-        ]
-
     def get_water_models(self) -> List[str]:
         """Get list of available water models."""
         return list(self._water_models.keys())
@@ -428,8 +373,12 @@ class ForceFieldManager:
         return list(self._lipid_force_fields.keys())
 
     def get_available_lipids(self) -> List[str]:
-        """Get list of available lipids."""
+        """Residue names from ``packmol-memgen --available_lipids_all``."""
         return sorted(self._available_lipids)
+
+    def get_lipid_catalog(self) -> List[Dict[str, Any]]:
+        """Each packmol-memgen lipid: name, charge, full_name, and note."""
+        return list(self._lipid_catalog)
 
     def get_available_cations(self) -> List[str]:
         """Get list of available cations."""

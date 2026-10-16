@@ -18,7 +18,7 @@ If you want a desktop app, use **[gatewizard-gui](https://github.com/franciscoad
 ## Features
 
 - **Preparation** — clean structures, pKa (PROPKA), protonation, and termini capping
-- **Membrane builder** — orient protein, pack lipids and solvent, Amber parametrization (tleap)
+- **Membrane builder** — orient protein, pack lipids and solvent, Amber parametrization (tleap). GateWizard supports **4028 lipid types** from packmol-memgen `--available_lipids_all` (version 2025.1.29), each with a residue name, charge, and chemical name. The catalog lists 4055 names; the 27 SIRAH lipids are coarse-grained and are not supported. See the [builder reference](docs/api/builder.md).
 - **Equilibration** — CHARMM-GUI-style protocols for NAMD, GROMACS, and OpenMM (NVT, NPT, NPAT, NPγT)
 - **Analysis** — trajectory metrics, structural analysis, and plotting helpers
 - **Force fields** — Amber protein models (e.g. ff14SB, ff19SB) and common water/lipid setups

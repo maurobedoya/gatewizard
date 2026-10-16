@@ -218,7 +218,15 @@ The `lipid_ratios` string specifies molar ratios for each leaflet:
 - Ratios are normalized automatically (don't need to sum to 1.0)
 - Use `//` to separate upper and lower leaflet ratios
 
-**Available Lipids:**
+**Available lipids:**
+
+GateWizard supports **4028** atomistic lipids from `packmol-memgen --available_lipids_all` (version 2025.1.29). Each row has the residue name, the charge, and the full chemical name. `ForceFieldManager.get_available_lipids()` returns the residue names, and `get_lipid_catalog()` returns the charge and the chemical name as well.
+
+The catalog lists 4055 names: 3770 are marked as parameters from the PACKMOL-Memgen lipid extension, 251 have no extra note, 7 are marked Lipid21 only, and 27 are marked SIRAH only. The supported total is 4028 (4055 minus the 27 SIRAH lipids).
+
+SIRAH and coarse-grained lipids are not supported. The 27 SIRAH names start with `si`. GateWizard parametrizes atomistic Amber lipids (Lipid17 and Lipid21).
+
+A familiar subset:
 
 | Category | Lipid Types |
 |----------|------------|
@@ -229,7 +237,6 @@ The `lipid_ratios` string specifies molar ratios for each leaflet:
 | **Phosphatidic Acid (PA)** | DHPA, DLPA, DMPA, DPPA, DSPA, DOPA, POPA, PLPA, SOPA |
 | **Sphingomyelins** | PSM, ASM, LSM, MSM, HSM, OSM |
 | **Cholesterol** | CHL1 |
-| **Other** | CARDIOLIPIN, PIP, PIP2 |
 
 **Output Files:**
 
@@ -451,7 +458,11 @@ See [Example 6](#example-6-available-lipid-force-fields).
 
 ### get_available_lipids
 
-Lipid residue names accepted by packmol-memgen / Lipid21.
+Residue names from `packmol-memgen --available_lipids_all`. The stored catalog has 4055 names. GateWizard supports 4028 of them; the 27 SIRAH names are not supported.
+
+### get_lipid_catalog
+
+The same lipids as records: `name`, `charge`, `full_name`, and `note`.
 
 ### get_available_cations
 

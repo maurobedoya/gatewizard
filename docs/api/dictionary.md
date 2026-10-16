@@ -120,6 +120,7 @@ Regenerate with `python scripts/gen_api_dictionary.py`.
 - [`ForceFieldManager.get_available_cations`](builder.md#get_available_cations)
 - [`ForceFieldManager.get_available_lipids`](builder.md#get_available_lipids)
 - [`ForceFieldManager.get_force_field_info`](builder.md#get_force_field_info)
+- [`ForceFieldManager.get_lipid_catalog`](builder.md#get_lipid_catalog)
 - [`ForceFieldManager.get_lipid_force_fields`](builder.md#get_lipid_force_fields)
 - [`ForceFieldManager.get_protein_force_fields`](builder.md#get_protein_force_fields)
 - [`ForceFieldManager.get_recommendations`](builder.md#get_recommendations)

@@ -70,7 +70,7 @@ Leaflet composition, water/ions, and parametrization. Each run is a **job card**
 ![Builder](images/user-guide/builder.png)
 
 1. Working file: prepared protein (or uncheck protein for bilayer-only and set membrane XY).
-2. Upper/lower lipids and ratios.
+2. Upper/lower lipids and ratios. GateWizard supports **4028 lipids** from the packmol-memgen catalog (`--available_lipids_all`, version 2025.1.29). Each row shows the residue name, charge, and chemical name. The catalog lists 4055 names; the 27 SIRAH lipids are coarse-grained and are not supported. A short familiar subset is in the [builder reference](api/builder.md).
 
 ![Lipid ratios](images/user-guide/builder_lipid_ratios.png)
 
