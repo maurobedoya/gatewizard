@@ -37,7 +37,7 @@ conda activate gatewizard
 which pdb4amber
 
 # If not found, reinstall
-conda install -c conda-forge ambertools=24
+conda install -c conda-forge ambertools=26
 ```
 
 ### Issue: CustomTkinter not found

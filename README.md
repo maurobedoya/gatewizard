@@ -19,14 +19,14 @@ If you want a desktop app, use **[gatewizard-gui](https://github.com/franciscoad
 
 - **Preparation** — clean structures, pKa (PROPKA), protonation, and termini capping
 - **Membrane builder** — orient protein, pack lipids and solvent, Amber parametrization (tleap). GateWizard supports **4028 lipid types** from packmol-memgen `--available_lipids_all` (version 2025.1.29). 3770 of them parametrize through PACKMOL-Memgen's Lipid_ext library on top of lipid21 or lipid17; those parameters are not in Amber's `lipid21.lib`. The catalog lists 4055 names; the 27 SIRAH lipids are coarse-grained and are not supported. See the [builder reference](docs/api/builder.md).
-- **Equilibration** — CHARMM-GUI-style protocols for NAMD, GROMACS, and OpenMM (NVT, NPT, NPAT, NPγT)
+- **Equilibration** — the same CHARMM-GUI-style protocols for four MD engines: NAMD, GROMACS, OpenMM, and Amber (NVT, NPT, NPAT, NPγT)
 - **Analysis** — trajectory metrics, structural analysis, and plotting helpers
 - **Force fields** — Amber protein models (e.g. ff14SB, ff19SB) and common water/lipid setups
 
 ## Install
 
 ```bash
-conda create -n gatewizard -c conda-forge python sqlite ambertools=24 parmed=4.3.0 openmm cudatoolkit gromacs -y
+conda create -n gatewizard -c conda-forge python sqlite ambertools=26 parmed=4.3.0 openmm cudatoolkit gromacs -y
 conda activate gatewizard
 pip install "gatewizard[full]"
 pip install -r requirements-orientation.txt
@@ -42,7 +42,7 @@ pip install "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.1.0"
 
 MemPrO is installed from the [MemPrO GitHub release](https://github.com/pstansfeld/MemPrO/releases) (`v0.1.0`).
 
-For optional extras without OpenMM (NAMD/GROMACS only):
+For the library without the OpenMM extra (NAMD, GROMACS, and Amber still use their own programs):
 
 ```bash
 pip install gatewizard
@@ -132,6 +132,7 @@ For protein-aware **upstream** `AreaPerLipid` (`exclude_sel` before a PyPI relea
 |------|------|
 | [NAMD](https://www.ks.uiuc.edu/Research/namd/) | Run NAMD equilibration — `namd3` / `namd2` on `PATH` |
 | [GROMACS](https://www.gromacs.org/) | Run GROMACS equilibration — `gmx` on `PATH` (prefer conda-forge **CPU** `gromacs`; CUDA conda builds often hang next to OpenMM — see [Installation](docs/installation.md#gromacs-cpu-vs-cuda-conda-forge)) |
+| [Amber](https://ambermd.org/) | Run Amber equilibration — `pmemd` / `pmemd.cuda`, or `sander` from AmberTools |
 
 OpenMM needs no separate binary — use **`openmm` + `cudatoolkit`** (conda) with `gatewizard[full]`. Auto-selects **CUDA → OpenCL → CPU**; override with `PLATFORM=CUDA bash run_equilibration.sh`.
 
@@ -147,7 +148,7 @@ python -c "import openmm; print([openmm.Platform.getPlatform(i).getName() for i 
 | `environment.yml` (AmberTools, OpenMM, cudatoolkit, …) | yes |
 | Desktop app (Electron, Svelte, viewer) | no — [gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui) |
 | FastAPI backend | no — GUI repo |
-| NAMD / GROMACS binaries | no — user install |
+| NAMD, GROMACS, and Amber `pmemd` binaries | no — user install (`sander` comes with AmberTools) |
 
 ## Desktop GUI
 

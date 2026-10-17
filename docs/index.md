@@ -28,7 +28,7 @@ GateWizard is a Python-based GUI application designed to prepare protein membran
 
 ```bash
 # Create conda environment with dependencies
-conda create -n gatewizard -c conda-forge python sqlite ambertools=24 parmed=4.3.0 -y
+conda create -n gatewizard -c conda-forge python sqlite ambertools=26 parmed=4.3.0 -y
 
 # Activate environment
 conda activate gatewizard

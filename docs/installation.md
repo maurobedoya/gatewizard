@@ -15,8 +15,9 @@ Before installing GateWizard, ensure you have:
 Use this when the new machine should build membranes, orient with MemPrO, and run OpenMM or GROMACS. NAMD stays a separate download.
 
 ```bash
-conda create -n gatewizard -c conda-forge python sqlite ambertools=24 parmed=4.3.0 openmm cudatoolkit gromacs -y
+conda create -n gatewizard -c conda-forge python sqlite ambertools=26 parmed=4.3.0 openmm cudatoolkit gromacs -y
 conda activate gatewizard
+conda install -c conda-forge -c bioconda reduce -y
 pip install "gatewizard[full]"
 pip install "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.1.0"
 python -c "import gatewizard; print(gatewizard.__version__)"
@@ -25,6 +26,8 @@ which mempro
 ```
 
 On macOS, omit `cudatoolkit`. Prefer the CPU `gromacs` package. A CUDA GROMACS build in this same environment often stalls in the solver; see [GROMACS: CPU vs CUDA](#gromacs-cpu-vs-cuda-conda-forge).
+
+AmberTools 26 does not ship `reduce`. `conda install -c bioconda reduce` puts that binary in the same environment so `pdb4amber --reduce` can add Amber hydrogens.
 
 The same stack from a git checkout:
 
@@ -45,8 +48,9 @@ For the **desktop app**, install [gatewizard-gui](https://github.com/franciscoad
 This installs the Python library without OpenMM or MemPrO:
 
 ```bash
-conda create -n gatewizard -c conda-forge python sqlite ambertools=24 parmed=4.3.0 -y
+conda create -n gatewizard -c conda-forge python sqlite ambertools=26 parmed=4.3.0 -y
 conda activate gatewizard
+conda install -c conda-forge -c bioconda reduce -y
 pip install gatewizard
 python -c "import gatewizard; print(gatewizard.__version__)"
 ```
@@ -94,8 +98,9 @@ export DISPLAY=:0
 **Option 2: Native Windows (Experimental)**
 ```bash
 # Use Anaconda Prompt
-conda create -n gatewizard -c conda-forge python sqlite ambertools=24 parmed=4.3.0 -y
+conda create -n gatewizard -c conda-forge python sqlite ambertools=26 parmed=4.3.0 -y
 conda activate gatewizard
+conda install -c conda-forge -c bioconda reduce -y
 pip install gatewizard
 python -c "import gatewizard; print(gatewizard.__version__)"
 ```
@@ -260,7 +265,8 @@ conda install -c conda-forge parmed=4.3.0 --force-reinstall
 conda activate gatewizard
 
 # Reinstall AmberTools
-conda install -c conda-forge ambertools=24
+conda install -c conda-forge ambertools=26
+conda install -c conda-forge -c bioconda reduce
 ```
 
 ### Issue: Module not found errors

@@ -11,5 +11,6 @@ gemmi>=0.6.5
 # MemPrO (orientation): pip install -r requirements-orientation.txt
 
 # Note: For AmberTools and Parmed, use conda installation:
-# conda install -c conda-forge ambertools=24 parmed=4.3.0
+# conda install -c conda-forge ambertools=26 parmed=4.3.0
+# conda install -c conda-forge -c bioconda reduce
 

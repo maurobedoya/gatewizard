@@ -1,10 +1,13 @@
 name: gatewizard
 channels:
   - conda-forge
+  - bioconda
   - defaults
 dependencies:
   - python>=3.8
-  - ambertools=24
+  - ambertools=26
+  # AmberTools 26 does not ship reduce. pdb4amber --reduce calls this binary.
+  - reduce
   - parmed=4.3.0  # Must be from conda-forge for compatibility with AmberTools
   - propka
   - matplotlib>=3.5.0
