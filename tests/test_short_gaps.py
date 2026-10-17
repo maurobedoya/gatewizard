@@ -107,6 +107,40 @@ def test_custom_sequence_replaces_seqres(tmp_path: Path):
     assert report["built"][0]["sequence"] == ["GLY", "GLY", "GLY"]
 
 
+def test_inserted_loop_keeps_the_ligand_and_shifts_later_serials(tmp_path: Path):
+    pytest.importorskip("pdbfixer")
+    pdb = tmp_path / "gap.pdb"
+    out = tmp_path / "filled.pdb"
+    pdb.write_text(
+        "\n".join(
+            [
+                "SEQRES   1 A    3  ALA GLY ALA",
+                "ATOM      1  N   ALA A   1       0.000   0.000   0.000  1.00 16.00           N",
+                "ATOM      2  CA  ALA A   1       1.000   0.000   0.000  1.00 16.00           C",
+                "ATOM      3  C   ALA A   1       2.000   0.000   0.000  1.00 16.00           C",
+                "ATOM      4  N   ALA A   3       6.000   0.000   0.000  1.00 16.00           N",
+                "ATOM      5  CA  ALA A   3       7.000   0.000   0.000  1.00 16.00           C",
+                "HETATM    6  C1  LIG A  10      14.858  45.418   0.299  1.00 16.62           C",
+                "CONECT    1    2",
+                "CONECT    4    5",
+                "END",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    report = fill_short_gaps(str(pdb), str(out))
+    text = out.read_text(encoding="utf-8")
+    assert report["built"]
+    assert "HETATM    6  C1  LIG A  10      14.858  45.418   0.299  1.00 16.62" not in text
+    assert "  C1  LIG A  10      14.858  45.418   0.299  1.00 16.62" in text
+    assert "H21 LIG" not in text
+    ligand = next(line for line in text.splitlines() if "LIG" in line)
+    assert int(ligand[6:11]) > 6
+    assert "CONECT    1    2" in text
+    assert "1.00 16.00" in text
+
+
 def test_6rv2_chains_a_and_b_fill_only_short_gaps(tmp_path: Path):
     pytest.importorskip("pdbfixer")
     pdb = tmp_path / "6RV2.pdb"

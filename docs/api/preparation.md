@@ -1136,7 +1136,7 @@ List numbering gaps. A gap of **1 to 6** residues whose sequence is in SEQRES is
 from gatewizard.core.short_gaps import fill_short_gaps
 ```
 
-Build every short gap with PDBFixer (an arc between the anchors, then a minimize with the rest of the protein frozen) and write a PDB. Pass `chains` to keep only those chains. Pass `sequences` to use those residue names instead of SEQRES for the matching gaps. Gaps longer than 6 residues stay open. Requires `pdbfixer` next to OpenMM.
+Build every short gap with PDBFixer, then insert only those new residue atoms into a copy of the original PDB. Later atom serials increase by the number of atoms inserted before them, and CONECT serials follow. Ligands, waters, `LINK`, and the other original lines stay as they were. Pass `chains` to keep only those chains. Pass `sequences` to use those residue names instead of SEQRES for the matching gaps. Gaps longer than 6 residues stay open. Requires `pdbfixer` next to OpenMM.
 
 ### minimize_selection
 

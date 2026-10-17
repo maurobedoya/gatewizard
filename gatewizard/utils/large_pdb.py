@@ -111,24 +111,55 @@ def needs_amber_pdb_rewrite(path: Path) -> bool:
     return False
 
 
+_CHAIN_RESID = re.compile(r"^[A-Za-z](-?\d+)$")
+
+
+def _split_record(parts: list[str]) -> tuple[str, list[str]]:
+    """Separate the record name from a serial glued onto it, as in ``HETATM10000``."""
+    head = parts[0]
+    record = "ATOM  " if head.startswith("ATOM") else "HETATM"
+    prefix = "ATOM" if head.startswith("ATOM") else "HETATM"
+    rest = head[len(prefix) :]
+    tail = parts[1:]
+    if rest.isdigit():
+        return record, [rest, *tail]
+    if rest and rest[0].isdigit():
+        _serial, glued = _split_serial_and_name(rest)
+        if glued:
+            return record, [str(_serial), glued, *tail]
+        return record, [str(_serial), *tail]
+    return record, tail
+
+
+def _residue_number(token: str) -> int | None:
+    """Read a residue number, including a chain letter stuck to it (``A1000``)."""
+    if token.lstrip("+-").isdigit():
+        return int(token)
+    matched = _CHAIN_RESID.match(token)
+    if matched:
+        return int(matched.group(1))
+    return None
+
+
 def parse_atom(line: str) -> tuple[str, str, str, int, float, float, float, float, float]:
     """Read one atom from a column-shifted or whitespace PDB line."""
     parts = line.split()
-    record = "ATOM  " if line.startswith("ATOM") else "HETATM"
-    _serial, glued_name = _split_serial_and_name(parts[1])
+    record, fields_in = _split_record(parts)
+    _serial, glued_name = _split_serial_and_name(fields_in[0])
     if glued_name is None:
-        raw_name = parts[2]
-        fields = parts[3:]
+        raw_name = fields_in[1]
+        fields = fields_in[2:]
     else:
         raw_name = glued_name
-        fields = parts[2:]
+        fields = fields_in[1:]
     resname = fields[0][:3]
     index = 1
-    token = fields[index]
-    if not token.lstrip("+-").isdigit():
+    resid = _residue_number(fields[index])
+    if resid is None:
         index += 1
-        token = fields[index]
-    resid = int(token)
+        resid = _residue_number(fields[index])
+    if resid is None:
+        raise ValueError(f"could not read residue number from {line[:90]!r}")
     numbers: list[str] = []
     for token in fields[index + 1 :]:
         numbers.extend(_split_glued_numbers(token))

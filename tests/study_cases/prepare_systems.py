@@ -390,10 +390,10 @@ def complete_short_gaps(source: Path, dest: Path, spec: dict) -> dict:
     """Build numbering gaps of 1 to 6 standard residues before orientation.
 
     SEQRES is still on the downloaded PDB. The subset written afterward
-    drops SEQRES, so the fill has to happen here. New residues are oriented
-    with the rest of the protein. PDBFixer hydrogens are removed so MemPrO
-    sees heavy atoms. A gap that is longer than 6 residues, or whose
-    sequence is not a standard amino acid, is printed and left open.
+    drops SEQRES, so the fill has to happen here. Only the new residue
+    atoms are inserted into the downloaded PDB. Ligands, waters, and the
+    other records stay as deposited. A gap that is longer than 6 residues,
+    or whose sequence is not a standard amino acid, is printed and left open.
     """
     report = fill_short_gaps(str(source), str(dest), chains=list(spec["chains"]))
     built = report.get("built") or []
@@ -407,18 +407,10 @@ def complete_short_gaps(source: Path, dest: Path, spec: dict) -> dict:
             f"    left open chain {gap['chain']}, {gap['count']} residues "
             f"({gap['reason']})"
         )
-    model = dest
-    removed = 0
-    if built:
-        heavy = dest.with_name("short_gaps_heavy.pdb")
-        info = strip_protein_hydrogens(str(dest), str(heavy))
-        removed = int(info.get("removed") or 0)
-        model = heavy
     return {
-        "path": str(model),
+        "path": str(dest),
         "filled": len(built),
         "skipped": len(skipped),
-        "protein_hydrogens_removed": removed,
     }
 
 

@@ -127,7 +127,7 @@ After packmol-memgen, the generated `run_preparation.sh` checks the packed PDB. 
 Stages, in order:
 
 1. `download` — RCSB PDB file
-2. `short_gaps` — numbering gaps of 1 to 6 standard residues are built from SEQRES before orientation. Longer gaps stay open. A sequence that is not a standard amino acid, such as HSK, stays open. PDBFixer hydrogens are removed. When nothing is built, the downloaded PDB is passed on unchanged.
+2. `short_gaps` — numbering gaps of 1 to 6 standard residues are built from SEQRES before orientation. Only those new atoms are inserted into the downloaded PDB, and later atom serials move up. Ligands and the other records stay as deposited. Longer gaps stay open. A sequence that is not a standard amino acid, such as HSK, stays open. When nothing is built, the downloaded PDB is passed on unchanged.
 3. `subset` — chosen NMR model, chosen chains, waters and omitted hetero groups removed
 4. `structure_check_before` — the same report as Visualize → Structure checker, on the selected chains. SEQRES for those chains is included, so residues with no coordinates are listed. The report is `work/<PDB>/structure_check_before/report.txt`. Findings do not stop the run.
 5. `mempro` — orientation, then the transform applied to the kept atoms

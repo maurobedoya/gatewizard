@@ -71,6 +71,28 @@ def test_repeated_residue_numbers_stay_unique_for_tleap(tmp_path: Path):
     assert body.count("  30") == 1
 
 
+def test_glued_serial_and_chain_residue_are_realigned(tmp_path: Path):
+    source = tmp_path / "packed.pdb"
+    source.write_text(
+        "CRYST1   90.000   90.000  100.000  90.00  90.00  90.00 P 1           1\n"
+        "ATOM  541040  O   WAT  100000     58.371 115.505  51.092  1.00  0.00\n"
+        "HETATM10000  H2S PA  A 559      50.227  25.253 -22.387  1.00  0.00           H\n"
+        "ATOM  15412  N   GLY A1000     -12.467 -79.142   3.110  1.00  0.00           N\n"
+        "HETATM10001  C35 PC  A 560      49.802  24.688 -24.247  1.00  0.00           C\n"
+        "END\n",
+        encoding="utf-8",
+    )
+    assert needs_amber_pdb_rewrite(source)
+    dest = tmp_path / "aligned.pdb"
+    stats = rewrite_pdb_for_amber(source, dest)
+    assert stats["atoms"] == 4
+    text = dest.read_text(encoding="utf-8")
+    assert "H2S" in text
+    assert "C35" in text
+    assert "HETATM10000" not in text
+    assert not needs_amber_pdb_rewrite(dest)
+
+
 def test_readable_pdb_is_left_unchanged(tmp_path: Path):
     source = tmp_path / "small.pdb"
     source.write_text(

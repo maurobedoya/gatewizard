@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import tempfile
 from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -83,6 +84,9 @@ def fill_short_gaps(
 ) -> Dict[str, Any]:
     """Build every 1–6 residue gap that has a SEQRES sequence.
 
+    The built residue atoms are inserted into a copy of the original PDB.
+    Every other line stays as it was. Atom serials after each insertion
+    increase by the number of atoms added there, and CONECT serials follow.
     Chains not listed in ``chains`` are dropped from the written model when
     ``chains`` is given. Longer gaps stay missing.
     """
@@ -175,11 +179,185 @@ def fill_short_gaps(
         fixer.addMissingHydrogens(7.0)
     except Exception as exc:
         report["hydrogen_warning"] = str(exc)
-    with open(output_pdb, "w", encoding="utf-8") as handle:
-        PDBFile.writeFile(fixer.topology, fixer.positions, handle, keepIds=True)
+    fd, built_path = tempfile.mkstemp(suffix=".pdb")
+    os.close(fd)
+    try:
+        with open(built_path, "w", encoding="utf-8") as handle:
+            PDBFile.writeFile(fixer.topology, fixer.positions, handle, keepIds=True)
+        _splice_new_residues(input_pdb, built_path, output_pdb, built, chains)
+    finally:
+        if os.path.isfile(built_path):
+            os.remove(built_path)
     report["output_file"] = os.path.abspath(output_pdb)
     report["built"] = built
     return report
+
+
+def _atom_identity(line: str) -> tuple[str, int, str] | None:
+    if not line.startswith(("ATOM", "HETATM")) or len(line) < 26:
+        return None
+    chain = line[21:22]
+    try:
+        resid = int(line[22:26])
+    except ValueError:
+        return None
+    return chain, resid, line[12:16]
+
+
+def _is_hydrogen(line: str) -> bool:
+    element = line[76:78].strip() if len(line) >= 78 else ""
+    if element:
+        return element.upper() == "H"
+    name = line[12:16].strip()
+    return name.startswith(("H", "h")) or (bool(name) and name[0].isdigit() and name[1:2] in {"H", "h"})
+
+
+def _serial_of(line: str) -> int | None:
+    if len(line) < 11:
+        return None
+    text = line[6:11].strip()
+    if text.isdigit():
+        return int(text)
+    return None
+
+
+def _with_serial(line: str, serial: int) -> str:
+    body = line[11:] if len(line) > 11 else ""
+    if not body.endswith("\n"):
+        body = body.rstrip("\n") + "\n"
+    return f"{line[:6]}{serial:5d}{body}"
+
+
+def _keep_chain_record(line: str, allowed: set[str]) -> bool:
+    if not allowed:
+        return True
+    if line.startswith(("ATOM", "HETATM")):
+        return len(line) > 21 and line[21:22] in allowed
+    if line.startswith("SEQRES"):
+        return len(line) > 11 and line[11:12] in allowed
+    if line.startswith("SSBOND"):
+        chains = {line[15:16], line[29:30]} if len(line) > 30 else set()
+        return bool(chains & allowed) and chains <= allowed
+    if line.startswith("LINK"):
+        chains = set()
+        if len(line) > 21:
+            chains.add(line[21:22])
+        if len(line) > 51:
+            chains.add(line[51:52])
+        return bool(chains & allowed) and chains <= allowed
+    return True
+
+
+def _conect_serials(line: str) -> list[int]:
+    body = line[6:].strip()
+    numbers: list[int] = []
+    for start in range(0, len(body), 5):
+        chunk = body[start : start + 5].strip()
+        if not chunk:
+            continue
+        if not chunk.isdigit():
+            break
+        numbers.append(int(chunk))
+    return numbers
+
+
+def _format_conect(serials: list[int]) -> str:
+    return "CONECT" + "".join(f"{serial:5d}" for serial in serials) + "\n"
+
+
+def _splice_new_residues(
+    original_pdb: str,
+    built_pdb: str,
+    output_pdb: str,
+    built: Sequence[Mapping[str, Any]],
+    chains: Optional[Sequence[str]],
+) -> None:
+    """Insert heavy atoms of the new residues into a copy of ``original_pdb``."""
+    allowed = {str(chain).strip() for chain in chains or [] if str(chain).strip()}
+    wanted: Dict[tuple[str, int], None] = {}
+    for gap in built:
+        chain = str(gap["chain"])
+        after = int(gap["after_resid"])
+        before = int(gap["before_resid"])
+        for resid in range(after + 1, before):
+            wanted[(chain, resid)] = None
+    new_lines: Dict[tuple[str, int], List[str]] = {}
+    with open(built_pdb, encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            identity = _atom_identity(line)
+            if identity is None or (identity[0], identity[1]) not in wanted:
+                continue
+            if _is_hydrogen(line):
+                continue
+            new_lines.setdefault((identity[0], identity[1]), []).append(line if line.endswith("\n") else line + "\n")
+
+    inserts: Dict[int, List[str]] = {}
+    with open(original_pdb, encoding="utf-8", errors="replace") as handle:
+        source_lines = handle.readlines()
+    last_index: Dict[tuple[str, int], int] = {}
+    for index, line in enumerate(source_lines):
+        if not _keep_chain_record(line, allowed):
+            continue
+        identity = _atom_identity(line)
+        if identity is not None:
+            last_index[(identity[0], identity[1])] = index
+    for gap in built:
+        chain = str(gap["chain"])
+        anchor = last_index.get((chain, int(gap["after_resid"])))
+        if anchor is None:
+            continue
+        block: List[str] = []
+        for resid in range(int(gap["after_resid"]) + 1, int(gap["before_resid"])):
+            block.extend(new_lines.get((chain, resid), []))
+        if block:
+            inserts.setdefault(anchor, []).extend(block)
+
+    merged: List[str] = []
+    inserted_flags: List[bool] = []
+    for index, line in enumerate(source_lines):
+        if not _keep_chain_record(line, allowed):
+            continue
+        merged.append(line if line.endswith("\n") else line + "\n")
+        inserted_flags.append(False)
+        for extra in inserts.get(index, []):
+            merged.append(extra)
+            inserted_flags.append(True)
+
+    old_to_new: Dict[int, int] = {}
+    added_before = 0
+    previous_serial = 0
+    for index, line in enumerate(merged):
+        if not line.startswith(("ATOM", "HETATM", "TER", "ANISOU")):
+            continue
+        if inserted_flags[index]:
+            added_before += 1
+            previous_serial += 1
+            merged[index] = _with_serial(line, previous_serial)
+            continue
+        old = _serial_of(line)
+        if old is None:
+            continue
+        new_serial = old + added_before
+        previous_serial = new_serial
+        old_to_new[old] = new_serial
+        if new_serial != old:
+            merged[index] = _with_serial(line, new_serial)
+
+    rewritten: List[str] = []
+    for line in merged:
+        if not line.startswith("CONECT"):
+            rewritten.append(line)
+            continue
+        serials = _conect_serials(line)
+        if not serials or serials[0] not in old_to_new:
+            continue
+        mapped = [old_to_new[serial] for serial in serials if serial in old_to_new]
+        if len(mapped) < 2:
+            continue
+        rewritten.append(_format_conect(mapped))
+
+    with open(output_pdb, "w", encoding="utf-8") as handle:
+        handle.writelines(rewritten)
 
 
 def _apply_sequence_overrides(
