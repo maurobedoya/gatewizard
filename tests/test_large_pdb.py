@@ -93,6 +93,27 @@ def test_glued_serial_and_chain_residue_are_realigned(tmp_path: Path):
     assert not needs_amber_pdb_rewrite(dest)
 
 
+def test_hybrid36_water_residue_is_realigned(tmp_path: Path):
+    source = tmp_path / "packed.pdb"
+    source.write_text(
+        "ATOM  51347  O   WAT  A00A      18.108  22.947  41.424  1.00  0.00           O\n"
+        "ATOM  51348  H1  WAT  A00A      18.816  23.270  41.982  1.00  0.00           H\n"
+        "ATOM  51349  H2  WAT  A00A      17.675  22.275  41.950  1.00  0.00           H\n"
+        "ATOM  51350  O   WAT  A00B      28.533  30.240  36.400  1.00  0.00           O\n"
+        "END\n",
+        encoding="utf-8",
+    )
+    assert needs_amber_pdb_rewrite(source)
+    dest = tmp_path / "aligned.pdb"
+    stats = rewrite_pdb_for_amber(source, dest)
+    assert stats["atoms"] == 4
+    text = dest.read_text(encoding="utf-8")
+    assert "A00A" not in text
+    assert "A00B" not in text
+    assert text.count("WAT") == 4
+    assert not needs_amber_pdb_rewrite(dest)
+
+
 def test_readable_pdb_is_left_unchanged(tmp_path: Path):
     source = tmp_path / "small.pdb"
     source.write_text(

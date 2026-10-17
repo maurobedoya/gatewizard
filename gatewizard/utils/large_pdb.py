@@ -2,9 +2,11 @@
 
 pdb4amber 22 / ParmEd 4.3 read coordinates from columns 31–38, 39–46 and
 47–54. A residue number past 9999 is written in more than four columns, so
-those slices become text such as ``1 115.50``. A serial past 99999 is written
-against the atom name (``272291Cl-``). The digit in ``1Cl-`` is the spilled
-serial, not an atom name. Hydrogen names such as ``1HG`` stay.
+those slices become text such as ``1 115.50``. Packmol also writes that
+number in hybrid-36 in the residue columns (``A00A`` is residue 10010). A
+serial past 99999 is written against the atom name (``272291Cl-``). The digit
+in ``1Cl-`` is the spilled serial, not an atom name. Hydrogen names such as
+``1HG`` stay.
 
 Amber's residue field holds four digits. ParmEd treats residue 9999 followed
 by any other number as overflow and then numbers every later residue 10000,
@@ -32,6 +34,22 @@ _CHAINS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 MAX_RESID = 9998
 _DISULFIDE_CUTOFF = 2.5
 _KEPT_RECORDS = ("TER", "CRYST1", "REMARK", "TITLE", "HEADER", "END", "SSBOND")
+
+
+def hy36decode(text: str) -> int | None:
+    """Decode a 4-column hybrid-36 residue number. ``A00A`` is 10010."""
+    token = text.strip().upper()
+    if len(token) != 4 or not token[0].isalpha():
+        return None
+    if any(char not in _DIGITS for char in token):
+        return None
+    value = 0
+    for char in token:
+        value = value * 36 + _DIGITS.index(char)
+    number = value - 10 * 36**3 + 10000
+    if number < 10000 or hy36encode(4, number) != token:
+        return None
+    return number
 
 
 def hy36encode(width: int, number: int) -> str:
@@ -132,12 +150,17 @@ def _split_record(parts: list[str]) -> tuple[str, list[str]]:
 
 
 def _residue_number(token: str) -> int | None:
-    """Read a residue number, including a chain letter stuck to it (``A1000``)."""
+    """Read a residue number, including hybrid-36 (``A00A``) and ``A1000``."""
     if token.lstrip("+-").isdigit():
         return int(token)
     matched = _CHAIN_RESID.match(token)
     if matched:
         return int(matched.group(1))
+    hybrid = hy36decode(token)
+    if hybrid is not None:
+        return hybrid
+    if len(token) == 5 and token[0].isalpha():
+        return hy36decode(token[1:])
     return None
 
 
