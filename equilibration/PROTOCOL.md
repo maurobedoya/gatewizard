@@ -1,6 +1,6 @@
 # Membrane equilibration protocol
 
-Same schedule for NAMD, GROMACS, OpenMM, and Amber. Still testing — not a finished production protocol.
+Same schedule for NAMD, GROMACS, OpenMM, and Amber.
 
 The membrane is packed under NPgT with γ=0. The ensemble you pick (NVT, NPT, NPAT, or NPgT) is used only in production. Eq1–6 do not change with that choice.
 

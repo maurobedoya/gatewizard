@@ -39,6 +39,7 @@ def test_stamp_namd_header_replaces_placeholders():
     assert f"Templates version: {EQUILIBRATION_TEMPLATES_VERSION}" in out
     assert "{GW_VERSION}" not in out
     assert "langevin on" in out
+    assert "Adapted from CHARMM-GUI" not in out
 
 
 def test_stamp_amber_header_after_cntrl():
