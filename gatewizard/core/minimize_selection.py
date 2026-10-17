@@ -260,12 +260,15 @@ def _minimize_context(
     tolerance: Optional[float],
 ) -> Dict[int, np.ndarray]:
     fragment = _fragment_pdb(context)
+    _append_missing_template_hydrogens(fragment)
     try:
         pdb = PDBFile(fragment)
+        _restore_amber_residue_names(pdb.topology, fragment)
         forcefield = ForceField("amber14-all.xml", "amber14/tip3p.xml")
         modeller = Modeller(pdb.topology, pdb.positions)
-        # A prepared structure already has hydrogens. The chains stay whole,
-        # so OpenMM does not need a new terminus on a cut residue.
+        # A structure with no hydrogens gets a full set here. A prepared
+        # structure keeps the hydrogens it already has; any that are missing
+        # were added to the temporary file above and are not written back.
         if not _fragment_has_hydrogen(pdb.topology):
             modeller.addHydrogens(forcefield)
         system = forcefield.createSystem(
@@ -284,15 +287,9 @@ def _minimize_context(
             pass
 
     by_name = _original_by_name(context)
-    movable_residues = {_residue_key(atom)[:2] for atom in context.atoms if int(atom.index) in movable}
     for atom in modeller.topology.atoms():
         original = _take_original(by_name, atom)
-        residue_key = (str(atom.residue.chain.id).strip(), _residue_number(atom.residue.id))
-        if original is None:
-            if residue_key not in movable_residues:
-                system.setParticleMass(atom.index, 0.0)
-            continue
-        if original not in movable:
+        if original is None or original not in movable:
             system.setParticleMass(atom.index, 0.0)
     integrator = LangevinMiddleIntegrator(
         300 * unit.kelvin, 1 / unit.picosecond, 0.002 * unit.picoseconds
@@ -657,6 +654,21 @@ def _chain_continues_after(atom: Any) -> bool:
     return False
 
 
+def _restore_amber_residue_names(topology: Any, path: str) -> None:
+    """Put GLH, ASH, HIE, and CYX back after OpenMM reads them as GLU, ASP, HIS, and CYS."""
+    wanted: Dict[Tuple[str, str], str] = {}
+    for line in open(path, encoding="utf-8", errors="replace"):
+        if not line.startswith(("ATOM", "HETATM")):
+            continue
+        chain = line[21].strip() or "A"
+        wanted[(chain, line[22:26].strip())] = line[17:20].strip()
+    for residue in topology.residues():
+        chain = str(residue.chain.id).strip() or "A"
+        name = wanted.get((chain, str(residue.id).strip()))
+        if name and residue.name != name:
+            residue.name = name
+
+
 def _fragment_has_hydrogen(topology: Any) -> bool:
     for atom in topology.atoms():
         element = getattr(atom, "element", None)
@@ -664,6 +676,162 @@ def _fragment_has_hydrogen(topology: Any) -> bool:
         if symbol == "H":
             return True
     return False
+
+
+def _append_missing_template_hydrogens(path: str) -> None:
+    """Add hydrogens a prepared residue is short, only in the temporary model.
+
+    OpenMM refuses a threonine that has every atom except the hydroxyl
+    hydrogen. Those atoms are not copied into the written PDB.
+    """
+    forcefield = ForceField("amber14-all.xml", "amber14/tip3p.xml")
+    residues: List[Dict[str, Any]] = []
+    other: List[str] = []
+    current: Optional[Dict[str, Any]] = None
+    for line in open(path, encoding="utf-8", errors="replace"):
+        if not line.startswith(("ATOM", "HETATM")):
+            if current is not None:
+                residues.append(current)
+                current = None
+            other.append(line)
+            continue
+        name = line[12:16].strip()
+        resname = line[17:20].strip()
+        chain = line[21].strip() or "A"
+        resid = int(line[22:26])
+        xyz = np.array([float(line[30:38]), float(line[38:46]), float(line[46:54])])
+        key = (chain, resid, resname)
+        if current is None or current["key"] != key:
+            if current is not None:
+                residues.append(current)
+            current = {"key": key, "names": {}, "serial": int(line[6:11])}
+        current["names"][name] = xyz
+        current["serial"] = max(int(current["serial"]), int(line[6:11]))
+    if current is not None:
+        residues.append(current)
+    added = False
+    for residue in residues:
+        names = {name for name in residue["names"] if name != "OXT"}
+        template = _template_missing_hydrogens(forcefield, residue["key"][2], names)
+        if template is None:
+            continue
+        present = set(residue["names"])
+        if not any(_is_hydrogen_name(name) for name in present):
+            continue
+        template_names = {atom.name for atom in template.atoms}
+        for name in list(residue["names"]):
+            if name not in template_names and _is_hydrogen_name(name):
+                del residue["names"][name]
+                added = True
+        present = set(residue["names"])
+        missing = [atom for atom in template.atoms if atom.name not in present and atom.element.symbol == "H"]
+        for slot, atom in enumerate(missing):
+            xyz = _placed_hydrogen(template, atom.name, residue["names"], slot)
+            if xyz is None:
+                continue
+            residue["names"][atom.name] = xyz
+            added = True
+    if not added:
+        return
+    end = [line for line in other if line.startswith("END")]
+    kept = [line for line in other if not line.startswith("END")]
+    with open(path, "w", encoding="utf-8", newline="\n") as handle:
+        handle.writelines(kept)
+        handle.writelines(_residue_lines(residues))
+        handle.writelines(end or ["END\n"])
+
+
+def _residue_lines(residues: Sequence[Mapping[str, Any]]) -> List[str]:
+    lines: List[str] = []
+    serial = 1
+    for residue in residues:
+        chain, resid, resname = residue["key"]
+        for name, xyz in residue["names"].items():
+            lines.append(
+                f"ATOM  {serial:5d} {_pdb_name(name)} {resname:>3} {chain}{resid:4d}    "
+                f"{float(xyz[0]):8.3f}{float(xyz[1]):8.3f}{float(xyz[2]):8.3f}  1.00  0.00\n"
+            )
+            serial += 1
+    return lines
+
+
+def _is_hydrogen_name(name: str) -> bool:
+    text = name.strip().upper()
+    return text.startswith("H") or (len(text) > 1 and text[0].isdigit() and "H" in text)
+
+
+def _template_missing_hydrogens(forcefield: ForceField, resname: str, names: Set[str]) -> Any:
+    heavy = {name for name in names if name != "OXT" and not _is_hydrogen_name(name)}
+    hydrogens = {name for name in names if _is_hydrogen_name(name)}
+    found = []
+    for key, template in forcefield._templates.items():
+        if template.name != resname and not str(key).endswith(resname):
+            continue
+        template_names = {atom.name for atom in template.atoms}
+        template_heavy = {atom.name for atom in template.atoms if atom.element.symbol != "H"}
+        if not heavy <= template_heavy:
+            continue
+        known = heavy | {name for name in hydrogens if name in template_names}
+        missing = [atom for atom in template.atoms if atom.name not in known and atom.name != "OXT"]
+        if any(atom.element.symbol != "H" for atom in missing):
+            continue
+        extra = len([name for name in hydrogens if name not in template_names])
+        found.append((len(missing), extra, template.name != resname, template))
+    if not found:
+        return None
+    found.sort(key=lambda item: (item[0], item[1], item[2]))
+    if found[0][0] == 0 and found[0][1] == 0:
+        return None
+    return found[0][3]
+
+
+def _placed_hydrogen(
+    template: Any,
+    atom_name: str,
+    positions: Mapping[str, np.ndarray],
+    slot: int,
+) -> Optional[np.ndarray]:
+    index = template.getAtomIndexByName(atom_name)
+    parent = None
+    for left, right in template.bonds:
+        other_index = right if left == index else left if right == index else None
+        if other_index is None:
+            continue
+        other = template.atoms[other_index]
+        if other.element.symbol != "H" and other.name in positions:
+            parent = other
+            break
+    if parent is None:
+        return None
+    origin = np.asarray(positions[parent.name], dtype=np.float64)
+    neighbors = []
+    parent_index = template.getAtomIndexByName(parent.name)
+    for left, right in template.bonds:
+        other_index = right if left == parent_index else left if right == parent_index else None
+        if other_index is None or other_index == index:
+            continue
+        other = template.atoms[other_index]
+        if other.element.symbol != "H" and other.name in positions:
+            neighbors.append(np.asarray(positions[other.name], dtype=np.float64))
+    if neighbors:
+        direction = origin - neighbors[0]
+    else:
+        direction = np.array([1.0, 0.0, 0.0])
+    length = float(np.linalg.norm(direction))
+    if length < 1e-6:
+        direction = np.array([1.0, 0.0, 0.0])
+        length = 1.0
+    direction = direction / length
+    if slot:
+        side = np.array([-direction[1], direction[0], 0.0])
+        side_length = float(np.linalg.norm(side))
+        if side_length < 1e-6:
+            side = np.array([0.0, 1.0, 0.0])
+        else:
+            side = side / side_length
+        direction = direction + side * (0.6 * slot)
+        direction = direction / float(np.linalg.norm(direction))
+    return origin + 0.96 * direction
 
 
 def _fragment_pdb(context: mda.AtomGroup) -> str:

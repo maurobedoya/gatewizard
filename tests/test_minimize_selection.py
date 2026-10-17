@@ -137,6 +137,45 @@ def _water_angle(path: Path) -> float:
     return float(np.degrees(np.arccos(np.clip(cosine, -1.0, 1.0))))
 
 
+def _atom_records(path: Path) -> list[str]:
+    lines = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith(("ATOM", "HETATM")):
+            lines.append(line[:30] + line[54:])
+    return lines
+
+
+def test_missing_hydroxyl_is_not_written_back(tmp_path: Path):
+    pytest.importorskip("openmm")
+    pdb = tmp_path / "thr.pdb"
+    out = tmp_path / "min.pdb"
+    lines = [
+        _atom(1, " N  ", "THR", 93, -4.814, -44.687, 25.965),
+        _atom(2, " H  ", "THR", 93, -5.454, -44.902, 25.200),
+        _atom(3, " CA ", "THR", 93, -4.928, -43.369, 26.623),
+        _atom(4, " HA ", "THR", 93, -5.718, -42.759, 26.184),
+        _atom(5, " CB ", "THR", 93, -5.163, -43.458, 28.149),
+        _atom(6, " HB ", "THR", 93, -5.338, -42.447, 28.518),
+        _atom(7, " CG2", "THR", 93, -6.327, -44.330, 28.509),
+        _atom(8, "HG21", "THR", 93, -6.152, -45.341, 28.141),
+        _atom(9, "HG22", "THR", 93, -6.442, -44.354, 29.593),
+        _atom(10, "HG23", "THR", 93, -7.235, -43.931, 28.056),
+        _atom(11, " OG1", "THR", 93, -3.973, -43.892, 28.816),
+        _atom(12, " C  ", "THR", 93, -3.758, -42.414, 26.280),
+        _atom(13, " O  ", "THR", 93, -3.555, -41.432, 27.002),
+        _atom(14, "K   ", "K", 10, 30.0, 30.0, 30.0).replace("ATOM  ", "HETATM", 1),
+        "END\n",
+    ]
+    pdb.write_text("".join(lines), encoding="utf-8")
+    before_ion = _pos(pdb, 10, "K")
+    minimize_selection(str(pdb), str(out), selection="resid 93", max_iterations=15)
+    written = out.read_text(encoding="utf-8")
+    assert "HG1" not in written
+    assert _atom_records(pdb) == _atom_records(out)
+    assert sum(line.startswith(("ATOM", "HETATM")) for line in written.splitlines()) == 14
+    assert float(np.linalg.norm(_pos(out, 10, "K") - before_ion)) < 1e-4
+
+
 def test_rmsd_cap_limits_the_unknown_atom(tmp_path: Path):
     pdb = tmp_path / "strain.pdb"
     out = tmp_path / "min.pdb"
