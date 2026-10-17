@@ -559,7 +559,9 @@ class TestRunScriptResources:
         )
         text = path.read_text()
         assert 'MINI_AMBER="pmemd"' in text
-        assert 'AMBER="pmemd.cuda"' in text
+        # No stage uses the GPU, so the script does not keep pmemd.cuda.
+        assert 'AMBER="pmemd"' in text
+        assert "$MINI_AMBER -O -i step0_minimization.mdin" in text
 
 
 # ---------------------------------------------------------------------------
