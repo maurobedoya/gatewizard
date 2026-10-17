@@ -220,11 +220,11 @@ The `lipid_ratios` string specifies molar ratios for each leaflet:
 
 **Available lipids:**
 
-GateWizard supports **4028** atomistic lipids from `packmol-memgen --available_lipids_all` (version 2025.1.29). Each row has the residue name, the charge, and the full chemical name. `ForceFieldManager.get_available_lipids()` returns the residue names, and `get_lipid_catalog()` returns the charge and the chemical name as well.
+GateWizard supports **4028** atomistic lipids from `packmol-memgen --available_lipids_all` (version 2025.1.29). Each row has the residue name, the charge, and the full chemical name. `ForceFieldManager.get_available_lipids()` returns the residue names, and `get_lipid_catalog()` returns the charge, the chemical name, and the note.
 
-The catalog lists 4055 names: 3770 are marked as parameters from the PACKMOL-Memgen lipid extension, 251 have no extra note, 7 are marked Lipid21 only, and 27 are marked SIRAH only. The supported total is 4028 (4055 minus the 27 SIRAH lipids).
+The catalog lists 4055 names: 3770 are marked `Parameters from PACKMOL-Memgen Lipid_ext`, 251 have no extra note, 7 are marked Lipid21 only, and 27 are marked SIRAH only. The supported total is 4028 (4055 minus the 27 SIRAH lipids).
 
-SIRAH and coarse-grained lipids are not supported. The 27 SIRAH names start with `si`. GateWizard parametrizes atomistic Amber lipids (Lipid17 and Lipid21).
+SIRAH and coarse-grained lipids are not supported. The 27 SIRAH names start with `si`. The 258 Amber lipids (no Lipid_ext note, including POPC) are parametrized with lipid21 or lipid17 alone. The 3770 Lipid_ext lipids are parametrized by sourcing `leaprc.lipid_ext` from the installed PACKMOL-Memgen package after that Amber lipid leaprc. Those parameters are not part of Amber's `lipid21.lib`. A mix of POPC and one Lipid_ext lipid still loads the extension. tleap has to exit with `Errors = 0` and write a non-empty `system.prmtop` and `system.inpcrd`; a failed tleap fails the build.
 
 A familiar subset:
 

@@ -695,6 +695,70 @@ class TestNamdOpcBuilderTleap:
         assert "FlexibleWater" not in content
 
 
+class TestLipidExtTleap:
+    """PACKMOL-Memgen Lipid_ext is loaded only when a selected lipid needs it."""
+
+    def test_popc_does_not_source_lipid_ext(self):
+        builder = Builder()
+        config = {**builder.config, "upper_lipids": ["POPC"], "lower_lipids": ["POPC"], "protein_ff": "ff14SB"}
+        content = builder._create_tleap_input("system_for_tleap.pdb", config)
+        assert "leaprc.lipid_ext" not in content
+        assert "addPath " not in content
+        assert content.index("source leaprc.protein.ff14SB") < content.index("source leaprc.lipid21")
+
+    def test_sppocl_sources_lipid_ext_before_protein(self):
+        builder = Builder()
+        config = {
+            **builder.config,
+            "upper_lipids": ["SPPOCL"],
+            "lower_lipids": ["SPPOCL"],
+            "protein_ff": "ff14SB",
+            "lipid_ff": "lipid21",
+        }
+        content = builder._create_tleap_input("system_for_tleap.pdb", config)
+        lipid = content.index("source leaprc.lipid21")
+        add = content.index("addPath ")
+        ext = content.index("source leaprc.lipid_ext")
+        protein = content.index("source leaprc.protein.ff14SB")
+        assert lipid < add < ext < protein
+        assert "packmol_memgen" in content
+
+    def test_mixed_popc_and_ext_still_loads_extension(self):
+        builder = Builder()
+        config = {**builder.config, "upper_lipids": ["POPC", "1LAC"], "lower_lipids": ["POPC"]}
+        content = builder._create_tleap_input("system_for_tleap.pdb", config)
+        assert "source leaprc.lipid_ext" in content
+
+    def test_lipid17_extension_uses_the_oldff_leaprc(self):
+        builder = Builder()
+        config = {**builder.config, "upper_lipids": ["1LAC"], "lipid_ff": "lipid17", "protein_ff": "ff14SB"}
+        content = builder._create_tleap_input("system_for_tleap.pdb", config)
+        lipid = content.index("source oldff/leaprc.lipid17")
+        ext = content.index("source leaprc.lipid_ext")
+        protein = content.index("source leaprc.protein.ff14SB")
+        assert lipid < ext < protein
+
+    def test_preparation_script_checks_tleap_status(self, tmp_path: Path):
+        builder = Builder()
+        popc = {**builder.config, "upper_lipids": ["POPC"], "lower_lipids": ["POPC"], "parametrize": True}
+        script = builder._create_execution_script(["packmol-memgen"], tmp_path, popc)
+        text = script.read_text(encoding="utf-8")
+        assert "leaprc.lipid_ext" not in text
+        assert "tleap_status=$?" in text
+        assert "if tleap -f leap_parametrize.in" not in text
+
+        ext_dir = tmp_path / "ext"
+        ext_dir.mkdir()
+        ext = {**builder.config, "upper_lipids": ["1LAC"], "lower_lipids": ["1LAC"], "parametrize": True}
+        ext_script = builder._create_execution_script(["packmol-memgen"], ext_dir, ext)
+        ext_text = ext_script.read_text(encoding="utf-8")
+        lipid = ext_text.index("source $lipid_leaprc")
+        add = ext_text.index("addPath ")
+        sourced = ext_text.index("source leaprc.lipid_ext")
+        protein = ext_text.index("source $protein_leaprc")
+        assert lipid < add < sourced < protein
+
+
 if __name__ == "__main__":
     # Run tests with pytest
     pytest.main([__file__, "-v"])

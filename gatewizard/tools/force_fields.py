@@ -62,6 +62,26 @@ def _load_packmol_lipid_catalog() -> List[Dict[str, Any]]:
     return lipids
 
 
+LIPID_EXT_NOTE = "Parameters from PACKMOL-Memgen Lipid_ext"
+
+
+def lipid_needs_memgen_extension(name: str, catalog: Optional[List[Dict[str, Any]]] = None) -> bool:
+    """True when this residue is one of the PACKMOL-Memgen Lipid_ext lipids."""
+    rows = catalog if catalog is not None else _load_packmol_lipid_catalog()
+    target = str(name or "").strip()
+    for row in rows:
+        if str(row.get("name") or "").strip() != target:
+            continue
+        return str(row.get("note") or "") == LIPID_EXT_NOTE
+    return False
+
+
+def selection_needs_memgen_extension(names: List[str]) -> bool:
+    """True when any selected leaflet lipid uses Lipid_ext parameters."""
+    catalog = _load_packmol_lipid_catalog()
+    return any(lipid_needs_memgen_extension(name, catalog) for name in names)
+
+
 @dataclass
 class ForceFieldInfo:
     """Information about a force field."""

@@ -25,7 +25,8 @@ from gatewizard.core.preparation import (
     count_protein_hydrogens,
     strip_protein_hydrogens,
 )
-from gatewizard.tools.force_fields import ForceFieldManager
+from gatewizard.tools.force_fields import ForceFieldManager, selection_needs_memgen_extension
+from gatewizard.utils.packmol_memgen_data import packmol_memgen_data_dir
 from gatewizard.tools.validators import SystemValidator
 from gatewizard.tools.ligand_parametrization import (
     build_ligand_param_args,
@@ -341,6 +342,8 @@ class Builder:
         )
         if not valid:
             return False, error_msg, None
+        config["upper_lipids"] = list(upper_lipids)
+        config["lower_lipids"] = list(lower_lipids)
 
         try:
             job_dir, local_pdb, config = self._prepare_job_workspace(
@@ -406,6 +409,8 @@ class Builder:
         )
         if not valid:
             return False, error_msg, None
+        config["upper_lipids"] = list(upper_lipids)
+        config["lower_lipids"] = list(lower_lipids)
 
         try:
             job_dir, local_pdb, config = self._prepare_job_workspace(
@@ -1590,14 +1595,7 @@ PY
                 
                 # Create dynamic tleap input file
                 cat > leap_parametrize.in << EOF
-# Load force field for proteins $protein_ff
-source $protein_leaprc
-
-# Load force field for lipids $lipid_ff
-source $lipid_leaprc
-
-# Load water model {config.get('water_model', 'tip3p').upper()}
-source $water_leaprc
+{self._shell_tleap_ff_sources(config)}
 
 {tleap_flexible_water_block}
 {self._generate_bash_ligand_tleap_lines(config)}
@@ -1623,42 +1621,44 @@ savePDB system system.pdb
 quit
 EOF
                 
-                # Execute tleap
-                if tleap -f leap_parametrize.in 2>&1 | tee -a logs/parametrization.log; then
-                    echo "✅ tleap parametrization completed successfully" | tee -a logs/preparation.log
-
-                    # savePDB writes residue 100000 again. Rewriting the columns
-                    # keeps atom order so restraint selections can read system.pdb.
-                    python -m gatewizard.utils.large_pdb repair-saved-pdb system.pdb "$prepared_pdb" 2>&1 | tee -a logs/parametrization.log
-                    if [ "${{PIPESTATUS[0]}}" -ne 0 ]; then
-                        handle_error "Could not write a column-safe system.pdb"
-                    fi
-
-                    # Check if output files were created
-                    output_files=("system.prmtop" "system.inpcrd" "system.pdb")
-                    all_created=true
-                    
-                    echo "Generated files:" | tee -a logs/preparation.log
-                    for filename in "${{output_files[@]}}"; do
-                        if [ -f "$filename" ]; then
-                            size=$(stat -c%s "$filename" 2>/dev/null || stat -f%z "$filename" 2>/dev/null || echo "unknown")
-                            echo "   $filename: $size bytes" | tee -a logs/preparation.log
-                        else
-                            echo "   ❌ $filename: NOT CREATED" | tee -a logs/preparation.log
-                            all_created=false
-                        fi
-                    done
-                    
-                    if [ "$all_created" = true ]; then
-                        echo "✅ All parametrization files created successfully" | tee -a logs/preparation.log
-                    else
-                        echo "❌ Some parametrization files were not created" | tee -a logs/preparation.log
-                        handle_error "Incomplete parametrization output"
-                    fi
-                    
-                else
+                # Execute tleap. A pipe to tee would report tee's status, so a
+                # failed parametrization looked successful.
+                tleap -f leap_parametrize.in > logs/tleap_parametrize.out 2>&1
+                tleap_status=$?
+                cat logs/tleap_parametrize.out | tee -a logs/parametrization.log
+                if [ "$tleap_status" -ne 0 ] || grep -q "Failed to generate parameters" logs/tleap_parametrize.out || grep -Eq "Exiting LEaP: Errors = [1-9]" logs/tleap_parametrize.out; then
                     echo "❌ tleap parametrization failed" | tee -a logs/preparation.log
                     handle_error "tleap parametrization failed"
+                fi
+                echo "✅ tleap parametrization completed successfully" | tee -a logs/preparation.log
+
+                # savePDB writes residue 100000 again. Rewriting the columns
+                # keeps atom order so restraint selections can read system.pdb.
+                python -m gatewizard.utils.large_pdb repair-saved-pdb system.pdb "$prepared_pdb" 2>&1 | tee -a logs/parametrization.log
+                if [ "${{PIPESTATUS[0]}}" -ne 0 ]; then
+                    handle_error "Could not write a column-safe system.pdb"
+                fi
+
+                # Check if output files were created
+                output_files=("system.prmtop" "system.inpcrd" "system.pdb")
+                all_created=true
+                
+                echo "Generated files:" | tee -a logs/preparation.log
+                for filename in "${{output_files[@]}}"; do
+                    if [ -s "$filename" ]; then
+                        size=$(stat -c%s "$filename" 2>/dev/null || stat -f%z "$filename" 2>/dev/null || echo "unknown")
+                        echo "   $filename: $size bytes" | tee -a logs/preparation.log
+                    else
+                        echo "   ❌ $filename: NOT CREATED" | tee -a logs/preparation.log
+                        all_created=false
+                    fi
+                done
+                
+                if [ "$all_created" = true ]; then
+                    echo "✅ All parametrization files created successfully" | tee -a logs/preparation.log
+                else
+                    echo "❌ Some parametrization files were not created" | tee -a logs/preparation.log
+                    handle_error "Incomplete parametrization output"
                 fi
                 
             else
@@ -1892,10 +1892,19 @@ EOF
             success = True
 
             for filename in expected_files:
-                if Path(filename).exists():
+                path = Path(filename)
+                if path.is_file() and path.stat().st_size > 0:
                     logger.info(f"Created: {filename}")
                 else:
                     logger.warning(f"Expected file not created: {filename}")
+                    success = False
+            output = f"{result.stdout or ''}\n{result.stderr or ''}"
+            if "Failed to generate parameters" in output:
+                logger.error("tleap could not generate parameters")
+                success = False
+            for line in output.splitlines():
+                if "Exiting LEaP: Errors = " in line and not line.strip().endswith("Errors = 0"):
+                    logger.error(line.strip())
                     success = False
 
             if success:
@@ -1914,6 +1923,58 @@ EOF
         except Exception as e:
             logger.error(f"Error running tleap: {e}")
             return False
+
+    def _selected_lipid_names(self, config: Dict[str, Any]) -> List[str]:
+        names: List[str] = []
+        for key in ("upper_lipids", "lower_lipids"):
+            raw = config.get(key) or []
+            if isinstance(raw, str):
+                names.extend(part for part in raw.replace(",", " ").split() if part)
+            else:
+                names.extend(str(item).strip() for item in raw if str(item).strip())
+        return names
+
+    def _lipid_ext_leap_lines(self, config: Dict[str, Any]) -> str:
+        """``addPath`` and ``source leaprc.lipid_ext`` when a selected lipid needs them."""
+        if not selection_needs_memgen_extension(self._selected_lipid_names(config)):
+            return ""
+        data = packmol_memgen_data_dir()
+        return f"addPath {data}\nsource leaprc.lipid_ext"
+
+    def _shell_tleap_ff_sources(self, config: Dict[str, Any]) -> str:
+        """Force-field source lines for the preparation shell script.
+
+        Lipid_ext follows the Amber lipid leaprc and comes before the protein
+        leaprc. A membrane that stays inside lipid21 or lipid17 keeps the
+        previous order and does not source the extension.
+        """
+        water_model = config.get("water_model", "tip3p")
+        extension = self._lipid_ext_leap_lines(config)
+        water = f"# Load water model {str(water_model).upper()}\nsource $water_leaprc"
+        if extension:
+            return "\n".join(
+                [
+                    "# Load force field for lipids $lipid_ff",
+                    "source $lipid_leaprc",
+                    extension,
+                    "",
+                    "# Load force field for proteins $protein_ff",
+                    "source $protein_leaprc",
+                    "",
+                    water,
+                ]
+            )
+        return "\n".join(
+            [
+                "# Load force field for proteins $protein_ff",
+                "source $protein_leaprc",
+                "",
+                "# Load force field for lipids $lipid_ff",
+                "source $lipid_leaprc",
+                "",
+                water,
+            ]
+        )
 
     def _create_tleap_input(self, input_pdb: str, config: Dict[str, Any]) -> str:
         """Create tleap input file content."""
@@ -1960,6 +2021,26 @@ EOF
         protein_leaprc = protein_leaprc_map.get(protein_ff, "leaprc.protein.ff14SB")
         lipid_leaprc = lipid_leaprc_map.get(lipid_ff, "leaprc.lipid21")
         water_leaprc = water_leaprc_map.get(water_model, "leaprc.water.tip3p")
+        extension = self._lipid_ext_leap_lines(config)
+        if extension:
+            ff_sources = f"""# Load force field for lipids {lipid_ff}
+source {lipid_leaprc}
+{extension}
+
+# Load force field for proteins {protein_ff}
+source {protein_leaprc}
+
+# Load water model {water_model.upper()}
+source {water_leaprc}"""
+        else:
+            ff_sources = f"""# Load force field for proteins {protein_ff}
+source {protein_leaprc}
+
+# Load force field for lipids {lipid_ff}
+source {lipid_leaprc}
+
+# Load water model {water_model.upper()}
+source {water_leaprc}"""
 
         md_engine = config.get("md_engine")
         flexible_water = tleap_flexible_water_lines(md_engine, water_model)
@@ -1978,14 +2059,7 @@ EOF
         )
 
         # Generate tleap input content
-        leap_content = f"""# Load force field for proteins {protein_ff}
-source {protein_leaprc}
-
-# Load force field for lipids {lipid_ff}
-source {lipid_leaprc}
-
-# Load water model {water_model.upper()}
-source {water_leaprc}
+        leap_content = f"""{ff_sources}
 
 {flexible_water}
 {ligand_lines}

@@ -61,6 +61,8 @@ PropKa table plus an inline 3D view of the working PDB.
 
 **Keep original residue numbers and chains** is on by default. PropKa and AmberTools still add hydrogens; residue and chain ids stay as in the input (a missing loop that jumps from 200 to 205 stays that gap). Uncheck it for sequential Amber numbering (tleap / MD).
 
+**Fill short gaps (1–6 residues)** builds those holes with PDBFixer when the sequence is in SEQRES. A longer gap is listed and left open. Visualize shows the same marks on the sequence bar and can run the same fill as a new structure.
+
 Capping is for fragments and termini that should not stay charged in MD. The capper still writes ACE as residue 1 and shifts the chain for its own file; **Prepare** with preserve on puts the protein numbers back. New ACE/NME then get N-terminus − 1 (residue **0** if the chain starts at 1) and C-terminus + 1. The capper mapping file is kept for later Builder/PropKa steps.
 
 ## Builder
@@ -70,7 +72,7 @@ Leaflet composition, water/ions, and parametrization. Each run is a **job card**
 ![Builder](images/user-guide/builder.png)
 
 1. Working file: prepared protein (or uncheck protein for bilayer-only and set membrane XY).
-2. Upper/lower lipids and ratios. GateWizard supports **4028 lipids** from the packmol-memgen catalog (`--available_lipids_all`, version 2025.1.29). Each row shows the residue name, charge, and chemical name. The catalog lists 4055 names; the 27 SIRAH lipids are coarse-grained and are not supported. A short familiar subset is in the [builder reference](api/builder.md).
+2. Upper/lower lipids and ratios. GateWizard supports **4028 lipids** from the packmol-memgen catalog (`--available_lipids_all`, version 2025.1.29). 258 of them are Amber lipid21 or lipid17. The other 3770 are parametrized with PACKMOL-Memgen's Lipid_ext library on top of that Amber leaprc; those parameters are not in Amber's `lipid21.lib`. The picker marks those rows Lipid_ext. The catalog lists 4055 names; the 27 SIRAH lipids are coarse-grained and are not supported. A short familiar subset is in the [builder reference](api/builder.md).
 
 ![Lipid ratios](images/user-guide/builder_lipid_ratios.png)
 
