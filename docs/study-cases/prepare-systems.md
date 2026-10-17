@@ -109,7 +109,7 @@ After packmol-memgen, the generated `run_preparation.sh` checks the packed PDB. 
 
 `PROTOCOL` at the top of the script is off. A system runs the membrane protocol only when its own `protocol` dict sets `enabled` to `True`. That dict can choose the engine (`amber`, `gromacs`, `openmm`, or `namd`), whether minimization and equilibration run, and `production_ns`. `stage_ns` replaces individual stage lengths. `None` keeps the GateWizard schedule: 10000 minimization steps, Equilibration 1–6 (Equilibration 6 is 47.625 ns), then production. COM and rotation restraints stay off, as on the Equilibration page. The run is `protocol/run_equilibration.sh` inside the builder replica, and only the first replica runs it unless `replicas` is raised.
 
-2MVH is the small system with this turned on: OpenMM, minimization, every equilibration stage, and 1 ns of production. Change that entry, or set `enabled` back to `False`, before a run that should only build.
+2MVH is the small system. Its protocol dict is commented out, so a run only prepares that system. Uncomment the dict to run OpenMM minimization, every equilibration stage, and 1 ns of production.
 
 ```python
 "protocol": {
@@ -127,14 +127,15 @@ After packmol-memgen, the generated `run_preparation.sh` checks the packed PDB. 
 Stages, in order:
 
 1. `download` — RCSB PDB file
-2. `subset` — chosen NMR model, chosen chains, waters and omitted hetero groups removed
-3. `structure_check_before` — the same report as Visualize → Structure checker, on the selected chains. SEQRES for those chains is included, so residues with no coordinates are listed. The report is `work/<PDB>/structure_check_before/report.txt`. Findings do not stop the run.
-4. `mempro` — orientation, then the transform applied to the kept atoms
-5. `protonation` — PropKa at pH 7.4 and Amber residue names, peptide names remapped, disulfide cysteines renamed to CYX, missing protein heavy atoms filled from the Amber templates, protein hydrogens removed, then `pdb4amber --reduce` adds Amber hydrogens. Ligands and ions keep their hydrogens. This is the same order as Preparation → Prepare. A finished `protonation` stage is reused, so delete that PDB’s `protonation.json` when this step must run again.
-6. `structure_check_after` — the same checker on `prepared.pdb`. SEQRES is left out here because protonation renames residues. Numbering gaps and any heavy atoms the templates did not fill are still listed, in `work/<PDB>/structure_check_after/report.txt`.
-7. `ligand_parameters` — GAFF2 for each name in `parametrize`
-8. `builder` — one row per replica
-9. `protocol` — only when that system's `protocol` is enabled, and only for the first replica unless `replicas` is higher. This is minimization, equilibration, and production.
+2. `short_gaps` — numbering gaps of 1 to 6 standard residues are built from SEQRES before orientation. Longer gaps stay open. A sequence that is not a standard amino acid, such as HSK, stays open. PDBFixer hydrogens are removed. When nothing is built, the downloaded PDB is passed on unchanged.
+3. `subset` — chosen NMR model, chosen chains, waters and omitted hetero groups removed
+4. `structure_check_before` — the same report as Visualize → Structure checker, on the selected chains. SEQRES for those chains is included, so residues with no coordinates are listed. The report is `work/<PDB>/structure_check_before/report.txt`. Findings do not stop the run.
+5. `mempro` — orientation, then the transform applied to the kept atoms
+6. `protonation` — PropKa at pH 7.4 and Amber residue names, peptide names remapped, disulfide cysteines renamed to CYX, missing protein heavy atoms filled from the Amber templates, protein hydrogens removed, then `pdb4amber --reduce` adds Amber hydrogens. Ligands and ions keep their hydrogens. This is the same order as Preparation → Prepare. A finished `protonation` stage is reused, so delete that PDB’s `protonation.json` when this step must run again.
+7. `structure_check_after` — the same checker on `prepared.pdb`. SEQRES is left out here because protonation renames residues. Numbering gaps and any heavy atoms the templates did not fill are still listed, in `work/<PDB>/structure_check_after/report.txt`.
+8. `ligand_parameters` — GAFF2 for each name in `parametrize`
+9. `builder` — one row per replica
+10. `protocol` — only when that system's `protocol` is enabled, and only for the first replica unless `replicas` is higher. This is minimization, equilibration, and production.
 
 `results/timings.csv` and `results/summary.md` are rewritten after every finished stage and every builder replica. Stopping the run keeps the rows that already finished, including protein atom counts from `prepared.pdb` and system atom counts from each finished `system.pdb`. A failed replica stays in the table and is left out of the mean.
 

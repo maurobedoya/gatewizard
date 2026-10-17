@@ -1128,7 +1128,7 @@ Call this **after** PropKa / Amber name changes (ASP→ASH, GLU→GLH, HIS→HID
 from gatewizard.core.short_gaps import classify_short_gaps
 ```
 
-List numbering gaps. A gap of **1 to 6** residues whose sequence is in SEQRES is marked `fill`. A longer gap, or a gap with no SEQRES sequence, is marked `skip` and is not built.
+List numbering gaps. A gap of **1 to 6** residues whose sequence is in SEQRES is marked `fill`. A longer gap, a gap with no SEQRES sequence, or a sequence that is not a standard amino acid is marked `skip` and is not built.
 
 ### fill_short_gaps
 

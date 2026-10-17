@@ -33,6 +33,30 @@ def _write_gapped_pdb(path: Path) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def test_nonstandard_gap_is_not_filled(tmp_path: Path):
+    pdb = tmp_path / "hsk.pdb"
+    pdb.write_text(
+        "\n".join(
+            [
+                "SEQRES   1 D    3  GLU HSK GLU",
+                "ATOM      1  N   GLU D   1       0.000   0.000   0.000  1.00  0.00           N",
+                "ATOM      2  CA  GLU D   1       1.000   0.000   0.000  1.00  0.00           C",
+                "ATOM      3  C   GLU D   1       2.000   0.000   0.000  1.00  0.00           C",
+                "ATOM      4  N   GLU D   3       3.000   0.000   0.000  1.00  0.00           N",
+                "ATOM      5  CA  GLU D   3       4.000   0.000   0.000  1.00  0.00           C",
+                "ATOM      6  C   GLU D   3       5.000   0.000   0.000  1.00  0.00           C",
+                "END",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    report = classify_short_gaps(str(pdb))
+    assert report["filled"] == []
+    assert report["skipped"][0]["sequence"] == ["HSK"]
+    assert "standard amino acid" in report["skipped"][0]["reason"]
+
+
 def test_seven_residue_gap_is_not_filled(tmp_path: Path):
     pdb = tmp_path / "gap.pdb"
     _write_gapped_pdb(pdb)

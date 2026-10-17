@@ -1,7 +1,8 @@
 """Fill protein numbering gaps of 1 to 6 residues with PDBFixer.
 
 Longer gaps are reported and left open. The sequence comes from SEQRES.
-A gap with no SEQRES sequence is skipped.
+A gap with no SEQRES sequence is skipped. A sequence that is not a
+standard amino acid is skipped.
 """
 
 from __future__ import annotations
@@ -19,6 +20,13 @@ from gatewizard.core.structure_checker import (
 )
 
 SHORT_GAP_MAX = 6
+# PDBFixer can build these. A gap that names anything else, such as HSK, stays open.
+_STANDARD_AMINO_ACIDS = frozenset(
+    {
+        "ALA", "ARG", "ASN", "ASP", "CYS", "GLN", "GLU", "GLY", "HIS", "ILE",
+        "LEU", "LYS", "MET", "PHE", "PRO", "SER", "THR", "TRP", "TYR", "VAL",
+    }
+)
 GapKey = Tuple[str, int, int]
 
 
@@ -45,6 +53,8 @@ def classify_short_gaps(
             action, reason = "skip", "longer than 6 residues"
         elif len(sequence) != count:
             action, reason = "skip", "no SEQRES sequence for this gap"
+        elif any(name not in _STANDARD_AMINO_ACIDS for name in sequence):
+            action, reason = "skip", "sequence is not a standard amino acid"
         else:
             action, reason = "fill", ""
         gaps.append(

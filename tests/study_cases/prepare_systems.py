@@ -39,6 +39,7 @@ from gatewizard.core.preparation import (
     resolve_reduce_executable,
     strip_protein_hydrogens,
 )
+from gatewizard.core.short_gaps import fill_short_gaps
 from gatewizard.core.structure_checker import diagnose_structure
 from gatewizard.core.structure_manager import StructureManager
 from gatewizard.tools.equilibration import (
@@ -126,17 +127,17 @@ SYSTEMS = [
         "parametrize": {},
         # Amphipathic peptide. Transmembrane MemPrO is the wrong mode.
         "peripheral": True,
-        # Smallest system. Minimization, every equilibration stage, and
-        # 1 ns of production. Edit this dict, or PROTOCOL above, to change
-        # the engine, the lengths, or to turn the run off.
-        "protocol": {
-            "enabled": True,
-            "engine": "openmm",
-            "minimization": True,
-            "equilibration": True,
-            "production_ns": 1.0,
-            "openmm_platform": "CUDA",
-        },
+        # Smallest system. The membrane protocol is commented out, so this
+        # entry only prepares the system. Uncomment the dict to run OpenMM
+        # minimization, Equilibration 1–6, and 1 ns of production.
+        # "protocol": {
+        #     "enabled": True,
+        #     "engine": "openmm",
+        #     "minimization": True,
+        #     "equilibration": True,
+        #     "production_ns": 1.0,
+        #     "openmm_platform": "CUDA",
+        # },
     },
     {
         "pdb_id": "1AFO",
@@ -268,11 +269,17 @@ def run_system(spec: dict, replicas: int, fresh: bool) -> list[dict]:
     if not source.is_file():
         return rows
 
+    gapped = folder / "short_gaps.pdb"
+    row = timed("short_gaps", lambda: complete_short_gaps(source, gapped, spec))
+    if not row["ok"]:
+        return rows
+    subset_source = Path(row["path"])
+
     subset = folder / "subset.pdb"
     protein_only = folder / "protein_for_mempro.pdb"
     row = timed(
         "subset",
-        lambda: write_subset(source, subset, protein_only, spec),
+        lambda: write_subset(subset_source, subset, protein_only, spec),
     )
     if not row["ok"]:
         return rows
@@ -377,6 +384,42 @@ def download_pdb(pdb_id: str, dest: Path) -> dict:
     url = f"https://files.rcsb.org/download/{pdb_id}.pdb"
     urllib.request.urlretrieve(url, dest)
     return {"path": str(dest)}
+
+
+def complete_short_gaps(source: Path, dest: Path, spec: dict) -> dict:
+    """Build numbering gaps of 1 to 6 standard residues before orientation.
+
+    SEQRES is still on the downloaded PDB. The subset written afterward
+    drops SEQRES, so the fill has to happen here. New residues are oriented
+    with the rest of the protein. PDBFixer hydrogens are removed so MemPrO
+    sees heavy atoms. A gap that is longer than 6 residues, or whose
+    sequence is not a standard amino acid, is printed and left open.
+    """
+    report = fill_short_gaps(str(source), str(dest), chains=list(spec["chains"]))
+    built = report.get("built") or []
+    skipped = report.get("skipped") or []
+    for gap in built:
+        start = int(gap["after_resid"]) + 1
+        end = int(gap["before_resid"]) - 1
+        print(f"    chain {gap['chain']} {start}-{end}: {' '.join(gap['sequence'])}")
+    for gap in skipped:
+        print(
+            f"    left open chain {gap['chain']}, {gap['count']} residues "
+            f"({gap['reason']})"
+        )
+    model = dest
+    removed = 0
+    if built:
+        heavy = dest.with_name("short_gaps_heavy.pdb")
+        info = strip_protein_hydrogens(str(dest), str(heavy))
+        removed = int(info.get("removed") or 0)
+        model = heavy
+    return {
+        "path": str(model),
+        "filled": len(built),
+        "skipped": len(skipped),
+        "protein_hydrogens_removed": removed,
+    }
 
 
 def write_subset(source: Path, subset: Path, protein_only: Path, spec: dict) -> dict:
