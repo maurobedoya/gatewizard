@@ -72,6 +72,15 @@ Regenerate with `python scripts/gen_api_dictionary.py`.
 - [`run_propka`](preparation.md#run_propka)
 - [`strip_protein_hydrogens`](preparation.md#strip_protein_hydrogens)
 
+## Short gaps
+
+- [`classify_short_gaps`](preparation.md#classify_short_gaps)
+- [`fill_short_gaps`](preparation.md#fill_short_gaps)
+
+## Minimize selection
+
+- [`minimize_selection`](preparation.md#minimize_selection)
+
 ## Residue mapping
 
 - [`parse_residue_mapping_by_chain`](preparation.md#parse_residue_mapping_by_chain)

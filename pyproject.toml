@@ -45,6 +45,7 @@ dependencies = [
 md = [
     "parmed>=4.3.0",
     "openmm>=8.0",
+    "pdbfixer>=1.9",
 ]
 # MemPrO / lipyphilic-git cannot be listed here: PyPI rejects VCS/direct URL
 # dependencies in metadata. Install from GitHub after the empty extras:
@@ -55,6 +56,7 @@ lipyphilic-git = []
 full = [
     "parmed>=4.3.0",
     "openmm>=8.0",
+    "pdbfixer>=1.9",
 ]
 
 [tool.setuptools]

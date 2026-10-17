@@ -1116,11 +1116,35 @@ Count protein hydrogen atoms (ligands/hetero H ignored).
 from gatewizard.core.preparation import complete_missing_heavy_atoms
 ```
 
-Fill **missing protein atoms** from Amber residue templates (`tleap` + `leaprc.protein.ff19SB`). Ligands, waters, and ions are copied unchanged. Missing loop residues (200 then 205) are **not** built. CONECT/LINK records are dropped because atom serials change after `savePdb`.
+Fill **missing protein atoms** from Amber residue templates (`tleap` + `leaprc.protein.ff19SB`). Ligands, waters, and ions are copied unchanged. Missing loop residues are built only by `fill_short_gaps` (1–6 residues). CONECT/LINK records are dropped because atom serials change after `savePdb`.
 
 Call this **after** PropKa / Amber name changes (ASP→ASH, GLU→GLH, HIS→HID/HIE/HIP). `tleap` then adds the extra protons from those templates — the same step packmol-memgen uses at final parametrization, but protein-only (no water or ions). If you complete on ASP and only rename to ASH afterward, HD2 is never placed.
 
 `pdb4amber --reduce` can still rebuild Amber hydrogens when the Amber `reduce` binary is on `PATH` (or `CONDA_PREFIX/bin`). If `reduce` is missing, Prepare keeps the tleap template hydrogens and runs `pdb4amber` without `--reduce` instead of failing. The GUI Prepare button applies names first, then this tleap pass.
+
+### classify_short_gaps
+
+```python
+from gatewizard.core.short_gaps import classify_short_gaps
+```
+
+List numbering gaps. A gap of **1 to 6** residues whose sequence is in SEQRES is marked `fill`. A longer gap, or a gap with no SEQRES sequence, is marked `skip` and is not built.
+
+### fill_short_gaps
+
+```python
+from gatewizard.core.short_gaps import fill_short_gaps
+```
+
+Build every short gap with PDBFixer (an arc between the anchors, then a minimize with the rest of the protein frozen) and write a PDB. Pass `chains` to keep only those chains. Pass `sequences` to use those residue names instead of SEQRES for the matching gaps. Gaps longer than 6 residues stay open. Requires `pdbfixer` next to OpenMM.
+
+### minimize_selection
+
+```python
+from gatewizard.core.minimize_selection import minimize_selection
+```
+
+Minimize the selected protein or ion atoms with OpenMM (`amber14-all.xml` plus the Amber ion parameters, a short L-BFGS pass by default). Every other atom Amber can build stays fixed. Selected residues Amber cannot build are relaxed with a repulsive Lennard-Jones bump and bond springs, and the rest of the structure stays fixed. A mixed selection runs OpenMM first, then that bump, and writes one PDB. `tolerance` is the OpenMM force tolerance in kJ/mol/nm. `max_rmsd` caps how far the selected atoms of each pass move, in angstroms. The rest of the file is copied. This is a clash nudge, not a stable energy minimum. It is separate from filling a short gap: PDBFixer already minimizes only the atoms it just added.
 
 ### restore_original_residue_numbers
 

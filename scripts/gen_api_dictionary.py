@@ -56,6 +56,20 @@ INVENTORY: list[tuple[str, str, str, list[str], list[str]]] = [
         ],
     ),
     (
+        "Short gaps",
+        "preparation.md",
+        "gatewizard/core/short_gaps.py",
+        [],
+        ["classify_short_gaps", "fill_short_gaps"],
+    ),
+    (
+        "Minimize selection",
+        "preparation.md",
+        "gatewizard/core/minimize_selection.py",
+        [],
+        ["minimize_selection"],
+    ),
+    (
         "Residue mapping",
         "preparation.md",
         "gatewizard/utils/residue_mapping.py",
