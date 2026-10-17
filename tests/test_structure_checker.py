@@ -2,7 +2,11 @@
 
 from pathlib import Path
 
-from gatewizard.core.structure_checker import apply_altloc_choices, diagnose_structure
+from gatewizard.core.structure_checker import (
+    apply_altloc_choices,
+    diagnose_structure,
+    keep_most_likely_altlocs,
+)
 
 
 def _atom(
@@ -119,3 +123,23 @@ def test_apply_keeps_the_most_likely_altloc_unless_chosen(tmp_path: Path):
     assert float(chosen_cb[0][54:60]) == 1.0
     again = diagnose_structure(str(chosen))
     assert again["altlocs"] == []
+
+
+def test_keep_most_likely_copies_a_file_without_altlocs(tmp_path: Path):
+    src = tmp_path / "plain.pdb"
+    src.write_text(_atom(1, "N", "ALA", "A", 1, 0.0), encoding="utf-8")
+    dest = tmp_path / "plain_out.pdb"
+    kept = keep_most_likely_altlocs(str(src), str(dest))
+    assert kept["residues"] == 0
+    assert kept["atoms_removed"] == 0
+    assert dest.read_bytes() == src.read_bytes()
+
+
+def test_keep_most_likely_drops_the_lower_occupancy(tmp_path: Path):
+    src = tmp_path / "sample.pdb"
+    _sample(src)
+    dest = tmp_path / "likely.pdb"
+    kept = keep_most_likely_altlocs(str(src), str(dest))
+    assert kept["residues"] == 1
+    assert kept["atoms_removed"] == 1
+    assert diagnose_structure(str(dest))["altlocs"] == []

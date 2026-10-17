@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **AmberTools:** the conda environment pins AmberTools 26. `reduce` is installed from bioconda, because that AmberTools build does not ship it.
+- **Alternate conformations:** `keep_most_likely_altlocs` keeps the higher-occupancy altLoc of each residue. A file with no altLoc is copied unchanged. A tie keeps the earlier letter.
 - **Equilibration templates:** The shared templates version is v1 (17 Oct 2026).
 - **Short gaps:** numbering gaps of 1 to 6 residues are filled with PDBFixer. The sequence comes from SEQRES, or from a sequence passed for that gap. Longer gaps are reported and left open. A sequence that is not a standard amino acid, such as HSK, stays open. The prepare-systems script builds these gaps before orientation.
 - **Minimize selection:** selected protein atoms can be energy-minimized with OpenMM. Every other atom Amber can build stays fixed. Selected residues Amber cannot build are relaxed with a repulsive steric bump, then written in the same PDB. A mixed selection runs OpenMM first and the bump second. `tolerance` sets the convergence in kJ/mol/nm, and `max_rmsd` caps how far those atoms move. Potassium and the other Amber monoatomic ions (sodium, chloride, magnesium, calcium, zinc, and the same small set) can be minimized too. A prepared structure keeps its hydrogens. The desktop app stores each run as a new PDB in a `minimized` folder next to the structure.

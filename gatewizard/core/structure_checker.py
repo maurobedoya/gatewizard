@@ -11,6 +11,7 @@ letter is the highest occupancy. A tie keeps the earlier letter.
 from __future__ import annotations
 
 import os
+import shutil
 from collections import defaultdict
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -740,4 +741,80 @@ def apply_altloc_choices(
         "output_file": os.path.abspath(destination),
         "atoms_kept": len(keep),
         "atoms_removed": removed,
+    }
+
+
+def _pdb_altloc_key(line: str) -> Optional[Tuple[str, int, str, str]]:
+    """Chain, residue number, insertion code, and altLoc letter from a coordinate line."""
+    if len(line) < 27 or not line.startswith(("ATOM", "HETATM", "ANISOU")):
+        return None
+    letter = line[16].strip().upper()
+    if not letter:
+        return None
+    try:
+        resid = int(line[22:26])
+    except ValueError:
+        return None
+    return (line[21].strip(), resid, line[26].strip(), letter)
+
+
+def _without_altloc(line: str) -> str:
+    """Blank the altLoc column and set occupancy to 1.00."""
+    if len(line) < 60 or not line.startswith(("ATOM", "HETATM")):
+        if line.startswith("ANISOU") and len(line) > 16:
+            return line[:16] + " " + line[17:]
+        return line
+    return line[:16] + " " + line[17:54] + "  1.00" + line[60:]
+
+
+def keep_most_likely_altlocs(path: str, output_path: str) -> Dict[str, Any]:
+    """Keep the higher-occupancy altLoc of each residue.
+
+    A file with no alternate conformations is copied unchanged, including
+    SEQRES and ANISOU. A tie keeps the earlier letter, the same rule as
+    :func:`apply_altloc_choices` with no explicit choices. Other records
+    stay in the file.
+    """
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f"Structure not found: {path}")
+    _universe, rows, _n_frames = _load_atoms(path)
+    groups = _altloc_groups(rows)
+    destination = os.path.abspath(output_path)
+    if not groups:
+        if os.path.abspath(path) != destination:
+            Path(destination).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(path, destination)
+        return {
+            "output_file": destination,
+            "atoms_kept": len(rows),
+            "atoms_removed": 0,
+            "residues": 0,
+        }
+    chosen = {
+        (str(group["chain"]), int(group["resid"]), str(group["icode"])): str(group["default"]).upper()
+        for group in groups
+    }
+    kept_lines: List[str] = []
+    removed = 0
+    with open(path, "r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            key = _pdb_altloc_key(line)
+            if key is None:
+                kept_lines.append(line if line.endswith("\n") else line + "\n")
+                continue
+            chain, resid, icode, letter = key
+            wanted = chosen.get((chain, resid, icode))
+            if wanted and letter != wanted:
+                if line.startswith(("ATOM", "HETATM")):
+                    removed += 1
+                continue
+            kept_lines.append(_without_altloc(line if line.endswith("\n") else line + "\n"))
+    Path(destination).parent.mkdir(parents=True, exist_ok=True)
+    with open(destination, "w", encoding="utf-8", newline="\n") as handle:
+        handle.writelines(kept_lines)
+    return {
+        "output_file": destination,
+        "atoms_kept": len(rows) - removed,
+        "atoms_removed": removed,
+        "residues": len(groups),
     }
