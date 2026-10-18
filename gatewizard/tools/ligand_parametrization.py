@@ -28,6 +28,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 
+from gatewizard.core.structure_checker import single_conformer_pdb_lines
 from gatewizard.utils.logger import get_logger
 from gatewizard.utils.helpers import get_clean_env
 from gatewizard.utils.peptide_residues import PEPTIDE_POLYMER_RESIDUES
@@ -108,6 +109,23 @@ NON_RECOMMENDED_COMBOS = {
 }
 
 
+def forcefield_charge_warning(atom_type: str, charge_method: str) -> str | None:
+    """Return the Amber manual warning for a force field and charge pair.
+
+    GAFF with AM1-BCC and GAFF2 with ABCG2 are the recommended pairs.
+    GAFF2 with AM1-BCC and GAFF with ABCG2 are allowed, and this warning
+    tells the caller they are not the combinations Amber recommends.
+    """
+    if (atom_type, charge_method) not in NON_RECOMMENDED_COMBOS:
+        return None
+    ff_label = ATOM_TYPES.get(atom_type, atom_type)
+    charge_label = CHARGE_METHODS.get(charge_method, charge_method)
+    return (
+        f"{ff_label} with {charge_label} is not a recommended Amber pairing. "
+        "Use GAFF with AM1-BCC, or GAFF2 with ABCG2."
+    )
+
+
 class LigandParametrizationError(Exception):
     """Custom exception for ligand parametrization errors."""
 
@@ -125,6 +143,7 @@ class LigandInfo:
         num_atoms: int,
         elements: Dict[str, int],
         pdb_lines: List[str],
+        conformers: int = 1,
     ):
         self.name = name
         self.chain = chain
@@ -132,6 +151,7 @@ class LigandInfo:
         self.num_atoms = num_atoms
         self.elements = elements  # e.g., {'C': 10, 'H': 12, 'O': 2, 'N': 1}
         self.pdb_lines = pdb_lines
+        self.conformers = conformers
 
     @property
     def formula(self) -> str:
@@ -157,6 +177,7 @@ class LigandInfo:
             "num_atoms": self.num_atoms,
             "elements": self.elements,
             "formula": self.formula,
+            "conformers": self.conformers,
         }
 
 
@@ -211,7 +232,13 @@ def detect_ligands(pdb_file: str) -> List[LigandInfo]:
     ligands = []
     seen_names = set()
 
-    for (res_name, chain, res_id), pdb_lines in ligand_groups.items():
+    for (res_name, chain, res_id), raw_lines in ligand_groups.items():
+        pdb_lines, conformers = single_conformer_pdb_lines(raw_lines)
+        if conformers > 1:
+            logger.info(
+                f"{res_name} {chain}{res_id} has {conformers} conformations. "
+                f"Ligand detection keeps one pose ({len(pdb_lines)} atoms)."
+            )
         # Count elements
         elements: Dict[str, int] = {}
         for line in pdb_lines:
@@ -239,6 +266,7 @@ def detect_ligands(pdb_file: str) -> List[LigandInfo]:
                     num_atoms=len(pdb_lines),
                     elements=elements,
                     pdb_lines=pdb_lines,
+                    conformers=conformers,
                 )
             )
 
@@ -292,9 +320,16 @@ def extract_ligand_pdb(pdb_file: str, ligand_name: str, output_dir: str) -> str:
                 f"Ligand '{ligand_name}' not found in {pdb_file}"
             )
 
-        # Pick the first copy (by chain, then resSeq)
+        # Pick the first copy (by chain, then resSeq), then one pose.
+        # Two altLoc letters, or two unlabeled poses that occupy the same
+        # site, would otherwise be one supermolecule for antechamber.
         first_key = sorted(copies.keys())[0]
-        lines = copies[first_key]
+        lines, conformers = single_conformer_pdb_lines(copies[first_key])
+        if conformers > 1:
+            logger.info(
+                f"{ligand_name} copy chain={first_key[0]} resSeq={first_key[1]} "
+                f"has {conformers} conformations. Keeping one pose ({len(lines)} atoms)."
+            )
 
         if len(copies) > 1:
             logger.info(
@@ -439,11 +474,16 @@ def parametrize_ligand(
 
     # Status tracking
     status_file = out_dir / "status.json"
+    combo_warning = forcefield_charge_warning(atom_type, charge_method)
+    if combo_warning:
+        logger.warning(combo_warning)
+
     status = {
         "ligand_name": ligand_name,
         "charge": charge,
         "charge_method": charge_method,
         "atom_type": atom_type,
+        "forcefield_warning": combo_warning,
         "status": "running",
         "current_step": "antechamber",
         "steps_completed": [],
@@ -619,6 +659,9 @@ quit
             "lib": str(lib_file),
             "prmtop": str(prmtop_file),
             "inpcrd": str(inpcrd_file),
+            "charge_method": charge_method,
+            "atom_type": atom_type,
+            "forcefield_warning": combo_warning,
         }
 
     except LigandParametrizationError:
@@ -719,6 +762,93 @@ def parametrize_all_ligands(
     return results
 
 
+# A bond shorter than this is unsaturated (aromatic or double). Piperazine
+# C–C and C–N bonds in a GAFF mol2 sit just above it, even when antechamber
+# stored them as bond type 3.
+_UNSATURATED_BOND_MAX = 1.45
+
+
+def _bond_orders_for_depiction(mol):
+    """Keep the mol2 bonds and choose a drawing order from each length.
+
+    Antechamber writes bond type 3 for some ring bonds. RDKit reads that as
+    a triple bond, so a piperazine and an aromatic ring are drawn with
+    crossed bonds. A type-3 bond is a triple bond only when the atoms are
+    actually that close. A ring whose bonds are all shorter than
+    ``_UNSATURATED_BOND_MAX`` is drawn aromatic, and a longer bond is drawn
+    single.
+    """
+    from rdkit import Chem
+
+    if mol is None or mol.GetNumConformers() == 0:
+        return mol
+    conf = mol.GetConformer()
+
+    def length(bond):
+        start = conf.GetAtomPosition(bond.GetBeginAtomIdx())
+        end = conf.GetAtomPosition(bond.GetEndAtomIdx())
+        return start.Distance(end)
+
+    lengths = {bond.GetIdx(): length(bond) for bond in mol.GetBonds()}
+    for atom in mol.GetAtoms():
+        atom.SetIsAromatic(False)
+    for bond in mol.GetBonds():
+        bond.SetIsAromatic(False)
+        if lengths[bond.GetIdx()] >= _UNSATURATED_BOND_MAX:
+            bond.SetBondType(Chem.BondType.SINGLE)
+
+    for ring in Chem.GetSymmSSSR(mol):
+        atoms = list(ring)
+        if len(atoms) < 5:
+            continue
+        bond_ids = []
+        short = True
+        for index, atom_idx in enumerate(atoms):
+            bond = mol.GetBondBetweenAtoms(atom_idx, atoms[(index + 1) % len(atoms)])
+            if bond is None or lengths[bond.GetIdx()] >= _UNSATURATED_BOND_MAX:
+                short = False
+                break
+            bond_ids.append(bond.GetIdx())
+        if not short:
+            continue
+        for atom_idx in atoms:
+            mol.GetAtomWithIdx(atom_idx).SetIsAromatic(True)
+        for bond_idx in bond_ids:
+            bond = mol.GetBondWithIdx(bond_idx)
+            bond.SetBondType(Chem.BondType.AROMATIC)
+            bond.SetIsAromatic(True)
+
+    for bond in mol.GetBonds():
+        if (
+            bond.GetBondType() == Chem.BondType.TRIPLE
+            and lengths[bond.GetIdx()] >= 1.25
+        ):
+            bond.SetBondType(Chem.BondType.DOUBLE)
+
+    try:
+        Chem.SanitizeMol(mol)
+    except Exception:
+        try:
+            Chem.SanitizeMol(
+                mol,
+                sanitizeOps=Chem.SanitizeFlags.SANITIZE_ALL
+                ^ Chem.SanitizeFlags.SANITIZE_KEKULIZE,
+            )
+        except Exception:
+            return mol
+    try:
+        Chem.Kekulize(mol, clearAromaticFlags=True)
+    except Exception:
+        pass
+    # A missing hydrogen makes RDKit give a piperazine nitrogen and the
+    # imidazopyridine bridgehead a charge. The kekule bonds are already
+    # set, so the picture can show those atoms as neutral.
+    for atom in mol.GetAtoms():
+        if atom.GetAtomicNum() == 7 and atom.GetDegree() <= 3:
+            atom.SetFormalCharge(0)
+    return mol
+
+
 def get_ligand_2d_image(
     ligand_pdb_or_mol2: str,
     output_image: str,
@@ -816,6 +946,9 @@ def get_ligand_2d_image(
         if mol is None:
             logger.warning(f"Could not load molecule from {ligand_pdb_or_mol2}")
             return None
+
+        if file_path.suffix.lower() == ".mol2":
+            mol = _bond_orders_for_depiction(mol)
 
         # --- Hydrogen handling ---
         if remove_all_h:
@@ -1225,7 +1358,9 @@ def build_tleap_ligand_lines(
 
     Args:
         ligand_files: Dict mapping ligand name to file paths
-        atom_type: Atom type set — 'gaff2' or 'gaff' (default: 'gaff2')
+        atom_type: Default atom type set when a ligand entry has no
+            ``atom_type``. Each entry may set ``atom_type`` to ``gaff`` or
+            ``gaff2``; every distinct set is sourced.
 
     Returns:
         Multi-line string with tleap commands
@@ -1243,9 +1378,17 @@ def build_tleap_ligand_lines(
     if not ligand_files:
         return ""
 
-    leaprc = f"leaprc.{atom_type}"
-    label = atom_type.upper()
-    lines = [f"# Load {label} and ligand parameters", f"source {leaprc}"]
+    atom_types: list[str] = []
+    for files in ligand_files.values():
+        kind = str(files.get("atom_type") or atom_type)
+        if kind not in atom_types:
+            atom_types.append(kind)
+
+    lines: list[str] = []
+    for kind in atom_types:
+        label = kind.upper()
+        lines.append(f"# Load {label} and ligand parameters")
+        lines.append(f"source leaprc.{kind}")
 
     for name, files in ligand_files.items():
         frcmod = files.get("frcmod", "")

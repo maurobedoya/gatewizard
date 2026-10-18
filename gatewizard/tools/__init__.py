@@ -25,6 +25,7 @@ from gatewizard.tools.ligand_parametrization import (
     DEFAULT_CHARGE_METHOD,
     RECOMMENDED_COMBOS,
     NON_RECOMMENDED_COMBOS,
+    forcefield_charge_warning,
     LIGHT_PALETTE,
 )
 from gatewizard.tools.peptide_cap_parametrization import (
@@ -68,6 +69,7 @@ __all__ = [
     "DEFAULT_CHARGE_METHOD",
     "RECOMMENDED_COMBOS",
     "NON_RECOMMENDED_COMBOS",
+    "forcefield_charge_warning",
     "LIGHT_PALETTE",
     "check_peptide_cap_parametrization",
     "parametrize_all_peptide_caps_from_system_pdb",

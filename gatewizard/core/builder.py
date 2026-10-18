@@ -2049,14 +2049,7 @@ source {water_leaprc}"""
         ligand_params = dict(config.get("ligand_params") or {})
         peptide_cap_params = dict(config.get("peptide_cap_params") or {})
         merged_params = {**ligand_params, **peptide_cap_params}
-        ligand_atom_type = "gaff2"
-        for _lig_info in merged_params.values():
-            if isinstance(_lig_info, dict) and "atom_type" in _lig_info:
-                ligand_atom_type = _lig_info["atom_type"]
-                break
-        ligand_lines = build_tleap_ligand_lines(
-            merged_params, atom_type=ligand_atom_type
-        )
+        ligand_lines = build_tleap_ligand_lines(merged_params)
 
         # Generate tleap input content
         leap_content = f"""{ff_sources}
