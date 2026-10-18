@@ -19,7 +19,7 @@ conda create -n gatewizard -c conda-forge python sqlite ambertools=26 parmed=4.3
 conda activate gatewizard
 conda install -c conda-forge -c bioconda reduce -y
 pip install "gatewizard[full]"
-pip install "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.1.0"
+pip install "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.2.0"
 python -c "import gatewizard; print(gatewizard.__version__)"
 which pdb4amber
 which mempro
@@ -36,10 +36,9 @@ git clone https://github.com/maurobedoya/gatewizard.git
 cd gatewizard
 conda env create -f environment.yml
 conda activate gatewizard
-pip install -r requirements-orientation.txt
 ```
 
-`environment.yml` already installs the package with `pip install -e ".[full]"`. The requirements file adds MemPrO, which PyPI cannot list inside the `[full]` extra.
+`environment.yml` already installs the package with `pip install -e ".[full]"` and MemPrO `v0.2.0`. PyPI cannot list that git pin inside the `[full]` extra, so `pip install "gatewizard[full]"` still needs the one-line command above. `pip install mempro` installs a different, older package.
 
 For the **desktop app**, install [gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui/releases) separately. On first launch the GUI embeds its own micromamba runtime. That runtime is not this conda env. See [Desktop GUI runtime (GROMACS / CUDA)](#desktop-gui-runtime-gromacs-cuda) below.
 
@@ -126,7 +125,7 @@ Installed by `pip install gatewizard`:
 - **gemmi** ≥ 0.6.5
 - **psique** ≥ 1.2.1
 
-`pip install "gatewizard[full]"` also installs ParmEd and OpenMM. MemPrO is a separate pip line (`requirements-orientation.txt` or the GitHub tag `v0.1.0`). AmberTools, the conda ParmEd build, OpenMM’s CUDA toolkit, and CPU GROMACS come from conda, not from that pip extra.
+`pip install "gatewizard[full]"` also installs ParmEd and OpenMM. MemPrO is one more pip line, `pip install "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.2.0"`. A checkout’s `environment.yml` already includes that pin. AmberTools, the conda ParmEd build, OpenMM’s CUDA toolkit, and CPU GROMACS come from conda, not from that pip extra.
 
 ### Scientific Computing Dependencies
 
@@ -281,7 +280,7 @@ conda activate gatewizard
 # Reinstall the API
 cd /path/to/gatewizard
 pip install -e ".[full]" --force-reinstall
-pip install -r requirements-orientation.txt
+pip install "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.2.0"
 ```
 
 **Tip:** GateWizard follows [semantic versioning](https://semver.org/). Check the [releases page](https://github.com/maurobedoya/gatewizard/releases) for changelog and new features.
@@ -300,7 +299,7 @@ conda env update -f environment.yml
 
 # Reinstall
 pip install -e ".[full]" --force-reinstall
-pip install -r requirements-orientation.txt
+pip install "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.2.0"
 
 # Re-verify import
 python -c "import gatewizard; print(gatewizard.__version__)"

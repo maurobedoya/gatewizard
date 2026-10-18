@@ -26,3 +26,4 @@ dependencies:
   - pip
   - pip:
     - -e .[full]
+    - mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.2.0

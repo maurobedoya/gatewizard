@@ -29,18 +29,12 @@ If you want a desktop app, use **[gatewizard-gui](https://github.com/franciscoad
 conda create -n gatewizard -c conda-forge python sqlite ambertools=26 parmed=4.3.0 openmm cudatoolkit gromacs -y
 conda activate gatewizard
 pip install "gatewizard[full]"
-pip install -r requirements-orientation.txt
+pip install "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.2.0"
 ```
 
 That conda line is for Linux or WSL with an NVIDIA driver. On macOS, leave out `cudatoolkit`. NAMD is not in this environment; install it separately and put `namd3` on `PATH` if you run NAMD equilibration.
 
-`requirements-orientation.txt` is in the git checkout. Without a clone, install MemPrO with:
-
-```bash
-pip install "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.1.0"
-```
-
-MemPrO is installed from the [MemPrO GitHub release](https://github.com/pstansfeld/MemPrO/releases) (`v0.1.0`).
+MemPrO is installed from the [MemPrO GitHub release](https://github.com/pstansfeld/MemPrO/releases) (`v0.2.0`). `pip install mempro` is a different, older package, so the line above is the one to use. A checkout’s `environment.yml` already includes that pin.
 
 For the library without the OpenMM extra (NAMD, GROMACS, and Amber still use their own programs):
 
@@ -55,8 +49,9 @@ git clone https://github.com/maurobedoya/gatewizard.git
 cd gatewizard
 conda env create -f environment.yml
 conda activate gatewizard
-pip install -r requirements-orientation.txt
 ```
+
+`environment.yml` already installs MemPrO `v0.2.0` with the rest of the environment.
 
 Check the version:
 
@@ -93,7 +88,7 @@ Installed automatically:
 | OpenMM | Equilibration / MD (Python; use with conda `cudatoolkit` for GPU) |
 | MemPrO | Membrane orientation ([GitHub](https://github.com/pstansfeld/MemPrO)) |
 
-Install: `pip install "gatewizard[full]"` then `pip install -r requirements-orientation.txt` for MemPrO.
+Install: `pip install "gatewizard[full]"`, then `pip install "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.2.0"`. A checkout’s `environment.yml` already includes that pin.
 
 For protein-aware **upstream** `AreaPerLipid` (`exclude_sel` before a PyPI release with PR #164): `pip install -r requirements-lipyphilic-git.txt`. GateWizard’s default APL with occupants remains **EVAPL**.
 
