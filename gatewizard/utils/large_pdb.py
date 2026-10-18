@@ -4,8 +4,9 @@ pdb4amber 22 / ParmEd 4.3 read coordinates from columns 31–38, 39–46 and
 47–54. A residue number past 9999 is written in more than four columns, so
 those slices become text such as ``1 115.50``. Packmol also writes that
 number in hybrid-36 in the residue columns (``A00A`` is residue 10010). A
-serial past 99999 is written against the atom name (``272291Cl-``). The digit
-in ``1Cl-`` is the spilled serial, not an atom name. Hydrogen names such as
+serial past 99999 is written against the atom name (``272291Cl-``), as
+hybrid-36 (``A0000``), or as hexadecimal (``186A0``). Those last two are atom
+100000. The digit in ``1Cl-`` is the spilled serial, not an atom name. Hydrogen names such as
 ``1HG`` stay.
 
 Amber's residue field holds four digits. ParmEd treats residue 9999 followed
@@ -36,18 +37,18 @@ _DISULFIDE_CUTOFF = 2.5
 _KEPT_RECORDS = ("TER", "CRYST1", "REMARK", "TITLE", "HEADER", "END", "SSBOND")
 
 
-def hy36decode(text: str) -> int | None:
-    """Decode a 4-column hybrid-36 residue number. ``A00A`` is 10010."""
+def hy36decode(text: str, width: int = 4) -> int | None:
+    """Decode a hybrid-36 field. Width 4 ``A00A`` is 10010. Width 5 ``A0000`` is 100000."""
     token = text.strip().upper()
-    if len(token) != 4 or not token[0].isalpha():
+    if len(token) != width or not token[0].isalpha():
         return None
     if any(char not in _DIGITS for char in token):
         return None
     value = 0
     for char in token:
         value = value * 36 + _DIGITS.index(char)
-    number = value - 10 * 36**3 + 10000
-    if number < 10000 or hy36encode(4, number) != token:
+    number = value - 10 * 36 ** (width - 1) + 10**width
+    if number < 10**width or hy36encode(width, number) != token:
         return None
     return number
 
@@ -76,13 +77,35 @@ def _looks_like_atom_name(name: str) -> bool:
     return len(name) >= 2 and name[0] in "123456789" and name[1] == "H"
 
 
+def _overflow_serial(token: str) -> int | None:
+    """Read a 5-column serial past 99999: hybrid-36 ``A0000`` or hex ``186A0``."""
+    if len(token) != 5:
+        return None
+    if token[0].isalpha():
+        return hy36decode(token, width=5)
+    if any(char.isalpha() for char in token):
+        try:
+            return int(token, 16)
+        except ValueError:
+            return None
+    return None
+
+
 def _split_serial_and_name(token: str) -> tuple[int, str | None]:
     if token.isdigit():
         return int(token), None
+    overflow = _overflow_serial(token)
+    if overflow is not None:
+        return overflow, None
     for size in range(min(4, len(token) - 1), 0, -1):
         serial_text, name = token[:-size], token[-size:]
-        if serial_text.isdigit() and len(serial_text) >= 5 and _looks_like_atom_name(name):
+        if not _looks_like_atom_name(name):
+            continue
+        if serial_text.isdigit() and len(serial_text) >= 5:
             return int(serial_text), name
+        overflow = _overflow_serial(serial_text)
+        if overflow is not None:
+            return overflow, name
     raise ValueError(f"could not read atom serial from {token!r}")
 
 
@@ -116,6 +139,11 @@ def _columns_are_unsafe(line: str) -> bool:
         return True
     name = line[12:16].strip()
     if name and name[0].isdigit() and not (len(name) >= 2 and name[1] == "H"):
+        return True
+    # Hexadecimal serials (186A0). Hybrid-36 serials start with a letter and
+    # already fit in the five columns, so they do not shift the coordinates.
+    serial_field = line[6:11]
+    if serial_field[:1].isdigit() and any(char.isalpha() for char in serial_field):
         return True
     return False
 

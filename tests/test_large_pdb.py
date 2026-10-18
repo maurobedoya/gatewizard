@@ -114,6 +114,26 @@ def test_hybrid36_water_residue_is_realigned(tmp_path: Path):
     assert not needs_amber_pdb_rewrite(dest)
 
 
+def test_hybrid36_and_hex_serials_are_realigned(tmp_path: Path):
+    source = tmp_path / "packed.pdb"
+    source.write_text(
+        "ATOM  A0000  O   WAT  A00A      18.108  22.947  41.424  1.00  0.00           O\n"
+        "ATOM  186A0  H1  WAT E9720     -13.492 -47.020  58.479  1.00  0.00      TIP3\n"
+        "ATOM  1E4EB  Cl- Cl- J  48     -11.667 -18.591  63.353  1.00  0.00\n"
+        "END\n",
+        encoding="utf-8",
+    )
+    assert needs_amber_pdb_rewrite(source)
+    dest = tmp_path / "aligned.pdb"
+    stats = rewrite_pdb_for_amber(source, dest)
+    assert stats["atoms"] == 3
+    text = dest.read_text(encoding="utf-8")
+    assert "A00A" not in text
+    assert "186A0" not in text
+    assert "Cl-" in text
+    assert not needs_amber_pdb_rewrite(dest)
+
+
 def test_readable_pdb_is_left_unchanged(tmp_path: Path):
     source = tmp_path / "small.pdb"
     source.write_text(
