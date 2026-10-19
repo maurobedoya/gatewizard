@@ -8,9 +8,9 @@ The left **activity bar** switches pages:
 
 | Page | What it does |
 |------|----------------|
-| **Visualize** | 3D structures, trajectories, representations, mutate / split / superimpose, figures and movies |
-| **Preparation** | PropKa pKa table, protonation, disulfide bonds, ACE/NME caps, inline 3D |
-| **Builder** | packmol-memgen leaflets, salt, tleap, job cards |
+| **Visualize** | 3D structures, trajectories, representations, sequence and short loops, structure checker, minimize, mutate / split / superimpose, figures and movies |
+| **Preparation** | PropKa pKa table, protonation, disulfide bonds, ACE/NME caps, short loops, alternate conformations, inline 3D |
+| **Builder** | packmol-memgen leaflets, salt, ligand force field and charges, tleap, job cards |
 | **Equilibration** | NAMD / GROMACS / OpenMM / Amber schemes, Generate, Watch / Pull, cluster |
 | **Tools** | Fix PBC and other trajectory utilities |
 | **Analysis** | Structural (RMSD/RMSF/APL) and energetic log plots |
@@ -48,6 +48,26 @@ Turn **Animate** on for a keyframe timeline. Export GIF/WebM/PNG (transparent ba
 
 **Save Image** opens the figure dialog (size, scale, transparent PNG, yellow crop overlay).
 
+### Sequence bar and short loops
+
+**Sequence** opens the protein sequence by chain. Click a residue to add it as licorice; click it again to remove only that residue. Drag to add a range. Right-click adds another representation.
+
+A numbering hole of **1 to 6** residues is marked on that bar. **Fill short gaps** builds it with PDBFixer from SEQRES, or from a sequence you type, and saves a new structure. A longer hole is listed and left open. A residue that is not a standard amino acid, such as HSK, stays open. The same checkbox is on Preparation.
+
+### Structure checker and alternate conformations
+
+**Structure checker** lists missing atoms, gaps, alternate conformations, and chain differences. An alternate conformation is the PDB altLoc letter. The more likely letter is the higher occupancy. A tie keeps the earlier letter.
+
+A ligand, water, or other molecule is its own group, even when it reuses a protein residue number. Atoms that overlap and have no altLoc letter are listed too. Tick one letter to draw only that pose. Tick both to draw both, with the more likely pose in yellow.
+
+**Build assembly** expands the biological assembly already stored in the file. Crystal waters can be included. Copies that land on the same point can be dropped.
+
+### Minimize a selection
+
+The minimize control on the Representations toolbar relaxes the residues, atoms, or molecule already selected. The icon uses the last settings. A new session starts at 50 steps. The corner mark sets the step count, the convergence, and how far the atoms may move, without starting a run.
+
+This is a short clash fix, not a finished energy minimum. Atoms Amber can build stay fixed except the selection. A water or another molecule Amber cannot build is relaxed without breaking its bonds. Potassium and the other Amber monoatomic ions can be minimized. The result is a new PDB, `name_min_001.pdb` and then `name_min_002.pdb`, in a `minimized` folder. The structure you started from stays.
+
 ## Preparation
 
 PropKa table plus an inline 3D view of the working PDB.
@@ -61,7 +81,9 @@ PropKa table plus an inline 3D view of the working PDB.
 
 **Keep original residue numbers and chains** is on by default. PropKa and AmberTools still add hydrogens; residue and chain ids stay as in the input (a missing loop that jumps from 200 to 205 stays that gap). Uncheck it for sequential Amber numbering (tleap / MD).
 
-**Fill short gaps (1–6 residues)** builds those holes with PDBFixer when the sequence is in SEQRES. A longer gap is listed and left open. Visualize shows the same marks on the sequence bar and can run the same fill as a new structure.
+**Fill short gaps (1–6 residues)** builds those holes with PDBFixer when the sequence is in SEQRES, or from a sequence you type. A longer gap is listed and left open. A residue that is not a standard amino acid stays open. Visualize shows the same marks on the sequence bar and can run the same fill as a new structure.
+
+**Keep the most likely alternate conformations** is on by default. Each residue keeps the higher-occupancy letter, including ligands, waters, and other molecules. A tie keeps the earlier letter. Turn it off to leave the choice to pdb4amber, which keeps the first copy of each atom. Choose the letters on Visualize when the assignment matters.
 
 Capping is for fragments and termini that should not stay charged in MD. The capper still writes ACE as residue 1 and shifts the chain for its own file; **Prepare** with preserve on puts the protein numbers back. New ACE/NME then get N-terminus − 1 (residue **0** if the chain starts at 1) and C-terminus + 1. The capper mapping file is kept for later Builder/PropKa steps.
 
@@ -80,6 +102,8 @@ Leaflet composition, water/ions, and parametrization. Each run is a **job card**
 4. Validate, then generate inputs / start preparation. Watch the job card; **Cancel** stops a running `run_preparation.sh`.
 
 Keep **Skip protonation** on when the PDB already has PropKa names (ASH, GLH, HIP, CYX).
+
+Each ligand and free molecule can use **GAFF** or **GAFF2**, and **ABCG2** or **AM1-BCC**. The default is GAFF2 with ABCG2. GAFF2 with AM1-BCC, and GAFF with ABCG2, show Amber's warning before parametrization. The Final drawing uses the bonds in the parametrized mol2. A ring bond stored as a triple bond is drawn from its length, so a piperazine and an aromatic ring stay ordinary rings.
 
 ## Equilibration
 

@@ -41,6 +41,7 @@ Regenerate with `python scripts/gen_api_dictionary.py`.
 
 - [`apply_altloc_choices`](structure_checker.md#apply_altloc_choices)
 - [`diagnose_structure`](structure_checker.md#diagnose_structure)
+- [`keep_most_likely_altlocs`](structure_checker.md#keep_most_likely_altlocs)
 
 ## Biological assembly
 

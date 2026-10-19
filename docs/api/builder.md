@@ -922,7 +922,7 @@ Information container for a detected ligand residue.
 | `STANDARD_RESIDUES` | `set` | Residue names excluded from detection (amino acids, water, ions, lipids, capping groups) |
 | `CHARGE_METHODS` | `dict` | Antechamber charge methods: `'bcc'` (AM1-BCC), `'abcg2'` (ABCG2), `'gas'` (Gasteiger), `'mul'` (Mulliken), `'cm2'` (CM2), `'rc'` (Read-in), `'resp'` (RESP — requires Gaussian), `'esp'` (ESP — requires Gaussian) |
 | `ATOM_TYPES` | `dict` | Antechamber atom type sets: `'gaff2'` → `'GAFF2'`, `'gaff'` → `'GAFF'` |
-| `DEFAULT_CHARGE_METHOD` | `str` | `'bcc'` |
+| `DEFAULT_CHARGE_METHOD` | `str` | `'abcg2'` |
 | `DEFAULT_ATOM_TYPE` | `str` | `'gaff2'` |
 | `RECOMMENDED_COMBOS` | `set` | Recommended (atom_type, charge_method) pairings per AMBER manual: `{('gaff', 'bcc'), ('gaff2', 'abcg2')}` |
 | `NON_RECOMMENDED_COMBOS` | `set` | Non-recommended pairings (warning shown in GUI): `{('gaff2', 'bcc'), ('gaff', 'abcg2')}` |
@@ -1010,7 +1010,7 @@ parametrize_ligand(
     ligand_name: str,
     output_dir: str,
     charge: int = 0,
-    charge_method: str = 'bcc',
+    charge_method: str = 'abcg2',
     multiplicity: int = 1,
     atom_type: str = 'gaff2',
 ) -> Dict[str, str]
@@ -1024,7 +1024,7 @@ parametrize_ligand(
 | `ligand_name` | `str` | — | 3-letter residue name (must match PDB) |
 | `output_dir` | `str` | — | Directory for output files |
 | `charge` | `int` | `0` | Net charge of the ligand |
-| `charge_method` | `str` | `'bcc'` | Charge method (see `CHARGE_METHODS`) |
+| `charge_method` | `str` | `'abcg2'` | Charge method (see `CHARGE_METHODS`). The default pairing is GAFF2 with ABCG2. |
 | `multiplicity` | `int` | `1` | Spin multiplicity |
 | `atom_type` | `str` | `'gaff2'` | Atom type set — `'gaff2'` or `'gaff'` (see `ATOM_TYPES`) |
 
@@ -1057,7 +1057,7 @@ parametrize_all_ligands(
     pdb_file: str,
     output_dir: str,
     charges: Optional[Dict[str, int]] = None,
-    charge_method: str = 'bcc',
+    charge_method: str = 'abcg2',
     atom_type: str = 'gaff2',
 ) -> Dict[str, Dict[str, str]]
 ```
@@ -1069,7 +1069,7 @@ parametrize_all_ligands(
 | `pdb_file` | `str` | — | PDB file containing ligands |
 | `output_dir` | `str` | — | Base directory (each ligand gets a subdirectory) |
 | `charges` | `Dict[str, int]` or `None` | `None` | Map of ligand name → net charge (default: 0 for all) |
-| `charge_method` | `str` | `'bcc'` | Charge method for antechamber |
+| `charge_method` | `str` | `'abcg2'` | Charge method for antechamber. The default pairing is GAFF2 with ABCG2. |
 | `atom_type` | `str` | `'gaff2'` | Atom type set — `'gaff2'` or `'gaff'` (see `ATOM_TYPES`) |
 
 **Returns:** `Dict[str, Dict[str, str]]` — maps ligand names to their file paths (same structure as `parametrize_ligand()`)
@@ -1084,7 +1084,7 @@ parametrize_all_ligands(
 
 ### get_ligand_2d_image
 
-Generate a publication-quality 2D molecular structure image using RDKit.
+Generate a publication-quality 2D molecular structure image using RDKit. A GAFF mol2 bond stored as type 3 is drawn as a triple bond only when the atoms are that close. A ring of shorter bonds is drawn aromatic, and a longer bond is drawn single.
 
 ```python
 get_ligand_2d_image(

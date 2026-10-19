@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **User guide:** Visualize documents the sequence bar, short-loop filling, the structure checker (including a ligand pose), minimization of the current selection, and biological assembly. Preparation documents the higher-occupancy alternate conformation. Builder documents GAFF or GAFF2 with ABCG2 or AM1-BCC. The ligand API default charge method is ABCG2.
 - **AmberTools:** the conda environment pins AmberTools 26. `reduce` is installed from bioconda, because that AmberTools build does not ship it.
 - **Alternate conformations:** `keep_most_likely_altlocs` and `apply_altloc_choices` treat a ligand, water, lipid, or other hetero group as its own residue. The identity is chain, residue number, insertion code, and residue name, so a ligand that reuses a protein number keeps its own letter. PDB `ATOM` and `HETATM` lines are the source of the altLoc column. The written file keeps those record types, plus SEQRES, LINK, and CONECT. A residue with no altLoc letter is still reported when its heavy atoms overlap, including two copies of one ligand in the same site. Ligand detection and extraction then keep a single pose.
 - **Equilibration templates:** The shared templates version is v1 (17 Oct 2026).
