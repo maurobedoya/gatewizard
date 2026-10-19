@@ -130,9 +130,10 @@ PSII_ORGANIC = (
     "OEX",
 )
 
-# Deposited choices. ``parametrize`` maps a kept organic residue name to
-# its net charge. atom_type and charge_method above choose GAFF or GAFF2
-# and ABCG2 or AM1-BCC. Ions are kept without a charge entry.
+# Deposited choices, from the smallest packed system to the largest.
+# ``parametrize`` maps a kept organic residue name to its net charge.
+# atom_type and charge_method above choose GAFF or GAFF2 and ABCG2 or
+# AM1-BCC. Ions are kept without a charge entry.
 SYSTEMS = [
     {
         "pdb_id": "2MVH",
@@ -201,6 +202,22 @@ SYSTEMS = [
         "peripheral": False,
     },
     {
+        "pdb_id": "3T4D",
+        "title": "NaK2K channel Y55F",
+        "model": 1,
+        # Biological assembly 2 expands deposited chain B, the more complete
+        # monomer (96 of 97 SEQRES residues). Assembly 1 expands chain A.
+        # Copies are named B1–B4 and then renamed A–D for the one-column PDB.
+        "assembly": {"id": "2", "waters": True, "drop_overlaps": True},
+        "assembly_from": "B",
+        "chains": "ABCD",
+        # Crystal waters stay. Symmetry copies of the pore potassium that land
+        # on the same point are dropped. The four ions that remain stay.
+        "keep_hetero": ["HOH", "K"],
+        "parametrize": {},
+        "peripheral": False,
+    },
+    {
         "pdb_id": "6RV2",
         "title": "TASK-1 (K2P3.1)",
         "model": 1,
@@ -228,22 +245,6 @@ SYSTEMS = [
         "keep_hetero": ["CA", "CL", "MG", "FE2"],
         "parametrize": {},
         "manual_params": {},
-        "peripheral": False,
-    },
-    {
-        "pdb_id": "3T4D",
-        "title": "NaK2K channel Y55F",
-        "model": 1,
-        # Biological assembly 2 expands deposited chain B, the more complete
-        # monomer (96 of 97 SEQRES residues). Assembly 1 expands chain A.
-        # Copies are named B1–B4 and then renamed A–D for the one-column PDB.
-        "assembly": {"id": "2", "waters": True, "drop_overlaps": True},
-        "assembly_from": "B",
-        "chains": "ABCD",
-        # Crystal waters stay. Symmetry copies of the pore potassium that land
-        # on the same point are dropped. The four ions that remain stay.
-        "keep_hetero": ["HOH", "K"],
-        "parametrize": {},
         "peripheral": False,
     },
 ]
@@ -367,7 +368,11 @@ def run_system(spec: dict, replicas: int, fresh: bool) -> list[dict]:
         return rows
 
     prepared = folder / "prepared.pdb"
-    row = timed("protonation", lambda: protonate(oriented, prepared, folder / "protonation"))
+    keep_water = bool(WATER_NAMES.intersection(str(name).upper() for name in spec.get("keep_hetero") or []))
+    row = timed(
+        "protonation",
+        lambda: protonate(oriented, prepared, folder / "protonation", keep_water=keep_water),
+    )
     if not row["ok"]:
         return rows
 
@@ -661,7 +666,7 @@ def orient_structure(
     return {"path": str(dest), "rank": results[0].rank}
 
 
-def protonate(source: Path, dest: Path, folder: Path) -> dict:
+def protonate(source: Path, dest: Path, folder: Path, *, keep_water: bool = False) -> dict:
     folder.mkdir(parents=True, exist_ok=True)
     manager = PreparationManager()
     named = folder / "protonated.pdb"
@@ -694,7 +699,7 @@ def protonate(source: Path, dest: Path, folder: Path) -> dict:
         str(dest),
         fix_caps=True,
         preserve_residue_numbers=True,
-        pdb4amber_options={"reduce": True, "dry": True},
+        pdb4amber_options={"reduce": True, "dry": not keep_water},
     )
     if not result.get("success", True) and not dest.is_file():
         raise RuntimeError(result.get("stderr") or "pdb4amber failed")
