@@ -117,22 +117,26 @@ Installed by `pip install gatewizard`:
 - **Python** ≥ 3.8
 - **NumPy** ≥ 1.21.0
 - **Matplotlib** ≥ 3.5.0
+- **requests** ≥ 2.25.0
 - **MDAnalysis** ≥ 2.0.0
 - **lipyphilic** ≥ 0.12.0
 - **freud-analysis** ≥ 2.5.0
 - **Propka** ≥ 3.2.0
+- **Pillow** ≥ 9.0.0
 - **RDKit** ≥ 2023.3.1
-- **gemmi** ≥ 0.6.5
 - **psique** ≥ 1.2.1
+- **gemmi** ≥ 0.6.5
 
-`pip install "gatewizard[full]"` also installs ParmEd and OpenMM. MemPrO is one more pip line, `pip install "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.2.0"`. A checkout’s `environment.yml` already includes that pin. AmberTools, the conda ParmEd build, OpenMM’s CUDA toolkit, and CPU GROMACS come from conda, not from that pip extra.
+`pip install "gatewizard[full]"` also installs ParmEd, OpenMM, and PDBFixer. MemPrO is one more pip line, `pip install "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.2.0"`. A checkout’s `environment.yml` already includes that pin. AmberTools, `reduce`, the conda ParmEd build, OpenMM’s CUDA toolkit, and CPU GROMACS come from conda, not from that pip extra.
 
 ### Scientific Computing Dependencies
 
 Must be installed via conda:
 
-- **AmberTools 24** - Molecular dynamics preparation and analysis
+- **AmberTools 26** - Molecular dynamics preparation and analysis
+- **reduce** (bioconda) - Amber hydrogens for `pdb4amber --reduce`. AmberTools 26 does not ship this binary.
 - **Parmed 4.3.0** - Parameter/topology manipulation (must be from conda-forge)
+- **PDBFixer** ≥ 1.9 - short loops of 1–6 residues. Installed by `gatewizard[full]`, not by `pip install gatewizard` alone.
 
 ### External Requirements
 - **NAMD** - Required for NAMD equilibration (separate install; not on conda-forge)

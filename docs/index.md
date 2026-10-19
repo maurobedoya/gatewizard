@@ -28,13 +28,17 @@ GateWizard is a Python-based GUI application designed to prepare protein membran
 
 ```bash
 # Create conda environment with dependencies
-conda create -n gatewizard -c conda-forge python sqlite ambertools=26 parmed=4.3.0 -y
+conda create -n gatewizard -c conda-forge python sqlite ambertools=26 parmed=4.3.0 openmm cudatoolkit gromacs -y
 
 # Activate environment
 conda activate gatewizard
 
-# Install GateWizard from PyPI
-pip install gatewizard
+# AmberTools 26 does not ship reduce
+conda install -c conda-forge -c bioconda reduce -y
+
+# OpenMM, ParmEd, and PDBFixer (short loops). MemPrO is a separate pin.
+pip install "gatewizard[full]"
+pip install "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.2.0"
 ```
 
 ### Desktop app
@@ -89,7 +93,7 @@ GateWizard is open-source software. Contributions are welcome on [GitHub](https:
 
 GateWizard is licensed under the [MIT License](https://opensource.org/licenses/MIT).
 
-Copyright (c) 2025 Constanza González and Mauricio Bedoya
+Copyright (c) 2025 Constanza González, Francisco Adasme, Mauricio González, Janin Riedelsberger, and Mauricio Bedoya
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
@@ -100,6 +104,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 ## Authors
 
 - **Constanza González**
+- **Francisco Adasme**
+- **Mauricio González**
+- **Janin Riedelsberger**
 - **Mauricio Bedoya**
 
 ## Citation
@@ -111,6 +118,4 @@ If you use GateWizard in your research, please cite:
 ```
 
 ---
-
-*Last updated: September 2026*
 

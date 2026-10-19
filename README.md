@@ -13,7 +13,7 @@ Python library for membrane protein preparation, system building, equilibration 
 
 If you want a desktop app, use **[gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui)**, a separate project that calls this library. You can use the API without the GUI, and the GUI without cloning this repo (it installs the API via pip).
 
-📖 [Documentation](https://maurobedoya.github.io/gatewizard/) · 💬 [Discussions](https://github.com/maurobedoya/gatewizard/discussions) (API + GUI community forum)
+📖 [Documentation](https://maurobedoya.github.io/gatewizard/) · [Manual (PDF)](docs/manual/GateWizard-manual.pdf) · 💬 [Discussions](https://github.com/maurobedoya/gatewizard/discussions) (API + GUI community forum)
 
 ## Features
 
@@ -28,6 +28,7 @@ If you want a desktop app, use **[gatewizard-gui](https://github.com/franciscoad
 ```bash
 conda create -n gatewizard -c conda-forge python sqlite ambertools=26 parmed=4.3.0 openmm cudatoolkit gromacs -y
 conda activate gatewizard
+conda install -c conda-forge -c bioconda reduce -y
 pip install "gatewizard[full]"
 pip install "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.2.0"
 ```
@@ -78,6 +79,8 @@ Installed automatically:
 | RDKit | Ligand 2D structures |
 | Pillow | Image I/O |
 | psique | Structure / sequence tools |
+| gemmi | mmCIF and biological assembly |
+| freud-analysis | Voronoi area-per-lipid (EVAPL, GridMAT, VTMC) |
 | requests | HTTP helpers |
 
 ### Python — optional `[full]` · *this repo*
@@ -86,6 +89,7 @@ Installed automatically:
 |---------|------|
 | ParmEd | Topology conversion (GROMACS, etc.) |
 | OpenMM | Equilibration / MD (Python; use with conda `cudatoolkit` for GPU) |
+| PDBFixer | Short loops of 1–6 residues |
 | MemPrO | Membrane orientation ([GitHub](https://github.com/pstansfeld/MemPrO)) |
 
 Install: `pip install "gatewizard[full]"`, then `pip install "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.2.0"`. A checkout’s `environment.yml` already includes that pin.
@@ -98,16 +102,24 @@ For protein-aware **upstream** `AreaPerLipid` (`exclude_sel` before a PyPI relea
 |---------|------|
 | FastAPI | Local HTTP API for the desktop app |
 | Uvicorn | ASGI server |
+| Paramiko | SSH for Run on cluster |
+| Biopython | Residue mutation |
+| SciPy | Numerical helpers |
+| Biotite | Chain superposition |
+| PDBFixer | Short loops (also in `gatewizard[full]`) |
 | gatewizard[full] | This API (installed into the embedded runtime) |
 
 ### Conda (building + OpenMM GPU) · *this repo via `environment.yml`; GUI embeds on Linux/WSL/macOS*
 
 | Package | Role |
 |---------|------|
-| AmberTools 24 | `tleap`, `antechamber`, `packmol`, `pdb4amber`, … |
+| AmberTools 26 | `tleap`, `antechamber`, `packmol`, `pdb4amber`, … |
+| reduce (bioconda) | Amber hydrogens for `pdb4amber --reduce`. AmberTools 26 does not ship it. |
 | ParmEd 4.3.0 | From conda-forge (AmberTools-compatible) |
 | OpenMM ≥ 8.0 | MD engine (Python) |
 | cudatoolkit | OpenMM CUDA platform (Linux/WSL + NVIDIA driver) |
+| GROMACS (CPU) | Equilibration. Prefer this conda package over a CUDA GROMACS build in the same env. |
+| sqlite | Conda runtime library |
 
 ### Desktop app · *[gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui)*
 
@@ -157,6 +169,7 @@ python -c "import openmm; print([openmm.Platform.getPlatform(i).getName() for i 
 | API bug or feature | [Issues](https://github.com/maurobedoya/gatewizard/issues/new/choose) in this repo |
 | GUI bug or feature | [Issues](https://github.com/franciscoadasme/gatewizard-gui/issues/new/choose) in gatewizard-gui |
 | Docs and troubleshooting | [Documentation](https://maurobedoya.github.io/gatewizard/) |
+| Manual (PDF) | [Download](docs/manual/GateWizard-manual.pdf) |
 
 New to the project? Read the [welcome post](https://github.com/maurobedoya/gatewizard/discussions/36) and say hello in the comments.
 
