@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.54] - 2026-10-19
+
 ### Changed
 
+- **Update manifest:** `releases/gui-versions.json` advertises GUI **1.0.14**, API **1.0.54**, and MemPrO **0.2.0**. The installed app reads that file, and also the `versions.json` asset on the latest GUI release, and uses whichever lists the newer app.
 - **User guide:** Visualize documents the sequence bar, short-loop filling, the structure checker (including a ligand pose), minimization of the current selection, and biological assembly. Preparation documents the higher-occupancy alternate conformation. Builder documents GAFF or GAFF2 with ABCG2 or AM1-BCC. The ligand API default charge method is ABCG2.
 - **Documentation PDF:** `python scripts/build_docs_pdf.py` writes the manual to `docs/manual/GateWizard-manual.pdf`. The cover uses the black GUI emblem and wordmark. The home page uses `splash-light.png`, the same splash with the white artwork turned black for a white page. The cover shows the API and GUI versions and links to both repositories and the online documentation. Every page is numbered, and the contents list shows those page numbers. The section list is the bookmark tree, so Edge and Chrome show the same order. The Home page license names the same people as the authors. A Contributors section lists the names in each repository's `contributors.yml` and the GitHub usernames from each repository, with profile links. The README links to the PDF. Snippet examples are included. The docs environment (`requirements-docs.txt`) and Edge or Chrome do the print.
 - **AmberTools:** the conda environment pins AmberTools 26. `reduce` is installed from bioconda, because that AmberTools build does not ship it.
