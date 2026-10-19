@@ -31,7 +31,7 @@ INVENTORY: list[tuple[str, str, str, list[str], list[str]]] = [
         "structure_checker.md",
         "gatewizard/core/structure_checker.py",
         [],
-        ["diagnose_structure", "apply_altloc_choices"],
+        ["diagnose_structure", "apply_altloc_choices", "keep_most_likely_altlocs"],
     ),
     (
         "Biological assembly",
