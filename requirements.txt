@@ -10,7 +10,7 @@ psique>=1.2.1
 gemmi>=0.6.5
 lipyphilic>=0.12.0
 freud-analysis>=2.5.0
-# MemPrO (orientation): pip install -r requirements-orientation.txt
+# CPU MemPrO is installed by pip install "gatewizard[full]" (mempro>=0.3.0).
 
 # Note: For AmberTools and Parmed, use conda installation:
 # conda install -c conda-forge ambertools=26 parmed=4.3.0

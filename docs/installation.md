@@ -19,7 +19,6 @@ conda create -n gatewizard -c conda-forge python sqlite ambertools=26 parmed=4.3
 conda activate gatewizard
 conda install -c conda-forge -c bioconda reduce -y
 pip install "gatewizard[full]"
-pip install "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.2.0"
 python -c "import gatewizard; print(gatewizard.__version__)"
 which pdb4amber
 which mempro
@@ -38,7 +37,7 @@ conda env create -f environment.yml
 conda activate gatewizard
 ```
 
-`environment.yml` already installs the package with `pip install -e ".[full]"` and MemPrO `v0.2.0`. PyPI cannot list that git pin inside the `[full]` extra, so `pip install "gatewizard[full]"` still needs the one-line command above. `pip install mempro` installs a different, older package.
+`environment.yml` already installs the package with `pip install -e ".[full]"`, including CPU MemPrO (`mempro` ≥ 0.3.0). `pip install "gatewizard[full]"` installs that same CPU package. A GPU build is optional and goes into this conda env only; see [MemPrO on a GPU](#mempro-on-a-gpu).
 
 For the **desktop app**, install [gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui/releases) separately. On first launch the GUI embeds its own micromamba runtime. That runtime is not this conda env. See [Desktop GUI runtime (GROMACS / CUDA)](#desktop-gui-runtime-gromacs-cuda) below.
 
@@ -127,7 +126,7 @@ Installed by `pip install gatewizard`:
 - **psique** ≥ 1.2.1
 - **gemmi** ≥ 0.6.5
 
-`pip install "gatewizard[full]"` also installs ParmEd, OpenMM, and PDBFixer. MemPrO is one more pip line, `pip install "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.2.0"`. A checkout’s `environment.yml` already includes that pin. AmberTools, `reduce`, the conda ParmEd build, OpenMM’s CUDA toolkit, and CPU GROMACS come from conda, not from that pip extra.
+`pip install "gatewizard[full]"` also installs ParmEd, OpenMM, PDBFixer, and the CPU build of MemPrO. AmberTools, `reduce`, the conda ParmEd build, OpenMM’s CUDA toolkit, and CPU GROMACS come from conda, not from that pip extra.
 
 ### Scientific Computing Dependencies
 
@@ -182,6 +181,34 @@ GateWizard equilibration works with either a **CPU** or **CUDA** `gmx`. Prefer t
 - The embedded env is `~/.config/gatewizard-gui/mamba-env`. `sudo apt remove gatewizard-gui-linux` leaves it. `sudo apt purge gatewizard-gui-linux` deletes that directory for the user who ran sudo. It does not remove a separate conda env such as `~/miniconda3/envs/gatewizard`.
 
 Manual API environments should follow the same preference: install **CPU** `gromacs` by default; only add the CUDA matchspec if you accept a long or fragile solve.
+
+### MemPrO on a GPU
+
+`gatewizard[full]` and the desktop app both install the CPU package (`mempro` with `jax[cpu]`). Neither installs `mempro[gpu]`. The API conda env and the GUI micromamba env are separate Pythons. Installing the GPU extra in one does not change the other. The extra is `jax[cuda12]`, for Linux with CUDA 12 drivers. macOS, Windows, and a machine with no NVIDIA driver stay on CPU. Asking for a GPU still fails when the card is not visible, including WSL without GPU passthrough.
+
+**API.** Use the conda env from this page, not a `pip` that belongs to another env:
+
+```bash
+conda activate gatewizard
+python -m pip install "mempro[gpu]"
+```
+
+`MemPrO.run(..., device="gpu")` then uses that env. `device="cpu"` and `device="auto"` still run on CPU when JAX sees no GPU.
+
+**Desktop app.** Quit GateWizard first. The GPU choice in Visualize reads JAX inside the embedded env, not the conda env above. On Linux or WSL:
+
+```bash
+~/.config/gatewizard-gui/mamba-env/bin/python -m pip install "mempro[gpu]"
+```
+
+On macOS:
+
+```bash
+~/Library/gatewizard-gui/mamba-env/bin/python -m pip install "mempro[gpu]"
+```
+
+Start the app again. The GPU choice stays off until that env’s JAX can see a GPU. There is no native Windows installer; on a Windows PC this is the WSL command above, inside the Linux distro, not Windows Python and not `%APPDATA%\gatewizard-gui\mamba-env`.
+
 ## Verifying Installation
 
 After installation, verify that everything works:
@@ -284,7 +311,6 @@ conda activate gatewizard
 # Reinstall the API
 cd /path/to/gatewizard
 pip install -e ".[full]" --force-reinstall
-pip install "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.2.0"
 ```
 
 **Tip:** GateWizard follows [semantic versioning](https://semver.org/). Check the [releases page](https://github.com/maurobedoya/gatewizard/releases) for changelog and new features.
@@ -303,7 +329,6 @@ conda env update -f environment.yml
 
 # Reinstall
 pip install -e ".[full]" --force-reinstall
-pip install "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.2.0"
 
 # Re-verify import
 python -c "import gatewizard; print(gatewizard.__version__)"

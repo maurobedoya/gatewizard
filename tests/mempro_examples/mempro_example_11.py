@@ -6,7 +6,7 @@ mp = MemPrO()
 
 # Check availability
 if not MemPrO.is_available():
-    print("Install: pip install git+https://github.com/pstansfeld/MemPrO.git")
+    print('Install: pip install "gatewizard[full]"')
 else:
     # Run orientation
     try:

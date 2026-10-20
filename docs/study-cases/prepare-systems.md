@@ -66,8 +66,11 @@ results = MemPrO().run(
     str(protein_pdb),
     output_dir=str(mempro_dir),
     peripheral=bool(spec.get("peripheral")),
+    seed=MEMPRO_SEED,
 )
 ```
+
+`MEMPRO_SEED` is `7`. MemPrO 0.3.0 writes the same orientation again for the same protein, seed, and CPU count.
 
 MemPrO is run on protein atoms. The same rigid transform is then applied to the kept hetero groups, so a ligand moves with the protein.
 

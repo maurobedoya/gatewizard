@@ -73,24 +73,66 @@ run(
     use_weights: bool = False,
     flip: bool = False,
     membrane_thickness: Optional[float] = None,
+    seed: Optional[int] = None,
+    device: Optional[str] = None,
+    single_precision: bool = False,
+    rank: Optional[str] = None,
+    predict_pg: bool = False,
+    pg_guess: Optional[float] = None,
+    charge: Optional[float] = None,
+    charge_outer: Optional[float] = None,
+    outer_membrane_thickness: Optional[float] = None,
+    optimize_thickness: bool = False,
+    transmembrane_residues: Optional[str] = None,
+    write_bfactors: bool = False,
+    curvature: bool = False,
+    itp_file: Optional[str] = None,
+    insane_path: Optional[str] = None,
+    build_system: Optional[int] = None,
+    build_arguments: Optional[str] = None,
+    additional_residues: Optional[str] = None,
+    additional_residues_itp: Optional[str] = None,
+    residue_cg_file: Optional[str] = None,
     extra_args: Optional[List[str]] = None,
 ) -> List[OrientationResult]
 ```
 
 **Parameters:**
 
+A value that matches the MemPrO default is left off the command.
+
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `pdb_file` | `str` | — | Path to the input PDB file |
 | `output_dir` | `str` | `None` | Output directory name (default: `Orient`) |
-| `n_cpus` | `int` | `None` | Number of CPU cores (default: all available) |
-| `n_iters` | `int` | `150` | Number of minimisation iterations |
-| `grid_size` | `int` | `36` | Number of starting configurations |
-| `dual_membrane` | `bool` | `False` | Enable dual membrane orientation |
-| `peripheral` | `bool` | `False` | Enable peripheral protein orientation |
-| `use_weights` | `bool` | `False` | Use B-factors to weight orientation |
-| `flip` | `bool` | `False` | Flip protein in Z-axis after orientation |
-| `membrane_thickness` | `float` | `None` | Initial membrane thickness in Å (default: 28) |
+| `n_cpus` | `int` | `None` | CPU cores (`-nc`). Omit to use MemPrO's default |
+| `n_iters` | `int` | `150` | Minimisation iterations (`-ni`) |
+| `grid_size` | `int` | `36` | Starting configurations (`-ng`) |
+| `dual_membrane` | `bool` | `False` | Dual membrane (`-dm`) |
+| `peripheral` | `bool` | `False` | Peripheral protein (`-pr`). Not with dual membrane |
+| `use_weights` | `bool` | `False` | Weight by B-factors (`-w`). Not with transmembrane residues |
+| `flip` | `bool` | `False` | Flip in Z after orientation (`-flip`) |
+| `membrane_thickness` | `float` | `None` | Inner membrane thickness in Å (`-mt`, default 28) |
+| `seed` | `int` | `None` | Random seed (`-seed`). Omit for an unseeded run. The same seed, protein, and CPU count repeat |
+| `device` | `str` | `None` | `auto`, `cpu`, or `gpu` (`-dev`). `auto` is omitted |
+| `single_precision` | `bool` | `False` | 32-bit floats (`-sp`) |
+| `rank` | `str` | `None` | `auto`, `h` (hits), or `p` (potential). `auto` is omitted |
+| `predict_pg` | `bool` | `False` | Peptidoglycan layer (`-pg`). Needs dual membrane |
+| `pg_guess` | `float` | `None` | Peptidoglycan position guess in Å (`-pg_guess`) |
+| `charge` | `float` | `None` | Inner membrane charge (`-ch`, default 0) |
+| `charge_outer` | `float` | `None` | Outer membrane charge (`-ch_o`). Needs dual membrane |
+| `outer_membrane_thickness` | `float` | `None` | Outer thickness in Å (`-mt_o`, default 24). Needs dual membrane |
+| `optimize_thickness` | `bool` | `False` | Optimise thickness (`-mt_opt`). Not with curvature |
+| `transmembrane_residues` | `str` | `None` | Ranges such as `10-40,50-60` (`-tm`). Not with B-factor weights |
+| `write_bfactors` | `bool` | `False` | Write the potential into B-factors (`-wb`). Not with curvature |
+| `curvature` | `bool` | `False` | Curvature minimisation (`-c`). Not with dual membrane |
+| `itp_file` | `str` | `None` | Martini topology (`-itp`) |
+| `insane_path` | `str` | `None` | Path to insane (`-insane`) |
+| `build_system` | `int` | `None` | Build a coarse-grained system for ranks below this (`-bd`). `0` is omitted |
+| `build_arguments` | `str` | `None` | Extra insane arguments (`-bd_args`) |
+| `additional_residues` | `str` | `None` | Comma-separated residue names (`-res`) |
+| `additional_residues_itp` | `str` | `None` | Topology for those residues (`-res_itp`) |
+| `residue_cg_file` | `str` | `None` | Folder of coarse-grained residue files (`-res_cg`) |
 | `extra_args` | `list` | `None` | Additional CLI arguments passed verbatim |
 
 **Returns:** List of `OrientationResult` sorted by rank.

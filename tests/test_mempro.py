@@ -38,6 +38,7 @@ from gatewizard.core.mempro import (
     MemPrO,
     OrientationResult,
     MemProError,
+    _orientation_flags,
     apply_orientation_transform,
     compute_orientation_transform,
 )
@@ -173,6 +174,14 @@ class TestMemPrO:
         with pytest.raises(FileNotFoundError):
             mp.run("/nonexistent/path/protein.pdb")
 
+    def test_run_rejects_gpu_when_jax_sees_none(self, tmp_path, monkeypatch):
+        """An explicit GPU request fails before MemPrO starts when JAX sees no GPU."""
+        pdb = tmp_path / "protein.pdb"
+        pdb.write_text("END\n")
+        monkeypatch.setattr("gatewizard.core.mempro.jax_sees_gpu", lambda: False)
+        with pytest.raises(MemProError, match="cannot see a GPU"):
+            MemPrO().run(str(pdb), device="gpu")
+
     @pytest.mark.skipif(not MemPrO.is_available(), reason="mempro not installed")
     def test_build_command(self):
         """Test building a command line."""
@@ -193,6 +202,25 @@ class TestMemPrO:
         assert "-dm" not in cmd
         assert "-pr" not in cmd
         assert "-nc" not in cmd
+
+    def test_orientation_flags_omit_mempro_defaults(self):
+        """Defaults that match MemPrO 0.3.0 stay off the command."""
+        assert _orientation_flags() == []
+        cmd = _orientation_flags(
+            seed=7,
+            n_cpus=4,
+            device="cpu",
+            membrane_thickness=28,
+            charge=0,
+            charge_outer=0,
+            outer_membrane_thickness=24,
+            rank="auto",
+            build_system=0,
+        )
+        assert cmd == ["-nc", "4", "-seed", "7", "-dev", "cpu"]
+        assert "-pg" in _orientation_flags(predict_pg=True)
+        assert "-mt_opt" in _orientation_flags(optimize_thickness=True)
+        assert "-c" in _orientation_flags(curvature=True)
 
     def test_orientation_result_repr(self):
         """Test OrientationResult string representation."""

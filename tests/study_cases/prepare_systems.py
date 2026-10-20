@@ -68,6 +68,10 @@ RESULTS = Path.cwd() / "results"
 # How many independent packmol-memgen + tleap runs to time per PDB.
 BUILDER_REPLICAS = 3
 
+# MemPrO 0.3.0 repeats an orientation when the protein, this seed, and the
+# CPU count stay the same. Every system in this script uses this seed.
+MEMPRO_SEED = 7
+
 # PropKa target used when residue names are rewritten before pdb4amber.
 PH = 7.4
 
@@ -654,6 +658,7 @@ def orient_structure(
         str(protein_pdb),
         output_dir=str(mempro_dir),
         peripheral=bool(spec.get("peripheral")),
+        seed=MEMPRO_SEED,
     )
     if not results:
         raise RuntimeError(f"MemPrO returned no orientations for {spec['pdb_id']}.")

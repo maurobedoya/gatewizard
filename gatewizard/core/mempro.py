@@ -23,6 +23,12 @@ from gatewizard.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# JAX ships with the optional MemPrO package, not with a core GateWizard install.
+_GPU_UNAVAILABLE = (
+    '-dev gpu was requested but JAX cannot see a GPU. '
+    'Install GPU support with: pip install "mempro[gpu]"'
+)
+
 _MEMPRO_DUMMY_RESNAMES = frozenset({"DUM"})
 
 
@@ -70,6 +76,116 @@ class OrientationResult:
         )
 
 
+def _orientation_flags(
+    *,
+    n_cpus: Optional[int] = None,
+    n_iters: int = 150,
+    grid_size: int = 36,
+    dual_membrane: bool = False,
+    peripheral: bool = False,
+    use_weights: bool = False,
+    flip: bool = False,
+    membrane_thickness: Optional[float] = None,
+    seed: Optional[int] = None,
+    device: Optional[str] = None,
+    single_precision: bool = False,
+    rank: Optional[str] = None,
+    predict_pg: bool = False,
+    pg_guess: Optional[float] = None,
+    charge: Optional[float] = None,
+    charge_outer: Optional[float] = None,
+    outer_membrane_thickness: Optional[float] = None,
+    optimize_thickness: bool = False,
+    transmembrane_residues: Optional[str] = None,
+    write_bfactors: bool = False,
+    curvature: bool = False,
+    itp_file: Optional[str] = None,
+    insane_path: Optional[str] = None,
+    build_system: Optional[int] = None,
+    build_arguments: Optional[str] = None,
+    additional_residues: Optional[str] = None,
+    additional_residues_itp: Optional[str] = None,
+    residue_cg_file: Optional[str] = None,
+    extra_args: Optional[List[str]] = None,
+) -> List[str]:
+    """MemPrO flags after ``-f``. Defaults that match the CLI are omitted."""
+    cmd: List[str] = []
+    if n_cpus is not None:
+        cmd.extend(["-nc", str(n_cpus)])
+    if n_iters != 150:
+        cmd.extend(["-ni", str(n_iters)])
+    if grid_size != 36:
+        cmd.extend(["-ng", str(grid_size)])
+    if dual_membrane:
+        cmd.append("-dm")
+    if peripheral:
+        cmd.append("-pr")
+    if use_weights:
+        cmd.append("-w")
+    if flip:
+        cmd.append("-flip")
+    if membrane_thickness is not None and float(membrane_thickness) != 28:
+        cmd.extend(["-mt", str(membrane_thickness)])
+    if seed is not None:
+        cmd.extend(["-seed", str(seed)])
+    if device and str(device).lower() != "auto":
+        cmd.extend(["-dev", str(device)])
+    if single_precision:
+        cmd.append("-sp")
+    if rank and str(rank).lower() != "auto":
+        cmd.extend(["-rank", str(rank)])
+    if predict_pg:
+        cmd.append("-pg")
+    if pg_guess is not None:
+        cmd.extend(["-pg_guess", str(pg_guess)])
+    if charge is not None and float(charge) != 0:
+        cmd.extend(["-ch", str(charge)])
+    if charge_outer is not None and float(charge_outer) != 0:
+        cmd.extend(["-ch_o", str(charge_outer)])
+    if outer_membrane_thickness is not None and float(outer_membrane_thickness) != 24:
+        cmd.extend(["-mt_o", str(outer_membrane_thickness)])
+    if optimize_thickness:
+        cmd.append("-mt_opt")
+    if transmembrane_residues:
+        cmd.extend(["-tm", str(transmembrane_residues)])
+    if write_bfactors:
+        cmd.append("-wb")
+    if curvature:
+        cmd.append("-c")
+    if itp_file:
+        cmd.extend(["-itp", str(itp_file)])
+    if insane_path:
+        cmd.extend(["-insane", str(insane_path)])
+    if build_system:
+        cmd.extend(["-bd", str(build_system)])
+    if build_arguments:
+        cmd.extend(["-bd_args", str(build_arguments)])
+    if additional_residues:
+        cmd.extend(["-res", str(additional_residues)])
+    if additional_residues_itp:
+        cmd.extend(["-res_itp", str(additional_residues_itp)])
+    if residue_cg_file:
+        cmd.extend(["-res_cg", str(residue_cg_file)])
+    if extra_args:
+        cmd.extend(extra_args)
+    return cmd
+
+
+def jax_sees_gpu() -> bool:
+    """True when this Python's JAX build can see an NVIDIA GPU.
+
+    ``jax`` is optional. Importing it here keeps a core install from loading JAX.
+    """
+    try:
+        import jax  # noqa: PLC0415
+    except ImportError:
+        return False
+    try:
+        return len(jax.devices("gpu")) > 0
+    except Exception:
+        return False
+
+
 class MemPrO:
     """
     Main class for orienting membrane proteins using MemPrO.
@@ -109,6 +225,26 @@ class MemPrO:
         use_weights: bool = False,
         flip: bool = False,
         membrane_thickness: Optional[float] = None,
+        seed: Optional[int] = None,
+        device: Optional[str] = None,
+        single_precision: bool = False,
+        rank: Optional[str] = None,
+        predict_pg: bool = False,
+        pg_guess: Optional[float] = None,
+        charge: Optional[float] = None,
+        charge_outer: Optional[float] = None,
+        outer_membrane_thickness: Optional[float] = None,
+        optimize_thickness: bool = False,
+        transmembrane_residues: Optional[str] = None,
+        write_bfactors: bool = False,
+        curvature: bool = False,
+        itp_file: Optional[str] = None,
+        insane_path: Optional[str] = None,
+        build_system: Optional[int] = None,
+        build_arguments: Optional[str] = None,
+        additional_residues: Optional[str] = None,
+        additional_residues_itp: Optional[str] = None,
+        residue_cg_file: Optional[str] = None,
         extra_args: Optional[List[str]] = None,
     ) -> List[OrientationResult]:
         """
@@ -117,14 +253,34 @@ class MemPrO:
         Args:
             pdb_file: Path to the input PDB file.
             output_dir: Name of the output directory (default: ``Orient``).
-            n_cpus: Number of CPU cores to use (default: all).
+            n_cpus: Number of CPU cores (``-nc``). Omit to use MemPrO's default.
             n_iters: Number of minimisation iterations (default: 150).
             grid_size: Number of starting configurations (default: 36).
             dual_membrane: Enable dual membrane orientation.
             peripheral: Enable peripheral protein orientation.
             use_weights: Use B-factors to weight orientation.
             flip: Flip protein in the Z-axis after orientation.
-            membrane_thickness: Initial membrane thickness in Å (default: 28).
+            membrane_thickness: Initial membrane thickness in Å.
+            seed: Random seed (``-seed``). Omit for an unseeded run.
+            device: Compute device (``-dev``): ``auto``, ``cpu``, or ``gpu``.
+            single_precision: Use single precision (``-sp``).
+            rank: Rank mode (``-rank``). ``auto`` is omitted.
+            predict_pg: Predict a peptidoglycan layer (``-pg``). Needs dual membrane.
+            pg_guess: Peptidoglycan separation guess in Å (``-pg_guess``).
+            charge: Membrane charge per lipid (``-ch``).
+            charge_outer: Outer leaflet charge (``-ch_o``). Needs dual membrane.
+            outer_membrane_thickness: Outer membrane thickness in Å (``-mt_o``).
+            optimize_thickness: Optimise membrane thickness (``-mt_opt``).
+            transmembrane_residues: Transmembrane residue list (``-tm``).
+            write_bfactors: Write B-factors (``-wb``).
+            curvature: Include membrane curvature (``-c``).
+            itp_file: Martini topology (``-itp``).
+            insane_path: Path to insane (``-insane``).
+            build_system: Build a coarse-grained system (``-bd``).
+            build_arguments: Extra insane arguments (``-bd_args``).
+            additional_residues: Extra residue names (``-res``).
+            additional_residues_itp: Extra residue topologies (``-res_itp``).
+            residue_cg_file: Coarse-grained residue file (``-res_cg``).
             extra_args: Additional CLI arguments passed verbatim.
 
         Returns:
@@ -138,35 +294,51 @@ class MemPrO:
         if not pdb_path.is_file():
             raise FileNotFoundError(f"PDB file not found: {pdb_path}")
 
+        if str(device or "").lower() == "gpu" and not jax_sees_gpu():
+            raise MemProError(_GPU_UNAVAILABLE)
+
         if not self.is_available():
             raise MemProError(
                 "mempro is not installed. "
-                "Install with: pip install "
-                '"mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.2.0"'
+                'Install with: pip install "gatewizard[full]"'
             )
 
         cmd = [self._mempro_cmd, "-f", str(pdb_path)]
-
         if output_dir:
             cmd.extend(["-o", str(output_dir)])
-        if n_cpus is not None:
-            cmd.extend(["-nc", str(n_cpus)])
-        if n_iters != 150:
-            cmd.extend(["-ni", str(n_iters)])
-        if grid_size != 36:
-            cmd.extend(["-ng", str(grid_size)])
-        if dual_membrane:
-            cmd.append("-dm")
-        if peripheral:
-            cmd.append("-pr")
-        if use_weights:
-            cmd.append("-w")
-        if flip:
-            cmd.append("-flip")
-        if membrane_thickness is not None:
-            cmd.extend(["-mt", str(membrane_thickness)])
-        if extra_args:
-            cmd.extend(extra_args)
+        cmd.extend(
+            _orientation_flags(
+                n_cpus=n_cpus,
+                n_iters=n_iters,
+                grid_size=grid_size,
+                dual_membrane=dual_membrane,
+                peripheral=peripheral,
+                use_weights=use_weights,
+                flip=flip,
+                membrane_thickness=membrane_thickness,
+                seed=seed,
+                device=device,
+                single_precision=single_precision,
+                rank=rank,
+                predict_pg=predict_pg,
+                pg_guess=pg_guess,
+                charge=charge,
+                charge_outer=charge_outer,
+                outer_membrane_thickness=outer_membrane_thickness,
+                optimize_thickness=optimize_thickness,
+                transmembrane_residues=transmembrane_residues,
+                write_bfactors=write_bfactors,
+                curvature=curvature,
+                itp_file=itp_file,
+                insane_path=insane_path,
+                build_system=build_system,
+                build_arguments=build_arguments,
+                additional_residues=additional_residues,
+                additional_residues_itp=additional_residues_itp,
+                residue_cg_file=residue_cg_file,
+                extra_args=extra_args,
+            )
+        )
 
         # Run from the directory containing the PDB so output lands nearby
         work_dir = str(pdb_path.parent)
@@ -294,6 +466,26 @@ class MemPrO:
         use_weights: bool = False,
         flip: bool = False,
         membrane_thickness: Optional[float] = None,
+        seed: Optional[int] = None,
+        device: Optional[str] = None,
+        single_precision: bool = False,
+        rank: Optional[str] = None,
+        predict_pg: bool = False,
+        pg_guess: Optional[float] = None,
+        charge: Optional[float] = None,
+        charge_outer: Optional[float] = None,
+        outer_membrane_thickness: Optional[float] = None,
+        optimize_thickness: bool = False,
+        transmembrane_residues: Optional[str] = None,
+        write_bfactors: bool = False,
+        curvature: bool = False,
+        itp_file: Optional[str] = None,
+        insane_path: Optional[str] = None,
+        build_system: Optional[int] = None,
+        build_arguments: Optional[str] = None,
+        additional_residues: Optional[str] = None,
+        additional_residues_itp: Optional[str] = None,
+        residue_cg_file: Optional[str] = None,
         extra_args: Optional[List[str]] = None,
     ) -> List[str]:
         """
@@ -310,24 +502,39 @@ class MemPrO:
         cmd = [self._mempro_cmd, "-f", str(Path(pdb_file).resolve())]
         if output_dir:
             cmd.extend(["-o", str(output_dir)])
-        if n_cpus is not None:
-            cmd.extend(["-nc", str(n_cpus)])
-        if n_iters != 150:
-            cmd.extend(["-ni", str(n_iters)])
-        if grid_size != 36:
-            cmd.extend(["-ng", str(grid_size)])
-        if dual_membrane:
-            cmd.append("-dm")
-        if peripheral:
-            cmd.append("-pr")
-        if use_weights:
-            cmd.append("-w")
-        if flip:
-            cmd.append("-flip")
-        if membrane_thickness is not None:
-            cmd.extend(["-mt", str(membrane_thickness)])
-        if extra_args:
-            cmd.extend(extra_args)
+        cmd.extend(
+            _orientation_flags(
+                n_cpus=n_cpus,
+                n_iters=n_iters,
+                grid_size=grid_size,
+                dual_membrane=dual_membrane,
+                peripheral=peripheral,
+                use_weights=use_weights,
+                flip=flip,
+                membrane_thickness=membrane_thickness,
+                seed=seed,
+                device=device,
+                single_precision=single_precision,
+                rank=rank,
+                predict_pg=predict_pg,
+                pg_guess=pg_guess,
+                charge=charge,
+                charge_outer=charge_outer,
+                outer_membrane_thickness=outer_membrane_thickness,
+                optimize_thickness=optimize_thickness,
+                transmembrane_residues=transmembrane_residues,
+                write_bfactors=write_bfactors,
+                curvature=curvature,
+                itp_file=itp_file,
+                insane_path=insane_path,
+                build_system=build_system,
+                build_arguments=build_arguments,
+                additional_residues=additional_residues,
+                additional_residues_itp=additional_residues_itp,
+                residue_cg_file=residue_cg_file,
+                extra_args=extra_args,
+            )
+        )
         return cmd
 
 

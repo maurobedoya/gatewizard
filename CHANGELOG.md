@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.55] - 2026-10-20
+
+### Changed
+
+- **MemPrO:** `gatewizard[full]` installs the CPU package `mempro` ≥ 0.3.0. `MemPrO.run` accepts the 0.3.0 flags, including `-seed` and `-nc`, and leaves a flag off when it is the MemPrO default. `device="gpu"` is refused when JAX sees no GPU. The installation page gives the optional GPU extra separately for the API conda env and for the desktop app’s micromamba env. The prepare-systems script passes a fixed seed so each orientation repeats.
+- **Update manifest:** `releases/gui-versions.json` advertises API **1.0.55** and MemPrO **0.3.0**. The desktop app requires this API.
+
 ## [1.0.54] - 2026-10-19
 
 ### Changed

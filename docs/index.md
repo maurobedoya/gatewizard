@@ -36,9 +36,8 @@ conda activate gatewizard
 # AmberTools 26 does not ship reduce
 conda install -c conda-forge -c bioconda reduce -y
 
-# OpenMM, ParmEd, and PDBFixer (short loops). MemPrO is a separate pin.
+# OpenMM, ParmEd, PDBFixer (short loops), and CPU MemPrO.
 pip install "gatewizard[full]"
-pip install "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.2.0"
 ```
 
 ### Desktop app

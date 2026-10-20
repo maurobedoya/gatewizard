@@ -30,12 +30,11 @@ conda create -n gatewizard -c conda-forge python sqlite ambertools=26 parmed=4.3
 conda activate gatewizard
 conda install -c conda-forge -c bioconda reduce -y
 pip install "gatewizard[full]"
-pip install "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.2.0"
 ```
 
 That conda line is for Linux or WSL with an NVIDIA driver. On macOS, leave out `cudatoolkit`. NAMD is not in this environment; install it separately and put `namd3` on `PATH` if you run NAMD equilibration.
 
-MemPrO is installed from the [MemPrO GitHub release](https://github.com/pstansfeld/MemPrO/releases) (`v0.2.0`). `pip install mempro` is a different, older package, so the line above is the one to use. A checkout’s `environment.yml` already includes that pin.
+`gatewizard[full]` installs the CPU build of [MemPrO](https://github.com/pstansfeld/MemPrO) (`mempro` ≥ 0.3.0). A checkout’s `environment.yml` does the same.
 
 For the library without the OpenMM extra (NAMD, GROMACS, and Amber still use their own programs):
 
@@ -52,7 +51,7 @@ conda env create -f environment.yml
 conda activate gatewizard
 ```
 
-`environment.yml` already installs MemPrO `v0.2.0` with the rest of the environment.
+`environment.yml` already installs CPU MemPrO with the rest of the environment.
 
 Check the version:
 
@@ -92,7 +91,7 @@ Installed automatically:
 | PDBFixer | Short loops of 1–6 residues |
 | MemPrO | Membrane orientation ([GitHub](https://github.com/pstansfeld/MemPrO)) |
 
-Install: `pip install "gatewizard[full]"`, then `pip install "mempro @ git+https://github.com/pstansfeld/MemPrO.git@v0.2.0"`. A checkout’s `environment.yml` already includes that pin.
+Install: `pip install "gatewizard[full]"`. That extra includes the CPU MemPrO package. A checkout’s `environment.yml` already includes it.
 
 For protein-aware **upstream** `AreaPerLipid` (`exclude_sel` before a PyPI release with PR #164): `pip install -r requirements-lipyphilic-git.txt`. GateWizard’s default APL with occupants remains **EVAPL**.
 

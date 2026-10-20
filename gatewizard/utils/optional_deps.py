@@ -86,7 +86,7 @@ DEPENDENCY_REGISTRY: Dict[str, DependencySpec] = {
         "mempro",
         "mempro",
         False,
-        "Membrane protein orientation (install: pip install -r requirements-orientation.txt)",
+        "Membrane protein orientation (install: pip install \"gatewizard[full]\")",
     ),
 }
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gatewizard"
-version = "1.0.54"
+version = "1.0.55"
 description = "A tool for membrane protein preparation and molecular dynamics analysis"
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -47,16 +47,19 @@ md = [
     "openmm>=8.0",
     "pdbfixer>=1.9",
 ]
-# MemPrO / lipyphilic-git cannot be listed here: PyPI rejects VCS/direct URL
-# dependencies in metadata. Install from GitHub after the empty extras:
-#   pip install -r requirements-orientation.txt
+# lipyphilic-git cannot be listed here: PyPI rejects VCS/direct URL
+# dependencies in metadata.
 #   pip install -r requirements-lipyphilic-git.txt   # AreaPerLipid exclude_sel
-orientation = []
+# mempro on PyPI is the CPU build (jax[cpu]). Do not use the gpu extra.
+orientation = [
+    "mempro>=0.3.0",
+]
 lipyphilic-git = []
 full = [
     "parmed>=4.3.0",
     "openmm>=8.0",
     "pdbfixer>=1.9",
+    "mempro>=0.3.0",
 ]
 
 [tool.setuptools]
