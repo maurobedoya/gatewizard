@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Reporting:** vulnerabilities go to [gatewizard.project@gmail.com](mailto:gatewizard.project@gmail.com). The troubleshooting page uses that same address.
+
 ## [1.0.55] - 2026-10-20
 
 ### Changed

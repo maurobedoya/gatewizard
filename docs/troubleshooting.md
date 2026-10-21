@@ -459,10 +459,7 @@ If you're still experiencing issues:
    - Error messages (full traceback)
    - Steps to reproduce
 
-5. **Contact developers**:
-   - Constanza González: constanza.gonzalez.villagra@gmail.com
-   - Mauricio Bedoya: mbedoya@ucm.cl
-   - Francisco Adasme: fadasme@ucm.cl
+5. **Contact the project**: [gatewizard.project@gmail.com](mailto:gatewizard.project@gmail.com)
 
 ## FAQ
 
