@@ -86,7 +86,7 @@ If you encounter issues or have questions:
 
 ## Contributing
 
-GateWizard is open-source software. Contributions are welcome on [GitHub](https://github.com/maurobedoya/gatewizard).
+GateWizard is open-source software. Contributions are welcome. See [CONTRIBUTING.md](https://github.com/maurobedoya/gatewizard/blob/main/CONTRIBUTING.md).
 
 ## License
 

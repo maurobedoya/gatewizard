@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Contributing:** `CONTRIBUTING.md` explains how to set up a development copy, run tests, and open a pull request. The README and docs index link to it.
+
 ### Security
 
 - **Reporting:** vulnerabilities go to [gatewizard.project@gmail.com](mailto:gatewizard.project@gmail.com). The troubleshooting page uses that same address.

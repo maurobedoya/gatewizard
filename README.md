@@ -168,6 +168,7 @@ python -c "import openmm; print([openmm.Platform.getPlatform(i).getName() for i 
 | API bug or feature | [Issues](https://github.com/maurobedoya/gatewizard/issues/new/choose) in this repo |
 | GUI bug or feature | [Issues](https://github.com/franciscoadasme/gatewizard-gui/issues/new/choose) in gatewizard-gui |
 | Docs and troubleshooting | [Documentation](https://maurobedoya.github.io/gatewizard/) |
+| Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |
 | Manual (PDF) | [Download](docs/manual/GateWizard-manual.pdf) |
 
 New to the project? Read the [welcome post](https://github.com/maurobedoya/gatewizard/discussions/36) and say hello in the comments.
