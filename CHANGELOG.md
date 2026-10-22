@@ -9,8 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **User guide:** each app info button opens a full section. Preparation, Builder, Equilibration, Tools, and Analysis explain the choice and link to the API method that implements it. Equilibration documents compute target and the local CPU/GPU defaults separately from the cluster profile.
 - **Contributing:** `CONTRIBUTING.md` explains how to set up a development copy, run tests, and open a pull request. The README and docs index link to it.
 - **Pull requests:** `.github/pull_request_template.md` asks for a summary, the related issue, and the test checklist.
+
+### Changed
+
+- **Quick reference:** the API quick reference is the start page. It shows how to activate the `gatewizard` environment and start Python, then carries PDB 6RV2 through the short-gap fill, protonation, membrane build, a short OpenMM tutorial run, and log reading. The tutorial sets Equilibration 6 and production to 1 ns and says the real stages are 47.625 ns and 50 ns. The README links to it.
 
 ### Security
 

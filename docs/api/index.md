@@ -2,6 +2,8 @@
 
 Welcome to the GateWizard API documentation. This reference provides detailed information about all modules, classes, methods, and functions available in GateWizard.
 
+New to the library? Start with the [Quick Reference](../QUICK_REFERENCE.md). It downloads PDB 6RV2, keeps the chains that have short gaps, fills those gaps, and then shows the usual preparation, membrane, equilibration, and analysis calls.
+
 ## Available Modules
 
 ### [Method dictionary](dictionary.md)
