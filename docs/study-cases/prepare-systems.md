@@ -70,13 +70,13 @@ results = MemPrO().run(
 )
 ```
 
-`MEMPRO_SEED` is `7`. MemPrO 0.3.0 writes the same orientation again for the same protein, seed, and CPU count.
+`MEMPRO_SEED` is `7`. MemPrO 0.3.1 writes the same orientation again for the same protein, seed, and CPU count.
 
 MemPrO is run on protein atoms. The same rigid transform is then applied to the kept hetero groups, so a ligand moves with the protein.
 
 ## Atom counts and times
 
-Every system is a symmetric POPC bilayer. The rows below, and the `SYSTEMS` list, follow the packed system size from smallest to largest. The protein atom count is `prepared.pdb` after protonation. The total atom count is every atom in `system.pdb` after packmol-memgen and tleap: protein, lipids, water, and ions. Builder times are packing plus parametrization. MemPrO, protonation, and GAFF run once and are not inside the builder mean.
+Every system is a symmetric POPC bilayer. The rows below, and the `SYSTEMS` list, follow the packed system size from smallest to largest. The protein atom count is `prepared.pdb` after protonation. The total atom count is every atom in `system.pdb` after packmol-memgen and tleap: protein, lipids, water, and ions. Those counts were measured before ACE and NME caps. A new run adds the caps unless the PDB already has them, so both counts will be larger. Builder times are packing plus parametrization. MemPrO, protonation, and GAFF run once and are not inside the builder mean.
 
 | PDB | Prepared protein atoms | Total atoms | Builder mean | Note |
 | --- | ---: | --- | ---: | --- |
@@ -329,7 +329,7 @@ Stages, in order:
 4. `subset` — chosen NMR model, chosen chains, and hetero groups that are not in `keep_hetero` removed
 5. `structure_check_before` — the same report as Visualize → Structure checker, on the selected chains. SEQRES for those chains is included, so residues with no coordinates are listed. The report is `work/<PDB>/structure_check_before/report.txt`. Findings do not stop the run.
 6. `mempro` — orientation, then the transform applied to the kept atoms
-7. `protonation` — PropKa at pH 7.4 and Amber residue names, peptide names remapped, disulfide cysteines renamed to CYX, missing protein heavy atoms filled from the Amber templates, protein hydrogens removed, then `pdb4amber --reduce` adds Amber hydrogens. Ligands and ions keep their hydrogens. This is the same order as Preparation → Prepare. A finished `protonation` stage is reused, so delete that PDB’s `protonation.json` when this step must run again.
+7. `protonation` — ACE and NME are added first, unless the PDB already has a terminal cap, then PropKa at pH 7.4 and Amber residue names, peptide names remapped, disulfide cysteines renamed to CYX, missing protein heavy atoms filled from the Amber templates, protein hydrogens removed, then `pdb4amber --reduce` adds Amber hydrogens. Ligands and ions keep their hydrogens. Capping matches Preparation with Cap protein termini on. A finished `protonation` stage is reused, so delete that PDB’s `protonation.json` when this step must run again.
 8. `structure_check_after` — the same checker on `prepared.pdb`. SEQRES is left out here because protonation renames residues. Numbering gaps and any heavy atoms the templates did not fill are still listed, in `work/<PDB>/structure_check_after/report.txt`.
 9. `ligand_parameters` — GAFF2 with ABCG2 for each name in `parametrize`, unless that system sets `atom_type` and `charge_method`
 10. `builder` — one row per replica, the whole packmol-memgen plus tleap run

@@ -59,6 +59,7 @@ from gatewizard.tools.ligand_parametrization import (
 from gatewizard.utils.ions import is_ion_resname
 from gatewizard.utils.large_pdb import read_cryst1_box
 from gatewizard.utils.peptide_residues import PEPTIDE_POLYMER_RESIDUES, remap_pdb_peptide_resnames
+from gatewizard.utils.protein_capping import cap_protein, detect_terminal_caps
 
 # Outputs follow the working directory, so a checkout of this file can be
 # launched from any benchmark folder.
@@ -68,7 +69,7 @@ RESULTS = Path.cwd() / "results"
 # How many independent packmol-memgen + tleap runs to time per PDB.
 BUILDER_REPLICAS = 3
 
-# MemPrO 0.3.0 repeats an orientation when the protein, this seed, and the
+# MemPrO 0.3.1 repeats an orientation when the protein, this seed, and the
 # CPU count stay the same. Every system in this script uses this seed.
 MEMPRO_SEED = 7
 
@@ -674,17 +675,23 @@ def orient_structure(
 def protonate(source: Path, dest: Path, folder: Path, *, keep_water: bool = False) -> dict:
     folder.mkdir(parents=True, exist_ok=True)
     manager = PreparationManager()
+    # Same order as Preparation with Cap protein termini on: ACE/NME first,
+    # then PropKa on that file. A PDB that already has a terminal cap is kept.
+    pka_input = source
+    if not detect_terminal_caps(source):
+        capped_path, _mapping = cap_protein(source, folder / "capped.pdb")
+        pka_input = Path(capped_path)
     named = folder / "protonated.pdb"
-    pka_path = manager.run_analysis(str(source), output_dir=str(folder))
+    pka_path = manager.run_analysis(str(pka_input), output_dir=str(folder))
     summary_path = manager.extract_summary(pka_path, str(folder / "propka_summary.txt"))
     try:
         manager.parse_summary(summary_path)
     except PreparationError as exc:
         if "No protonable residues" not in str(exc):
             raise
-        named.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+        named.write_text(pka_input.read_text(encoding="utf-8"), encoding="utf-8")
     else:
-        manager.apply_protonation_states(str(source), str(named), ph=PH)
+        manager.apply_protonation_states(str(pka_input), str(named), ph=PH)
     # Same order as Preparation → Prepare. Bridged cysteines become CYX
     # before hydrogens are rebuilt, so reduce does not add a thiol hydrogen
     # that the CYX template cannot accept.
