@@ -37,7 +37,7 @@ conda env create -f environment.yml
 conda activate gatewizard
 ```
 
-`environment.yml` already installs the package with `pip install -e ".[full]"`, including CPU MemPrO (`mempro` ≥ 0.3.0). `pip install "gatewizard[full]"` installs that same CPU package. A GPU build is optional and goes into this conda env only; see [MemPrO on a GPU](#mempro-on-a-gpu).
+`environment.yml` already installs the package with `pip install -e ".[full]"`, including CPU MemPrO (`mempro` ≥ 0.3.1). `pip install "gatewizard[full]"` installs that same CPU package. A GPU build is optional and goes into this conda env only; see [MemPrO on a GPU](#mempro-on-a-gpu).
 
 For the **desktop app**, install [gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui/releases) separately. On first launch the GUI embeds its own micromamba runtime. That runtime is not this conda env. See [Desktop GUI runtime (GROMACS / CUDA)](#desktop-gui-runtime-gromacs-cuda) below.
 

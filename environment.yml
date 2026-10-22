@@ -26,4 +26,4 @@ dependencies:
   - pip
   - pip:
     - -e .[full]
-    - mempro>=0.3.0
+    - mempro>=0.3.1

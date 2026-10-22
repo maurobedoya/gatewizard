@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **MemPrO:** `gatewizard[full]` installs CPU `mempro` ≥ 0.3.1. The 0.3 flags are unchanged. 0.3.1 fixes an Insane crash when a leaflet has fewer than 49 grid points.
 - **Quick reference:** the API quick reference is the start page. It shows how to activate the `gatewizard` environment and start Python, then carries PDB 6RV2 through the short-gap fill, protonation, membrane build, a short OpenMM tutorial run, and log reading. The tutorial sets Equilibration 6 and production to 1 ns and says the real stages are 47.625 ns and 50 ns. The README links to it.
 
 ### Security

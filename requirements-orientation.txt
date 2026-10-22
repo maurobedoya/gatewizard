@@ -1,3 +1,3 @@
 # CPU MemPrO. The same pin is in the gatewizard[full] extra.
 # Do not install mempro[gpu]; that extra needs a CUDA jaxlib.
-mempro>=0.3.0
+mempro>=0.3.1

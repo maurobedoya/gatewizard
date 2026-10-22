@@ -52,14 +52,14 @@ md = [
 #   pip install -r requirements-lipyphilic-git.txt   # AreaPerLipid exclude_sel
 # mempro on PyPI is the CPU build (jax[cpu]). Do not use the gpu extra.
 orientation = [
-    "mempro>=0.3.0",
+    "mempro>=0.3.1",
 ]
 lipyphilic-git = []
 full = [
     "parmed>=4.3.0",
     "openmm>=8.0",
     "pdbfixer>=1.9",
-    "mempro>=0.3.0",
+    "mempro>=0.3.1",
 ]
 
 [tool.setuptools]

@@ -204,7 +204,7 @@ class TestMemPrO:
         assert "-nc" not in cmd
 
     def test_orientation_flags_omit_mempro_defaults(self):
-        """Defaults that match MemPrO 0.3.0 stay off the command."""
+        """Defaults that match MemPrO 0.3.1 stay off the command."""
         assert _orientation_flags() == []
         cmd = _orientation_flags(
             seed=7,

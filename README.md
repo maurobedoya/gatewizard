@@ -34,7 +34,7 @@ pip install "gatewizard[full]"
 
 That conda line is for Linux or WSL with an NVIDIA driver. On macOS, leave out `cudatoolkit`. NAMD is not in this environment; install it separately and put `namd3` on `PATH` if you run NAMD equilibration.
 
-`gatewizard[full]` installs the CPU build of [MemPrO](https://github.com/pstansfeld/MemPrO) (`mempro` ≥ 0.3.0). A checkout’s `environment.yml` does the same.
+`gatewizard[full]` installs the CPU build of [MemPrO](https://github.com/pstansfeld/MemPrO) (`mempro` ≥ 0.3.1). A checkout’s `environment.yml` does the same.
 
 For the library without the OpenMM extra (NAMD, GROMACS, and Amber still use their own programs):
 
