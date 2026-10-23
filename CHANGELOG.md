@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **User guide:** each app info button opens a full section. Preparation, Builder, Equilibration, Tools, and Analysis explain the choice and link to the API method that implements it. Equilibration documents compute target and the local CPU/GPU defaults separately from the cluster profile.
+- **User guide:** Visualization and Animation describe the toolbar, representations, camera, sequence, structure checker, minimize, and the timeline tracks, capture, easing, and export.
 - **Contributing:** `CONTRIBUTING.md` explains how to set up a development copy, run tests, and open a pull request. The README and docs index link to it.
 - **Pull requests:** `.github/pull_request_template.md` asks for a summary, the related issue, and the test checklist.
 
