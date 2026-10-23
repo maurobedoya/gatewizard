@@ -155,13 +155,13 @@ Prepare renames bonded cysteines to CYX so tleap builds a disulfide instead of t
 
 ## Builder
 
-Builder packs the bilayer, water, ions, and any extra molecules, then can parametrize with tleap. Each run is a job card under the project folder. **Generate Input Files** writes the job. **Start Preparation** launches `run_preparation.sh`. **Cancel** stops a running job.
+Builder packs the bilayer, water, ions, and any extra molecules, then can parametrize with tleap. Each run is a job card under the project folder. **Generate Input Files** writes the job. **Build system** launches `run_preparation.sh`. **Cancel** stops a running job.
 
 ![Builder](images/user-guide/builder.png)
 
 Load the prepared protein, or uncheck **Include protein** for a bilayer only. A bilayer without a protein needs a membrane XY size under System Options (`--distxy_fix`). Packmol-Memgen still builds the bilayer. The page checks the PDB when you load it: missing heavy atoms, a gap longer than six residues, or no protein hydrogens asks you to go back to Preparation. Alternate conformations can be reduced there to the most likely letter. Ligands and peptide caps are detected with the file, so **Detect** is only a refresh.
 
-**Generate Input Files** stays disabled while a blocking problem is on screen: no PDB, no lipid, no membrane size, salt outside 0–2 M, an unknown force-field name, or a ligand, cap, or free molecule that still needs parameters while **Parametrize with tleap** is on. An untested force-field combination is a warning and still allows Generate. Start Preparation runs [`validate_system_inputs`](api/builder.md#validate_system_inputs) once more and does not start packmol if that check fails. Turning parametrization off allows a pack-only run; tleap is then your later step. API: [`prepare_system`](api/builder.md#prepare_system) and [`run_preparation`](api/builder.md#run_preparation).
+**Generate Input Files** stays disabled while a blocking problem is on screen: no PDB, no lipid, no membrane size, salt outside 0–2 M, an unknown force-field name, or a ligand, cap, or free molecule that still needs parameters while **Parametrize with tleap** is on. An untested force-field combination is a warning and still allows Generate. **Build system** runs [`validate_system_inputs`](api/builder.md#validate_system_inputs) once more and does not start packmol if that check fails. Turning parametrization off allows a pack-only run; tleap is then your later step. API: [`prepare_system`](api/builder.md#prepare_system) and [`run_preparation`](api/builder.md#run_preparation).
 
 **Skip protonation** stays on when the PDB already has PropKa names (ASH, GLH, HIP, CYX). **Pre-oriented in membrane** skips MEMEMBED. **Remove protein hydrogens** is the escape hatch when the protein still carries non-Amber hydrogens that would break tleap after packing.
 
