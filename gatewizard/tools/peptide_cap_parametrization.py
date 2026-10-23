@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from gatewizard.tools.ligand_parametrization import (
     DEFAULT_ATOM_TYPE,
     DEFAULT_CHARGE_METHOD,
+    PARMCHK_TLEAP_TIMEOUT,
     LigandParametrizationError,
     _write_status,
 )
@@ -225,8 +226,14 @@ def parametrize_peptide_cap(
     multiplicity: int = 1,
     atom_type: str = DEFAULT_ATOM_TYPE,
     sqm_keywords: str = "",
+    timeout: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Parametrize a polymer cap with antechamber/parmchk2/tleap (head/tail set)."""
+    """Parametrize a polymer cap with antechamber/parmchk2/tleap (head/tail set).
+
+    ``timeout`` is the antechamber wall-clock limit in seconds. ``None`` waits
+    until antechamber exits. parmchk2 and tleap each stop after
+    ``PARMCHK_TLEAP_TIMEOUT`` seconds.
+    """
     name = normalize_resname(residue_name)
     if name not in AMBER_UNSUPPORTED_PEPTIDE_WARN:
         raise LigandParametrizationError(
@@ -298,7 +305,7 @@ def parametrize_peptide_cap(
                 capture_output=True,
                 text=True,
                 cwd=str(out_dir),
-                timeout=600,
+                timeout=timeout,
                 env=get_clean_env(),
             )
             with open(log_dir / "antechamber.log", "a", encoding="utf-8") as handle:
@@ -352,7 +359,7 @@ def parametrize_peptide_cap(
             capture_output=True,
             text=True,
             cwd=str(out_dir),
-            timeout=120,
+            timeout=PARMCHK_TLEAP_TIMEOUT,
             env=get_clean_env(),
         )
         with open(log_dir / "parmchk2.log", "w", encoding="utf-8") as handle:
@@ -385,7 +392,7 @@ quit
             capture_output=True,
             text=True,
             cwd=str(out_dir),
-            timeout=120,
+            timeout=PARMCHK_TLEAP_TIMEOUT,
             env=get_clean_env(),
         )
         with open(log_dir / "tleap.log", "w", encoding="utf-8") as handle:
@@ -445,8 +452,13 @@ def parametrize_peptide_cap_from_system_pdb(
     multiplicity: int = 1,
     atom_type: str = DEFAULT_ATOM_TYPE,
     sqm_keywords: str = "",
+    timeout: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Extract and parametrize one polymer cap under ``peptide_cap_params/{name}/``."""
+    """Extract and parametrize one polymer cap under ``peptide_cap_params/{name}/``.
+
+    ``timeout`` is the antechamber wall-clock limit in seconds. ``None`` waits
+    until antechamber exits.
+    """
     name = normalize_resname(residue_name)
     base_dir = Path(output_dir).resolve()
     cap_dir = base_dir / "peptide_cap_params" / name
@@ -461,6 +473,7 @@ def parametrize_peptide_cap_from_system_pdb(
         multiplicity=multiplicity,
         atom_type=atom_type,
         sqm_keywords=sqm_keywords,
+        timeout=timeout,
     )
 
 
@@ -471,8 +484,13 @@ def parametrize_all_peptide_caps_from_system_pdb(
     charge_method: str = DEFAULT_CHARGE_METHOD,
     atom_type: str = DEFAULT_ATOM_TYPE,
     sqm_keywords: str = "",
+    timeout: Optional[int] = None,
 ) -> Dict[str, Dict[str, Any]]:
-    """Detect and parametrize all GAFF-needed polymer caps in *pdb_file*."""
+    """Detect and parametrize all GAFF-needed polymer caps in *pdb_file*.
+
+    ``timeout`` is the antechamber wall-clock limit in seconds for every cap.
+    ``None`` waits until each antechamber exits.
+    """
     charges = charges or {}
     caps = detect_peptide_caps_needing_gaff(pdb_file)
     results: Dict[str, Dict[str, Any]] = {}
@@ -486,6 +504,7 @@ def parametrize_all_peptide_caps_from_system_pdb(
             charge_method=charge_method,
             atom_type=atom_type,
             sqm_keywords=sqm_keywords,
+            timeout=timeout,
         )
     return results
 

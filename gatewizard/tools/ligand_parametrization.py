@@ -93,12 +93,13 @@ ATOM_TYPES = {
 DEFAULT_CHARGE_METHOD = "abcg2"
 DEFAULT_ATOM_TYPE = "gaff2"
 
-# Recommended pairings per AMBER manual:
-#   gaff  + bcc    ✓
-#   gaff2 + abcg2  ✓
-# Non-recommended (warning):
-#   gaff2 + bcc
-#   gaff  + abcg2
+# parmchk2 and tleap only finish parameters after antechamber. On one ligand
+# they normally take a few seconds. This cap is a hang guard, we run some tests
+# to choose 120 seconds, however this could be too short or too long, so it's a guess. 
+# Antechamber is separate and waits until it exits unless timeout= is passed. 
+# Change this value if a ligand is killed at the parmchk2 or tleap step.
+PARMCHK_TLEAP_TIMEOUT = 120
+
 RECOMMENDED_COMBOS = {
     ("gaff", "bcc"),
     ("gaff2", "abcg2"),
@@ -365,6 +366,7 @@ def parametrize_ligand_from_system_pdb(
     multiplicity: int = 1,
     atom_type: str = DEFAULT_ATOM_TYPE,
     sqm_keywords: str = "",
+    timeout: Optional[int] = None,
 ) -> Dict[str, str]:
     """
     Extract and parametrize one ligand from a full system PDB.
@@ -382,6 +384,8 @@ def parametrize_ligand_from_system_pdb(
         multiplicity: Spin multiplicity
         atom_type: Atom type set ('gaff2' or 'gaff')
         sqm_keywords: Extra SQM keywords for antechamber ``-ek`` flag
+        timeout: Antechamber wall-clock limit in seconds. ``None`` waits until it exits.
+            parmchk2 and tleap each stop after ``PARMCHK_TLEAP_TIMEOUT`` seconds.
 
     Returns:
         Dictionary with paths to generated files.
@@ -401,6 +405,7 @@ def parametrize_ligand_from_system_pdb(
         multiplicity=multiplicity,
         atom_type=atom_type,
         sqm_keywords=sqm_keywords,
+        timeout=timeout,
     )
 
 
@@ -413,6 +418,7 @@ def parametrize_ligand(
     multiplicity: int = 1,
     atom_type: str = DEFAULT_ATOM_TYPE,
     sqm_keywords: str = "",
+    timeout: Optional[int] = None,
 ) -> Dict[str, str]:
     """
     Parametrize a single ligand using antechamber + parmchk2 + tleap.
@@ -438,6 +444,8 @@ def parametrize_ligand(
         sqm_keywords: Extra SQM keywords for antechamber ``-ek`` flag.
             Only applied when explicitly provided. Useful for SCF
             convergence issues (e.g. ``maxcyc=0, scfconv=1.d-6``).
+        timeout: Antechamber wall-clock limit in seconds. ``None`` waits until it exits.
+            parmchk2 and tleap each stop after ``PARMCHK_TLEAP_TIMEOUT`` seconds.
 
     Returns:
         Dictionary with paths to generated files:
@@ -534,7 +542,7 @@ def parametrize_ligand(
             capture_output=True,
             text=True,
             cwd=str(out_dir),
-            timeout=600,  # 10 min timeout
+            timeout=timeout,
             env=get_clean_env(),
         )
 
@@ -580,7 +588,7 @@ def parametrize_ligand(
             capture_output=True,
             text=True,
             cwd=str(out_dir),
-            timeout=120,
+            timeout=PARMCHK_TLEAP_TIMEOUT,
             env=get_clean_env(),
         )
 
@@ -627,7 +635,7 @@ quit
             capture_output=True,
             text=True,
             cwd=str(out_dir),
-            timeout=120,
+            timeout=PARMCHK_TLEAP_TIMEOUT,
             env=get_clean_env(),
         )
 
@@ -695,6 +703,7 @@ def parametrize_all_ligands(
     charge_method: str = DEFAULT_CHARGE_METHOD,
     atom_type: str = DEFAULT_ATOM_TYPE,
     sqm_keywords: str = "",
+    timeout: Optional[int] = None,
 ) -> Dict[str, Dict[str, str]]:
     """
     Detect and parametrize all ligands in a PDB file.
@@ -708,6 +717,8 @@ def parametrize_all_ligands(
         atom_type: Atom type set — 'gaff2' or 'gaff' (default: 'gaff2')
         sqm_keywords: Extra SQM keywords for antechamber ``-ek`` flag.
             Only applied when explicitly provided.
+        timeout: Antechamber wall-clock limit in seconds. ``None`` waits until it exits.
+            parmchk2 and tleap each stop after ``PARMCHK_TLEAP_TIMEOUT`` seconds.
 
     Returns:
         Dictionary mapping ligand names to their output file paths
@@ -755,6 +766,7 @@ def parametrize_all_ligands(
             charge_method=charge_method,
             atom_type=atom_type,
             sqm_keywords=sqm_keywords,
+            timeout=timeout,
         )
 
         results[ligand.name] = files

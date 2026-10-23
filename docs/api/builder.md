@@ -878,6 +878,7 @@ from gatewizard.tools.ligand_parametrization import (
     detect_ligands,
     extract_ligand_pdb,
     parametrize_ligand,
+    parametrize_ligand_from_system_pdb,
     parametrize_all_ligands,
     get_ligand_2d_image,
     get_ligand_2d_image_from_pdb_lines,
@@ -1013,6 +1014,8 @@ parametrize_ligand(
     charge_method: str = 'abcg2',
     multiplicity: int = 1,
     atom_type: str = 'gaff2',
+    sqm_keywords: str = '',
+    timeout: Optional[int] = None,
 ) -> Dict[str, str]
 ```
 
@@ -1027,6 +1030,8 @@ parametrize_ligand(
 | `charge_method` | `str` | `'abcg2'` | Charge method (see `CHARGE_METHODS`). The default pairing is GAFF2 with ABCG2. |
 | `multiplicity` | `int` | `1` | Spin multiplicity |
 | `atom_type` | `str` | `'gaff2'` | Atom type set — `'gaff2'` or `'gaff'` (see `ATOM_TYPES`) |
+| `sqm_keywords` | `str` | `''` | Extra SQM keywords for antechamber `-ek`. Empty leaves the Amber default. |
+| `timeout` | `int` or `None` | `None` | Antechamber wall-clock limit in seconds. `None` waits until it exits. parmchk2 and tleap each stop after 120 seconds. |
 
 **Returns:** Dictionary with paths to generated files:
 
@@ -1048,6 +1053,46 @@ parametrize_ligand(
 
 ---
 
+### parametrize_ligand_from_system_pdb
+
+Extract one ligand from a system PDB and parametrize it. The GUI uses this for a ligand detected in the protein file. A standalone ligand PDB uses [`parametrize_ligand`](#parametrize_ligand) instead.
+
+Files are written to ``{output_dir}/ligand_params/{ligand_name}/``.
+
+```python
+parametrize_ligand_from_system_pdb(
+    pdb_file: str,
+    ligand_name: str,
+    output_dir: str,
+    charge: int = 0,
+    charge_method: str = 'abcg2',
+    multiplicity: int = 1,
+    atom_type: str = 'gaff2',
+    sqm_keywords: str = '',
+    timeout: Optional[int] = None,
+) -> Dict[str, str]
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `pdb_file` | `str` | — | System PDB that contains the ligand |
+| `ligand_name` | `str` | — | Residue name to extract and parametrize |
+| `output_dir` | `str` | — | Directory where `ligand_params/` is created |
+| `charge` | `int` | `0` | Net charge of the ligand |
+| `charge_method` | `str` | `'abcg2'` | Charge method (see `CHARGE_METHODS`) |
+| `multiplicity` | `int` | `1` | Spin multiplicity |
+| `atom_type` | `str` | `'gaff2'` | Atom type set — `'gaff2'` or `'gaff'` |
+| `sqm_keywords` | `str` | `''` | Extra SQM keywords for antechamber `-ek` |
+| `timeout` | `int` or `None` | `None` | Antechamber wall-clock limit in seconds. `None` waits until it exits. parmchk2 and tleap each stop after 120 seconds. |
+
+**Returns:** The same file-path dictionary as `parametrize_ligand()`.
+
+**Raises:** `LigandParametrizationError` if any step fails
+
+---
+
 ### parametrize_all_ligands
 
 Detect and parametrize all ligands in a PDB file in one call.
@@ -1059,6 +1104,8 @@ parametrize_all_ligands(
     charges: Optional[Dict[str, int]] = None,
     charge_method: str = 'abcg2',
     atom_type: str = 'gaff2',
+    sqm_keywords: str = '',
+    timeout: Optional[int] = None,
 ) -> Dict[str, Dict[str, str]]
 ```
 
@@ -1071,6 +1118,8 @@ parametrize_all_ligands(
 | `charges` | `Dict[str, int]` or `None` | `None` | Map of ligand name → net charge (default: 0 for all) |
 | `charge_method` | `str` | `'abcg2'` | Charge method for antechamber. The default pairing is GAFF2 with ABCG2. |
 | `atom_type` | `str` | `'gaff2'` | Atom type set — `'gaff2'` or `'gaff'` (see `ATOM_TYPES`) |
+| `sqm_keywords` | `str` | `''` | Extra SQM keywords for antechamber `-ek`. Empty leaves the Amber default. |
+| `timeout` | `int` or `None` | `None` | Antechamber wall-clock limit in seconds for every ligand. `None` waits until each one exits. parmchk2 and tleap each stop after 120 seconds. |
 
 **Returns:** `Dict[str, Dict[str, str]]` — maps ligand names to their file paths (same structure as `parametrize_ligand()`)
 
@@ -1079,6 +1128,34 @@ parametrize_all_ligands(
 ```python
 --8<-- "tests/builder_examples/builder_example_22.py"
 ```
+
+---
+
+### parametrize_peptide_cap
+
+Parametrize one polymer cap (FVA, FOR, ETA, and the other Amber-unsupported termini). The residue stays in the chain. tleap stores the head and tail connect atoms in the OFF library.
+
+`parametrize_peptide_cap_from_system_pdb` extracts that residue from a system PDB into `peptide_cap_params/{name}/` and calls this function. `parametrize_all_peptide_caps_from_system_pdb` does that for every cap that needs GAFF.
+
+```python
+parametrize_peptide_cap(
+    residue_pdb: str,
+    residue_name: str,
+    output_dir: str,
+    charge: int = 0,
+    charge_method: str = 'abcg2',
+    multiplicity: int = 1,
+    atom_type: str = 'gaff2',
+    sqm_keywords: str = '',
+    timeout: Optional[int] = None,
+) -> Dict[str, Any]
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `timeout` | `int` or `None` | `None` | Antechamber wall-clock limit in seconds. `None` waits until it exits. parmchk2 and tleap each stop after 120 seconds. |
+
+The other parameters match `parametrize_ligand`. The system-PDB helpers take `pdb_file` and `output_dir` instead of `residue_pdb`, and the all-caps helper takes `charges` the same way as `parametrize_all_ligands`. Each helper also accepts `timeout`.
 
 ---
 
