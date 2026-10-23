@@ -290,10 +290,9 @@ class SystemValidator:
         # Validate concentration
         try:
             conc = float(concentration)
+            # packmol-memgen --saltcon has no maximum. 0.15 M is its default.
             if conc < 0:
-                return False, "Salt concentration must be positive"
-            if conc > 2.0:
-                return False, "Salt concentration should not exceed 2.0 M"
+                return False, "Salt concentration cannot be negative"
         except ValueError:
             return False, "Invalid salt concentration: must be a number"
 

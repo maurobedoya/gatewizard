@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Salt concentration:** values above 2 M are accepted. Packmol-memgen `--saltcon` has no maximum; 0.15 M is only its default. A negative concentration is still rejected.
 - **User guide:** Builder calls the launch button **Build system**. That step is not named preparation.
 - **Equilibration ensembles:** NPAT is constant surface area. NPgT is constant surface tension. `surface_tension` applies to NPgT, not to NPAT.
 - **Ligand parametrization:** `parametrize_ligand`, `parametrize_ligand_from_system_pdb`, and `parametrize_all_ligands` wait until antechamber exits. Pass `timeout` in seconds to stop antechamber on a timer. parmchk2 and tleap still stop after 120 seconds. Peptide caps use the same antechamber wait.

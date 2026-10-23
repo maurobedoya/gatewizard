@@ -762,6 +762,7 @@ cat systems/popc_membrane/status.json
 
 - 0.15 M (150 mM) NaCl or KCl
 - Mimics intracellular or extracellular conditions
+- Packmol-memgen passes this number to `--saltcon`. That flag has no maximum; 0.15 M is only the default. A negative value is rejected.
 
 **High salt studies:**
 
