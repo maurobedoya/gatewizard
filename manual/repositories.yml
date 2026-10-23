@@ -1,0 +1,8 @@
+# Repositories included in the manual.
+# path is relative to the API repository root.
+# People are listed in contributors.yml at the root of each repository.
+repositories:
+  - name: API
+    path: .
+  - name: GUI
+    path: ../gatewizard-gui
