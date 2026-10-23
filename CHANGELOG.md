@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Build folder:** an existing build folder is reused only when overwrite is set. Otherwise generation refuses that name instead of writing a timestamped sibling. A name such as `02_build_name_2` copies ligand and peptide-cap parameters from `02_build_name` when that folder has them.
 - **Salt concentration:** values above 2 M are accepted. Packmol-memgen `--saltcon` has no maximum; 0.15 M is only its default. A negative concentration is still rejected.
 - **User guide:** Builder calls the launch button **Build system**. That step is not named preparation.
 - **Equilibration ensembles:** NPAT is constant surface area. NPgT is constant surface tension. `surface_tension` applies to NPgT, not to NPAT.

@@ -9,6 +9,7 @@ packmol-memgen and related tools.
 
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -378,6 +379,8 @@ class Builder:
             else:
                 return False, "Failed to start system preparation", job_dir
 
+        except FileExistsError as e:
+            return False, str(e), None
         except Exception as e:
             logger.error(f"Error preparing system: {e}", exc_info=True)
             return False, f"Error preparing system: {str(e)}", None
@@ -422,6 +425,8 @@ class Builder:
             self._generate_preparation_files(cmd, job_dir, config)
             return True, "Preparation input files generated successfully", job_dir
 
+        except FileExistsError as e:
+            return False, str(e), None
         except Exception as e:
             logger.error(f"Error generating preparation inputs: {e}", exc_info=True)
             return False, f"Error generating preparation inputs: {str(e)}", None
@@ -706,8 +711,9 @@ class Builder:
         """Create the job directory and copy protein / free-molecule PDBs."""
         pdb_path = optional_pdb_path(pdb_file)
         custom_output_name = config.get("output_folder_name", None)
+        overwrite = bool(config.pop("overwrite", False))
         job_dir = self._create_job_directory(
-            pdb_path, working_dir, custom_output_name
+            pdb_path, working_dir, custom_output_name, overwrite=overwrite
         )
 
         local_pdb: Optional[Path] = None
@@ -754,18 +760,32 @@ class Builder:
                 shutil.copytree(source, target)
                 logger.info("Copied %s → %s", source, target)
 
+    def _numbered_param_source(self, folder: Path) -> Optional[Path]:
+        """Return ``base`` when *folder* is ``base_N`` and that directory exists."""
+        match = re.fullmatch(r"(.+)_(\d+)", folder.name)
+        if not match:
+            return None
+        base = folder.parent / match.group(1)
+        if base.is_dir() and base.resolve() != folder.resolve():
+            return base
+        return None
+
     def _create_job_directory(
         self,
         pdb_file: Optional[str],
         working_dir: str,
         custom_output_name: Optional[str] = None,
+        overwrite: bool = False,
     ) -> Path:
         """Create or reuse the Builder job directory.
 
         Ligand / peptide-cap parametrization writes under the planned build folder
         (``ligand_params/``, ``peptide_cap_params/``) before Generate Input. That
-        must not force a timestamped sibling — reuse the folder unless a prior
-        preparation (``run_preparation.sh`` / ``status.json``) is already there.
+        folder is reused. A folder that already has a build (``run_preparation.sh``
+        or ``status.json``) is reused only when *overwrite* is true. Otherwise
+        this raises ``FileExistsError`` so the caller can re-run or pick another
+        name. A name ``base_N`` copies param caches from ``base`` when that
+        folder has them.
         """
         work_dir = Path(working_dir).resolve()
         work_dir.mkdir(parents=True, exist_ok=True)
@@ -781,21 +801,21 @@ class Builder:
                 stem = "02_build_bilayer"
             preferred = work_dir / stem
 
-        if not preferred.exists() or not self._job_dir_has_prior_preparation(preferred):
-            job_dir = preferred
-        else:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            job_dir = work_dir / f"{preferred.name}_{timestamp}"
-            logger.info(
-                "Preferred build folder %s already has preparation inputs; "
-                "using %s and copying GAFF param caches if present",
-                preferred.name,
-                job_dir.name,
+        if (
+            preferred.exists()
+            and self._job_dir_has_prior_preparation(preferred)
+            and not overwrite
+        ):
+            raise FileExistsError(
+                f'Build folder "{preferred.name}" already exists. '
+                "Re-run it or choose the next number."
             )
 
+        job_dir = preferred
         job_dir.mkdir(parents=True, exist_ok=True)
-        if job_dir.resolve() != preferred.resolve():
-            self._copy_param_caches(preferred, job_dir)
+        source = self._numbered_param_source(job_dir)
+        if source is not None:
+            self._copy_param_caches(source, job_dir)
 
         (job_dir / "logs").mkdir(exist_ok=True)
 

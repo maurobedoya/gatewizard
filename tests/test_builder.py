@@ -381,11 +381,37 @@ class TestCreateJobDirectoryParamCaches:
         assert (preferred / "ligand_params" / "LIG" / "LIG.frcmod").is_file()
         assert (preferred / "peptide_cap_params" / "ETA" / "ETA.lib").is_file()
 
-    def test_prior_preparation_gets_timestamp_and_copies_caches(self, builder, tmp_path):
+    def test_prior_preparation_refuses_without_overwrite(self, builder, tmp_path):
         preferred = tmp_path / "02_build_again"
         preferred.mkdir()
         (preferred / "run_preparation.sh").write_text("#!/bin/bash\n", encoding="utf-8")
         (preferred / "status.json").write_text('{"status":"not_started"}\n', encoding="utf-8")
+
+        with pytest.raises(FileExistsError, match="already exists"):
+            builder._create_job_directory(
+                None, str(tmp_path), custom_output_name="02_build_again"
+            )
+        assert not any(path.name.startswith("02_build_again_") for path in tmp_path.iterdir())
+
+    def test_prior_preparation_reuses_folder_when_overwrite(self, builder, tmp_path):
+        preferred = tmp_path / "02_build_again"
+        preferred.mkdir()
+        (preferred / "run_preparation.sh").write_text("#!/bin/bash\n", encoding="utf-8")
+        (preferred / "status.json").write_text('{"status":"not_started"}\n', encoding="utf-8")
+        lig = preferred / "ligand_params" / "LIG"
+        lig.mkdir(parents=True)
+        (lig / "LIG.frcmod").write_text("cached\n", encoding="utf-8")
+
+        job_dir = builder._create_job_directory(
+            None, str(tmp_path), custom_output_name="02_build_again", overwrite=True
+        )
+        assert job_dir.resolve() == preferred.resolve()
+        assert (job_dir / "ligand_params" / "LIG" / "LIG.frcmod").read_text() == "cached\n"
+
+    def test_numbered_folder_copies_param_caches(self, builder, tmp_path):
+        preferred = tmp_path / "02_build_again"
+        preferred.mkdir()
+        (preferred / "run_preparation.sh").write_text("#!/bin/bash\n", encoding="utf-8")
         lig = preferred / "ligand_params" / "LIG"
         lig.mkdir(parents=True)
         (lig / "LIG.frcmod").write_text("cached\n", encoding="utf-8")
@@ -394,10 +420,9 @@ class TestCreateJobDirectoryParamCaches:
         (caps / "FVA.lib").write_text("cached\n", encoding="utf-8")
 
         job_dir = builder._create_job_directory(
-            None, str(tmp_path), custom_output_name="02_build_again"
+            None, str(tmp_path), custom_output_name="02_build_again_2"
         )
-        assert job_dir.resolve() != preferred.resolve()
-        assert job_dir.name.startswith("02_build_again_")
+        assert job_dir.name == "02_build_again_2"
         assert (job_dir / "ligand_params" / "LIG" / "LIG.frcmod").read_text() == "cached\n"
         assert (job_dir / "peptide_cap_params" / "FVA" / "FVA.lib").read_text() == "cached\n"
 
