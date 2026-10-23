@@ -200,7 +200,7 @@ Each stage in `stage_params_list` must be a dictionary with the following struct
 |-----------|------|---------|-------------|
 | `minimize_steps` | `int` | `0` | Minimization steps before MD (first stage only) |
 | `pressure` | `float` | `1.0` | Pressure in bar (NPT, NPAT, NPgT only) |
-| `surface_tension` | `float` | `0.0` | Surface tension in dyn/cm (NPAT only) |
+| `surface_tension` | `float` | `0.0` | Surface tension in dyn/cm (NPgT, and OpenMM NPT). NPAT holds the area fixed and does not use this value. |
 | `dcd_freq` | `int` | `5000` | DCD output frequency (steps) |
 | `use_gpu` | `bool` | `True` | Enable GPU acceleration |
 | `cpu_cores` | `int` | `1` | Number of CPU cores |
@@ -230,8 +230,8 @@ Restraint forces in kcal/mol/Å². Applied to atomic groups:
 |----------|-----------|---------|----------|
 | **NVT** | Canonical | Temperature | Initial heating, fixed box |
 | **NPT** | Isothermal-isobaric | Temp + Pressure (isotropic) | General equilibration |
-| **NPAT** | Constant surface tension | Temp + Pressure (anisotropic) + Surface tension | Membrane systems (recommended) |
-| **NPgT** | Constant surface tension | Temp + Pressure + Surface tension | Alternative membrane ensemble |
+| **NPAT** | Constant surface area | Temp + pressure along Z; the membrane area stays fixed | Membrane area held constant |
+| **NPgT** | Constant surface tension | Temp + pressure + surface tension | Membrane with a surface-tension target |
 
 ---
 

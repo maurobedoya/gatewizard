@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Equilibration ensembles:** NPAT is constant surface area. NPgT is constant surface tension. `surface_tension` applies to NPgT, not to NPAT.
 - **Ligand parametrization:** `parametrize_ligand`, `parametrize_ligand_from_system_pdb`, and `parametrize_all_ligands` wait until antechamber exits. Pass `timeout` in seconds to stop antechamber on a timer. parmchk2 and tleap still stop after 120 seconds. Peptide caps use the same antechamber wait.
 - **MemPrO:** `gatewizard[full]` installs CPU `mempro` ≥ 0.3.1. The 0.3 flags are unchanged. 0.3.1 fixes an Insane crash when a leaflet has fewer than 49 grid points.
 - **Prepare-systems caps:** the protonation stage adds ACE and NME before PropKa unless the PDB already has a terminal cap. A saved protonation stage is reused until that result is deleted.
