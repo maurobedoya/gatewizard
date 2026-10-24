@@ -63,6 +63,8 @@ nav:
   - Analysis: analysis.md
   - Study cases:
       - Overview: study-cases/index.md
+      - STP10 desktop app: study-cases/7aaq-gui.md
+      - STP10 API: study-cases/7aaq-api.md
       - Prepare systems: study-cases/prepare-systems.md
   - Troubleshooting: troubleshooting.md
   - API:

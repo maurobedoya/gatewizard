@@ -118,7 +118,7 @@ The 3D header and the pdb4amber log use the same page. “Gaps (Renumbered Resid
 
 **Cap protein termini (ACE/NME)** is for fragments and chain ends that should not stay charged in MD. The capper writes ACE as residue 1 in its own file and shifts the chain; Prepare, with residue numbers preserved, puts the protein numbers back. New ACE then sits at N-terminus − 1 (residue **0** when the chain starts at 1) and NME at C-terminus + 1. The mapping file is kept for later Builder and PropKa steps. API: [`ProteinCapper`](api/preparation.md#protein-capping) and [`detect_terminal_caps`](api/preparation.md#detect_terminal_caps). A chain that is already capped is reported on the page and is not capped again.
 
-**Remove protein hydrogens** writes a prepared PDB with no protein hydrogens. Ligands and other heteroatoms keep theirs. The protonation choice stays in the residue name (ASH, GLH, HIP). Leave the box unchecked when pdb4amber `--reduce` should write Amber hydrogens. [`count_protein_hydrogens`](api/preparation.md#count_protein_hydrogens) is what Builder later uses to warn about non-Amber hydrogens.
+**Remove protein hydrogens** writes a prepared PDB with no protein hydrogens. Ligands and other heteroatoms keep theirs. The protonation choice stays in the residue name (ASH, GLH, HIP, CYX, and the histidine names). Leaving the box on is safe for a membrane build: packmol-memgen adds the protein hydrogens again from those names. Uncheck it when the prepared PDB itself should already contain the Amber hydrogens from pdb4amber `--reduce`. [`count_protein_hydrogens`](api/preparation.md#count_protein_hydrogens) is what Builder later uses to warn about non-Amber hydrogens.
 
 **Keep original residue numbers and chains** is on by default. PropKa and AmberTools still add hydrogens and missing atoms. Residue numbers and chain IDs stay as in the input, so a missing loop that jumps from 200 to 205 stays that gap. Uncheck it for the sequential Amber numbering tleap and MD expect. API: [`restore_original_residue_numbers`](api/preparation.md#restore_original_residue_numbers).
 
@@ -141,7 +141,7 @@ Columns:
 | pKa | Predicted pKa |
 | State | Protonation state PropKa assigns at the target pH |
 
-Click a row to focus that residue in the 3D view. Ctrl+click adds it to the ball-and-stick selection. Changing a state in the table previews the hydrogens that would be added (cyan) or removed (magenta). Prepare is what writes them into the file.
+Click a row to focus that residue in the 3D view. Ctrl+click adds it to the ball-and-stick selection. Changing a state in the table previews the hydrogens that would be added (cyan) or removed (magenta). That preview is an estimate, and the hydrogen positions can differ slightly from the ones Amber writes later. Prepare records the residue names. Those names are what the final system uses for protonation.
 
 Amber names used downstream: ASP/ASH, GLU/GLH, CYS/CYX, and HIS as HID, HIE, or HIP. Builder’s **Skip protonation** must stay on when this file already carries those names, or packmol-memgen will protonate again and fight them.
 
@@ -302,7 +302,33 @@ Selections use MDAnalysis syntax (`protein and name CA`). How to read the plots:
 
 Several trajectory files need a time for each file. Otherwise the x-axis is concatenated steps, not nanoseconds. See [time management](analysis.md#time-management-for-trajectories).
 
-**Titration** is a structural figure built from a PropKa run, not from a trajectory.
+### RMSD
+
+Deviation of the selection from a reference frame or a reference PDB. Alignment can be turned on. A protein trace uses `protein and name CA`. Reading the plot: [RMSD](analysis.md#rmsd-root-mean-square-deviation). The call is [`calculate_rmsd`](api/analysis.md#calculate_rmsd).
+
+### RMSF
+
+Fluctuation of each residue in the selection across the trajectory. Peaks are the flexible parts. Reading the plot: [RMSF](analysis.md#rmsf-root-mean-square-fluctuation). The call is [`calculate_rmsf`](api/analysis.md#calculate_rmsf).
+
+### Distance
+
+Distance between MDAnalysis selections over time. Each pair is its own trace. Reading the plot: [distances](analysis.md#distance-analysis). The call is [`calculate_distances`](api/analysis.md#calculate_distances).
+
+### Radius of gyration
+
+Compactness of the selection over time. A steady trace means the selection keeps its size. Reading the plot: [radius of gyration](analysis.md#radius-of-gyration). The call is [`calculate_radius_of_gyration`](api/analysis.md#calculate_radius_of_gyration).
+
+### Area per lipid
+
+Mean area of each lipid, from FATSLiM, GridMAT, or lipyphilic. A PDB or GRO in the trajectory list is skipped because that file has no periodic box. Reading the plot: [area per lipid](analysis.md#area-per-lipid). The call is [`calculate_area_per_lipid`](api/analysis.md#calculate_area_per_lipid).
+
+### Membrane thickness
+
+Distance between the two leaflet headgroups. A PDB or GRO in the trajectory list is skipped because that file has no periodic box. Reading the plot: [membrane thickness](analysis.md#membrane-thickness). The call is [`calculate_membrane_thickness`](api/analysis.md#calculate_membrane_thickness).
+
+### Titration
+
+Titration is a structural figure built from a PropKa run on one PDB. The longer notes are [titration](analysis.md#titration).
 
 - **Panel A** is the pKa comparison.
 - **Panel B** is the protonated fraction.

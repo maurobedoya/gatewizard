@@ -111,6 +111,26 @@ Both types support multiple files, custom time assignment, and flexible unit sel
 - Increasing Rg: Unfolding or expansion
 - Decreasing Rg: Compaction or folding
 
+#### Titration
+
+**Purpose**: PropKa pKa values, protonated fractions, and titration curves for one PDB. A trajectory is not used.
+
+**Usage**:
+```
+1. Select Titration from Analysis Type
+2. Browse a PDB (for STP10, 7aaq_ligand_oriented.pdb)
+3. Set the target pH, the pH step, and the pH range
+4. Run analysis
+```
+
+**Output**:
+
+- **Panel A** is the pKa comparison.
+- **Panel B** is the protonated fraction.
+- **Panel C** is the titration curve.
+
+**A/B** includes that residue in the pKa and fraction plots. **C** draws its curve. Cysteines that are in a disulfide are left out of A and B. The figure builder is [`build_titration_figure`](api/preparation.md#build_titration_figure).
+
 ### Bilayer Analysis (lipyphilic + FATSLiM)
 
 Lipid bilayer properties are calculated via the `BilayerTrajectoryAnalyzer` class. Leaflet assignment and membrane thickness always use [lipyphilic](https://lipyphilic.readthedocs.io/). Area per lipid methods:
