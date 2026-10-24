@@ -304,6 +304,25 @@ def test_separate_ligand_copies_that_overlap_are_one_conformation_pair(tmp_path:
     assert resids == [1, 1, 9, 9]
 
 
+def test_close_potassium_ions_are_not_alternate_conformations(tmp_path: Path):
+    src = tmp_path / "ions.pdb"
+    path = src
+    path.write_text(
+        "".join(
+            [
+                _atom(1, "K+", "K+", "A", 1017, 0.0),
+                _atom(2, "K+", "K+", "A", 1033, 0.4),
+                _atom(3, "K+", "K+", "A", 1100, 40.0),
+            ]
+        )
+        + "END\n",
+        encoding="utf-8",
+    )
+    report = diagnose_structure(str(src))
+    assert report["altlocs"] == []
+    assert not any(item.get("kind") == "unknown" and "K+" in item.get("message", "") for item in report["issues"])
+
+
 def test_separated_or_identical_copies_are_not_alternate_conformations(tmp_path: Path):
     far = tmp_path / "far.pdb"
     _lig(

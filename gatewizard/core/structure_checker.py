@@ -19,6 +19,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 
+from gatewizard.utils.helpers import resolve_pdb_chain_id
 from gatewizard.utils.peptide_residues import PEPTIDE_POLYMER_RESIDUES
 from gatewizard.utils.trajectory_tools import _AMBER_LIPID_RESNAMES
 
@@ -134,6 +135,22 @@ _NUCLEOTIDES = frozenset(
 _KNOWN = frozenset(PEPTIDE_POLYMER_RESIDUES) | _WATERS | _IONS | _NUCLEOTIDES | frozenset(
     _AMBER_LIPID_RESNAMES
 )
+
+
+def _is_ion_resname(name: str) -> bool:
+    """True for K, K+, Cl-, NA+, and the same ion with a charge written on the name."""
+    token = str(name or "").upper().strip()
+    if token in _IONS:
+        return True
+    stem = token.rstrip("+-")
+    while stem and stem[-1].isdigit():
+        stem = stem[:-1]
+    return bool(stem) and stem in _IONS
+
+
+def _is_known_resname(name: str) -> bool:
+    token = str(name or "").upper().strip()
+    return token in _KNOWN or _is_ion_resname(token)
 _BACKBONE_BREAK_A = 2.0
 _CHAIN_IDENTITY = 0.8
 # Two copies occupy one site when some heavy atoms sit on top of each other
@@ -226,20 +243,22 @@ def _atom_field(atom: Any, name: str, default: str = "") -> str:
     return str(value).strip()
 
 
-def _load_atoms(path: str) -> Tuple[Any, List[Dict[str, Any]], int]:
+def _load_atoms(path: str, topology: str | None = None) -> Tuple[Any, List[Dict[str, Any]], int]:
     import MDAnalysis as mda
 
-    universe = mda.Universe(path)
+    top = str(topology or "").strip()
+    if top and os.path.isfile(top):
+        universe = mda.Universe(top, path)
+    else:
+        universe = mda.Universe(path)
     n_frames = int(getattr(universe.trajectory, "n_frames", 1) or 1)
     if n_frames > 1:
         universe.trajectory[0]
     rows: List[Dict[str, Any]] = []
     for index, atom in enumerate(universe.atoms):
-        chain = _atom_field(atom, "chainID")
-        if not chain or chain.upper() in {"SYSTEM", "SEGID"}:
-            chain = _atom_field(atom, "segid")
-        if chain.upper() in {"SYSTEM", "SEGID"}:
-            chain = ""
+        # Same letter the viewer stores. A prmtop segment named SYSTEM with an
+        # empty chain column becomes S, which is what the 3D view selects.
+        chain = resolve_pdb_chain_id(_atom_field(atom, "segid"), _atom_field(atom, "chainID"))
         name = _atom_field(atom, "name").upper()
         element = _atom_field(atom, "element").upper()
         if element in {"", "DUMMY"}:
@@ -563,7 +582,7 @@ def _option_from_rows(letter: str, rows: Sequence[Mapping[str, Any]]) -> Dict[st
 
 def _cross_residue_eligible(resname: str) -> bool:
     name = resname.upper()
-    if name in PEPTIDE_POLYMER_RESIDUES or name in _WATERS or name in _IONS or name in _NUCLEOTIDES:
+    if name in PEPTIDE_POLYMER_RESIDUES or name in _WATERS or _is_ion_resname(name) or name in _NUCLEOTIDES:
         return False
     if name in _AMBER_LIPID_RESNAMES:
         return False
@@ -802,7 +821,7 @@ def _other_issues(
                     "selection": _selection(str(row["chain"]), int(row["resid"]), str(row["name"])),
                 }
             )
-        if row["resname"] and row["resname"] not in _KNOWN:
+        if row["resname"] and not _is_known_resname(str(row["resname"])):
             slot = unknown.setdefault(
                 str(row["resname"]),
                 {"count": 0, "chains": set()},
@@ -864,7 +883,7 @@ def _other_issues(
     return issues, hydrogens
 
 
-def diagnose_structure(path: str) -> Dict[str, Any]:
+def diagnose_structure(path: str, topology: str | None = None) -> Dict[str, Any]:
     """Report missing atoms, gaps, alternate conformations, and chain differences.
 
     PDB and mmCIF are read with MDAnalysis. GRO files still report missing
@@ -874,7 +893,7 @@ def diagnose_structure(path: str) -> Dict[str, Any]:
     """
     if not os.path.isfile(path):
         raise FileNotFoundError(f"Structure not found: {path}")
-    _universe, rows, n_frames = _load_atoms(path)
+    _universe, rows, n_frames = _load_atoms(path, topology)
     chains = _residues_by_chain(rows)
     missing_atoms = _missing_atoms(chains)
     numbering = _numbering_gaps(chains)
