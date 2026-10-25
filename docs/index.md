@@ -65,6 +65,7 @@ For more detailed installation instructions, see the [Installation Guide](instal
 - [User Guide](user-guide.md) - Complete guide to using GateWizard features
 - [Analysis Features](analysis.md) - Trajectory and energy analysis capabilities
 - [Study cases](study-cases/index.md) - STP10 (PDB 7AAQ) in the desktop app and the API, including MemPro and titration, and the prepare-systems timings
+- [Roadmap](roadmap.md) - Work saved for later
 - [Quick Reference](QUICK_REFERENCE.md) - Download a PDB and run the first API calls
 - [API Reference](api/index.md) - Developer documentation
 - [Troubleshooting](troubleshooting.md) - Common issues and solutions

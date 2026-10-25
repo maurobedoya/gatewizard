@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.56] - 2026-10-25
+
 ### Added
 
 - **User guide:** each app info button opens a full section. Preparation, Builder, Equilibration, Tools, and Analysis explain the choice and link to the API method that implements it. Equilibration documents compute target and the local CPU/GPU defaults separately from the cluster profile.
@@ -15,9 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Pull requests:** `.github/pull_request_template.md` asks for a summary, the related issue, and the test checklist.
 - **Study cases:** STP10 (PDB 7AAQ) has a desktop walkthrough and an API walkthrough. Equilibration uses OpenMM. The API scripts and the cleaned protein are in `tests/study_cases/7aaq/`.
 - **Study cases:** the 7AAQ scripts orient the protein with MemPrO before protonation, then build with the protein already oriented. The desktop walkthrough follows that order and includes a titration figure on the oriented PDB.
+- **Roadmap:** `docs/roadmap.md` lists desktop features that are not built yet. The Tools page still marks concatenate/trim, extract frames, align trajectory, convert format, free energy, computational electrophysiology, and enhanced sampling as coming soon. Visualize still needs a way to strip extra molecules, and EVAPL stays experimental until it is checked against FATSLiM.
 
 ### Changed
 
+- **Update manifest:** `releases/gui-versions.json` advertises API **1.0.56** and GUI **1.0.15**. The desktop app requires this API.
 - **Build folder:** an existing build folder is reused only when overwrite is set. Otherwise generation refuses that name instead of writing a timestamped sibling. A name such as `02_build_name_2` copies ligand and peptide-cap parameters from `02_build_name` when that folder has them.
 - **Salt concentration:** values above 2 M are accepted. Packmol-memgen `--saltcon` has no maximum; 0.15 M is only its default. A negative concentration is still rejected.
 - **User guide:** Builder calls the launch button **Build system**. That step is not named preparation.

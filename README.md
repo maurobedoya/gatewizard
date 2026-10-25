@@ -13,7 +13,7 @@ Python library for membrane protein preparation, system building, equilibration 
 
 If you want a desktop app, use **[gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui)**, a separate project that calls this library. You can use the API without the GUI, and the GUI without cloning this repo (it installs the API via pip).
 
-📖 [Documentation](https://maurobedoya.github.io/gatewizard/) · [Start with the API](https://maurobedoya.github.io/gatewizard/QUICK_REFERENCE/) · [Manual (PDF)](docs/manual/GateWizard-manual.pdf) · 💬 [Discussions](https://github.com/maurobedoya/gatewizard/discussions) (API + GUI community forum)
+📖 [Documentation](https://maurobedoya.github.io/gatewizard/) · [Start with the API](https://maurobedoya.github.io/gatewizard/QUICK_REFERENCE/) · [Roadmap](docs/roadmap.md) · [Manual (PDF)](docs/manual/GateWizard-manual.pdf) · 💬 [Discussions](https://github.com/maurobedoya/gatewizard/discussions) (API + GUI community forum)
 
 ## Features
 

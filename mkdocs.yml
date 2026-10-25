@@ -66,6 +66,7 @@ nav:
       - STP10 desktop app: study-cases/7aaq-gui.md
       - STP10 API: study-cases/7aaq-api.md
       - Prepare systems: study-cases/prepare-systems.md
+  - Roadmap: roadmap.md
   - Troubleshooting: troubleshooting.md
   - API:
       - Overview: api/index.md
