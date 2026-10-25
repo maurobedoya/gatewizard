@@ -7,6 +7,8 @@ Unit tests for gatewizard.tools.packmol_hydration plus documentation example run
 
 from __future__ import annotations
 
+import io
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -45,6 +47,30 @@ ATOM      3  C   ALA A   1       2.009   1.420   0.000  1.00  0.00           C
 ATOM      4  O   ALA A   1       1.251   2.389   0.000  1.00  0.00           O
 END
 """
+
+
+class _FakePackmol:
+    def __init__(self, output: bytes):
+        self.stdout = io.BytesIO(output)
+        self.stderr = None
+        self.returncode = 0
+
+    def wait(self, timeout=None):
+        return self.returncode
+
+    def kill(self):
+        self.returncode = -9
+
+
+class _TimeoutPackmol(_FakePackmol):
+    def __init__(self, output: bytes):
+        super().__init__(output)
+        self.returncode = None
+
+    def wait(self, timeout=None):
+        if self.returncode is None:
+            raise subprocess.TimeoutExpired(["packmol"], 1 if timeout is None else timeout)
+        return self.returncode
 
 
 @pytest.fixture
@@ -120,6 +146,7 @@ class TestPackmolHydrationUnit:
         )
         assert "tolerance 2.0" in text
         assert "fixed 0. 0. 0. 0. 0. 0." in text
+        assert "avoid_overlap no" in text
         assert "radius 2.5" in text
         assert "number 5" in text
         assert "inside box" in text
@@ -190,39 +217,51 @@ class TestPackmolHydrationUnit:
         out_pdb = tmp_path / "out.pdb"
         out_pdb.write_text("END\n", encoding="utf-8")
 
-        def fake_run(cmd, cwd, capture_output, text, timeout, check, stdin=None):
+        def fake_popen(cmd, cwd=None, stdin=None, stdout=None, stderr=None, env=None):
             assert cmd == ["/usr/bin/packmol"]
-            assert stdin is not None
-            class R:
-                returncode = 0
-                stdout = "SUCCESS\n"
-                stderr = ""
-
-            return R()
+            assert getattr(stdin, "mode", "") == "rb"
+            assert env["GFORTRAN_UNBUFFERED_PRECONNECTED"] == "1"
+            return _FakePackmol(b"SUCCESS\n")
 
         with patch(
             "gatewizard.tools.packmol_hydration.resolve_executable",
             return_value="/usr/bin/packmol",
-        ), patch("subprocess.run", side_effect=fake_run):
+        ), patch("subprocess.Popen", side_effect=fake_popen):
             ok, log = run_packmol(str(inp), cwd=str(tmp_path))
         assert ok is True
         assert "SUCCESS" in log
 
-    @pytest.mark.skipif(not PDB_6RV3.is_file(), reason="6RV3_AB.pdb not found")
-    def test_hydrate_cavity_mocked(self, tmp_path):
-        def fake_run(cmd, cwd, capture_output, text, timeout, check, **kwargs):
-            out = Path(cwd) / "6RV3_AB_hydrated.pdb"
-            out.write_text("END\n", encoding="utf-8")
-            class R:
-                returncode = 0
-                stdout = "SUCCESS\n"
-                stderr = ""
-            return R()
+    def test_run_packmol_timeout_writes_log(self, tmp_path):
+        inp = tmp_path / "packmol.inp"
+        inp.write_text("tolerance 2.0\n", encoding="utf-8")
+        log_path = tmp_path / "packmol.log"
+
+        def fake_popen(cmd, cwd=None, stdin=None, stdout=None, stderr=None, env=None):
+            return _TimeoutPackmol(b"still packing\n")
 
         with patch(
             "gatewizard.tools.packmol_hydration.resolve_executable",
             return_value="/usr/bin/packmol",
-        ), patch("subprocess.run", side_effect=fake_run):
+        ), patch("subprocess.Popen", side_effect=fake_popen):
+            ok, log = run_packmol(str(inp), cwd=str(tmp_path), timeout=1, log_path=str(log_path))
+        assert ok is False
+        assert "still packing" in log
+        assert "timed out after 1 seconds" in log
+        saved = log_path.read_text(encoding="utf-8")
+        assert "still packing" in saved
+        assert "timed out" in saved
+
+    @pytest.mark.skipif(not PDB_6RV3.is_file(), reason="6RV3_AB.pdb not found")
+    def test_hydrate_cavity_mocked(self, tmp_path):
+        def fake_popen(cmd, cwd=None, stdin=None, stdout=None, stderr=None, env=None):
+            out = Path(cwd) / "6RV3_AB_hydrated.pdb"
+            out.write_text("END\n", encoding="utf-8")
+            return _FakePackmol(b"SUCCESS\n")
+
+        with patch(
+            "gatewizard.tools.packmol_hydration.resolve_executable",
+            return_value="/usr/bin/packmol",
+        ), patch("subprocess.Popen", side_effect=fake_popen):
             result = hydrate_cavity(
                 pdb_file=str(PDB_6RV3),
                 working_dir=str(tmp_path),

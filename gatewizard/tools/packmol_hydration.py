@@ -13,6 +13,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
@@ -579,6 +580,12 @@ def build_hydrate_inp_text(
         f"tolerance {tolerance}",
         "filetype pdb",
         f"output {out}",
+        # Packmol 21.0.1 loops forever in "Setting initial trial coordinates"
+        # when a structure is fixed and the box is only a few cells wide.
+        # The loop condition treats a rejected guess as a reason to continue
+        # even after the try limit. Skipping that overlap filter lets the
+        # guess finish; the fixed solute still does not move.
+        "avoid_overlap no",
         "",
         f"structure {protein}",
         "  number 1",
@@ -723,12 +730,90 @@ def preview_hydrate_inp(
 # ---------------------------------------------------------------------------
 
 
+def _packmol_subprocess_env() -> Dict[str, str]:
+    """Environment for the PACKMOL process.
+
+    gfortran block-buffers stdout when it is not a terminal, so ``packmol.log``
+    stays empty until the process exits. Unbuffer the preconnected units.
+    """
+    env = os.environ.copy()
+    env.setdefault("GFORTRAN_UNBUFFERED_PRECONNECTED", "1")
+    return env
+
+
+def _append_packmol_log(log_path: Optional[str], text: str) -> None:
+    if not log_path or not text:
+        return
+    with Path(log_path).open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(text)
+        handle.flush()
+
+
+def _drain_packmol_stdout(
+    proc: subprocess.Popen,
+    parts: List[str],
+    log_path: Optional[str],
+) -> None:
+    stdout = proc.stdout
+    if stdout is None:
+        return
+    while True:
+        chunk = stdout.read(4096)
+        if not chunk:
+            break
+        text = chunk.decode("utf-8", errors="replace")
+        parts.append(text)
+        _append_packmol_log(log_path, text)
+
+
+def _finish_packmol_process(
+    proc: subprocess.Popen,
+    timeout: Optional[int],
+    log_path: Optional[str],
+) -> Tuple[str, bool]:
+    """Wait for PACKMOL and return ``(log_text, timed_out)``.
+
+    Output is appended to ``log_path`` as it arrives. A timeout used to read
+    ``TimeoutExpired.stdout`` as bytes and crash with ``can't concat str to
+    bytes`` before any log was written.
+    """
+    parts: List[str] = []
+    reader = threading.Thread(
+        target=_drain_packmol_stdout,
+        args=(proc, parts, log_path),
+        daemon=True,
+    )
+    reader.start()
+    timed_out = False
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        proc.kill()
+        proc.wait()
+    reader.join()
+    log = "".join(parts)
+    if timed_out:
+        limit = timeout if timeout is not None else 0
+        note = f"\nPACKMOL timed out after {limit} seconds.\n"
+        log += note
+        _append_packmol_log(log_path, note)
+    return log, timed_out
+
+
 def run_packmol(
     inp_path: str,
     cwd: Optional[str] = None,
-    timeout: int = 600,
+    timeout: Optional[int] = 600,
+    log_path: Optional[str] = None,
 ) -> Tuple[bool, str]:
-    """Run PACKMOL on an input file. Returns (success, log_text)."""
+    """Run PACKMOL on an input file. Returns (success, log_text).
+
+    ``timeout`` is a limit in seconds. ``None`` waits until PACKMOL exits.
+    AmberTools PACKMOL reads the input from stdin and then rewinds it, so
+    stdin has to be the input file itself. ``-i`` is ignored (STOP 171), and a
+    pipe cannot be rewound (Fortran ``Illegal seek``).
+    """
     packmol = resolve_executable(("packmol",))
     if not packmol:
         raise PackmolHydrationError(
@@ -737,25 +822,22 @@ def run_packmol(
 
     work_dir = cwd or str(Path(inp_path).parent)
     inp_file = Path(inp_path)
-    # AmberTools Packmol Memgen (20.x) reads input from stdin only; ``-i`` is ignored
-    # and leaves filetype/output unparsed (STOP 171).
-    try:
-        with inp_file.open("r", encoding="utf-8", newline="\n") as inp_f:
-            proc = subprocess.run(
-                [packmol],
-                cwd=work_dir,
-                stdin=inp_f,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                check=False,
-            )
-    except subprocess.TimeoutExpired as exc:
-        log = (exc.stdout or "") + (exc.stderr or "")
-        return False, log + "\nPACKMOL timed out."
+    if log_path:
+        Path(log_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(log_path).write_text("", encoding="utf-8")
 
-    log = (proc.stdout or "") + (proc.stderr or "")
-    success = proc.returncode == 0 and "SUCCESS" in log.upper()
+    with inp_file.open("rb") as inp_f:
+        proc = subprocess.Popen(
+            [packmol],
+            cwd=work_dir,
+            stdin=inp_f,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            env=_packmol_subprocess_env(),
+        )
+        log, timed_out = _finish_packmol_process(proc, timeout, log_path)
+
+    success = (not timed_out) and proc.returncode == 0 and "SUCCESS" in log.upper()
     return success, log
 
 
@@ -809,8 +891,8 @@ def hydrate_cavity(
     volumes = VolumeEstimate(**prep["volumes"])
 
     inp_path = prep["packmol_inp_path"]
-    success, log = run_packmol(inp_path)
     log_path = Path(job_dir) / "packmol.log"
+    success, log = run_packmol(inp_path, cwd=job_dir, log_path=str(log_path))
     log_path.write_text(log, encoding="utf-8")
 
     output_pdb = prep["output_pdb_path"]
@@ -837,7 +919,7 @@ def run_custom_packmol(
     working_dir: str,
     output_folder_name: str,
     inp_filename: str = "packmol_custom.inp",
-    timeout: int = 600,
+    timeout: Optional[int] = 600,
 ) -> Dict[str, Any]:
     """Write user PACKMOL input and execute (Phase 2 custom tab)."""
     if not working_dir:
@@ -848,8 +930,13 @@ def run_custom_packmol(
     inp_path = job_dir / inp_filename
     inp_path.write_text(inp_text, encoding="utf-8")
 
-    success, log = run_packmol(str(inp_path), cwd=str(job_dir), timeout=timeout)
     log_path = job_dir / "packmol.log"
+    success, log = run_packmol(
+        str(inp_path),
+        cwd=str(job_dir),
+        timeout=timeout,
+        log_path=str(log_path),
+    )
     log_path.write_text(log, encoding="utf-8")
 
     output_match = re.search(r"^output\s+(\S+)", inp_text, re.MULTILINE | re.IGNORECASE)

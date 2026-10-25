@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Packmol hydration:** a small cavity with one water no longer hangs. AmberTools PACKMOL 21.0.1 stays in "Setting initial trial coordinates" when the solute is `fixed` and the box is only a few cells wide. The generated input sets `avoid_overlap no`, so that guess finishes and the solute stays fixed. A timeout writes `packmol.log` instead of crashing with `can't concat str to bytes`.
 - **Structure checker:** `K+`, `Na+`, and `Cl-` are ions. Copies that sit near each other are not reported as alternate conformations, and the name is not an unknown residue. `diagnose_structure` accepts the topology that was used to open the coordinates.
 
 ### Security
