@@ -57,55 +57,132 @@ python -c "import gatewizard; print(gatewizard.__version__)"
 
 ### Linux
 
-GateWizard works natively on Linux. Follow the Quick Installation steps above.
-
-**Additional Notes:**
-- Ensure you have `tkinter` support: `sudo apt-get install python3-tk` (Ubuntu/Debian)
-- For display issues, ensure X11 is properly configured
+Follow [Full API installation](#full-api-installation-linux-or-wsl) above. For the desktop app, see [Desktop GUI](#desktop-gui).
 
 ### macOS
 
-GateWizard works on macOS with some considerations:
-
-```bash
-# Follow the Quick Installation steps, then:
-
-# If you encounter display issues:
-conda install -c conda-forge python.app
-
-```
-
-**Known Issues:**
-- On Apple Silicon (M1/M2), some dependencies may require Rosetta 2
+Follow the same conda and pip steps, and leave out `cudatoolkit`. OpenMM uses Metal or OpenCL on macOS. For the desktop app, see [Desktop GUI](#desktop-gui).
 
 ### Windows
 
-GateWizard is best used on Windows with WSL (Windows Subsystem for Linux):
-
-**Option 1: WSL (Recommended)**
-```bash
-# 1. Install WSL2 with Ubuntu
-wsl --install
-
-# 2. Inside WSL, follow the Linux installation instructions
-# 3. Install X server on Windows (e.g., VcXsrv, X410)
-# 4. Set DISPLAY environment variable in WSL
-export DISPLAY=:0
-```
-
-**Option 2: Native Windows (Experimental)**
-```bash
-# Use Anaconda Prompt
-conda create -n gatewizard -c conda-forge python sqlite ambertools=26 parmed=4.3.0 -y
-conda activate gatewizard
-conda install -c conda-forge -c bioconda reduce -y
-pip install gatewizard
-python -c "import gatewizard; print(gatewizard.__version__)"
-```
-
-For the desktop app on Windows, use the [gatewizard-gui Windows installer](https://github.com/franciscoadasme/gatewizard-gui/releases) or the Linux/WSL build for the full MD workflow.
+Use **WSL 2**. Inside Ubuntu, follow the Linux API install. Native Windows conda can install the library for scripting, but the desktop app has no native Windows build — install the Linux package inside WSL (see [Desktop GUI](#desktop-gui)).
 
 If Windows Task Manager shows `VmmemWSL` using several GB after you close the app, cap the VM — see [Troubleshooting: VmmemWSL RAM](troubleshooting.md#issue-vmmemwsl-keeps-using-a-lot-of-ram-after-gatewizard-closes).
+
+## Desktop GUI
+
+Download the installer from [gatewizard-gui Releases](https://github.com/franciscoadasme/gatewizard-gui/releases). **First launch** downloads Python packages into an embedded micromamba environment (several minutes). Keep the splash screen open. Progress appears there.
+
+Install logs:
+
+- **Linux / WSL:** `~/.config/gatewizard-gui/runtime-install.log`
+- **macOS:** `~/Library/gatewizard-gui/runtime-install.log`
+
+### Linux and WSL
+
+Native Windows installers are not published. On a Windows PC, install **WSL 2** and use the **Linux** build (full MD workflow: AmberTools, membrane builder, OpenMM).
+
+**Supported distros (tested):**
+
+| Environment | Ubuntu / Debian / Fedora | Notes |
+|-------------|-----------------|-------|
+| **WSL** | **24.04** | Recommended. Tested with WSLg |
+| WSL | 26.04 | Tested. The app selects Mesa d3d12 when `/dev/dxg` and `libd3d12.so` are present |
+| WSL | 22.04 | Not supported. The `.deb` and the launcher refuse this distro |
+| **Native Linux** | 22.04 or newer | Full support on a desktop with X11 or Wayland |
+
+Use **WSL 2** with **WSLg** (`wsl --version` lists WSLg). If the window reports `Maximum number of clients reached`, the Windows display is full. From Windows PowerShell run `wsl.exe --shutdown`, open one Ubuntu, and start `gatewizard-gui-linux` once.
+
+#### Uninstall the `.deb`
+
+Remove the app but keep the embedded Python environment (`~/.config/gatewizard-gui/mamba-env`, often several GB):
+
+```bash
+sudo apt remove gatewizard-gui-linux
+```
+
+Remove the app **and** delete that environment for the user who ran `sudo` (including `mamba-env` and the install log):
+
+```bash
+sudo apt purge gatewizard-gui-linux
+```
+
+Purge does not delete a separate conda env such as `~/miniconda3/envs/gatewizard`, and it does not uninstall ALSA, GTK, or other system libraries. For AppImage, delete the AppImage file; the same `~/.config/gatewizard-gui` folder can be removed by hand if you want a clean slate. See also [Uninstallation](#uninstallation).
+
+**`.deb` (Ubuntu/Debian/WSL):**
+
+```bash
+sudo apt install ./gatewizard-gui-*-linux-amd64.deb
+gatewizard-gui-linux
+```
+
+The installer checks Electron’s system libraries (including ALSA, `libasound.so.2`) and a C compiler (`cc`) before it unpacks. If anything is missing, the install stops and the console prints `sudo apt update` plus one `apt install` line. Run those commands, then install the `.deb` again. The same check runs when you start `gatewizard-gui-linux`.
+
+**AppImage:**
+
+```bash
+chmod +x gatewizard-gui-*-linux-x86_64.AppImage
+./gatewizard-gui-*-linux-x86_64.AppImage
+```
+
+AppImage does not install `.deb` dependencies. On a fresh Ubuntu / WSL box, install ALSA first if the launcher reports `libasound.so.2`:
+
+```bash
+sudo apt update
+sudo apt install libasound2t64 || sudo apt install libasound2
+```
+
+If any other `.so` is missing, `gatewizard-gui-linux` (and the AppImage) print the `apt` / `dnf` command and exit.
+
+**Fedora Linux:**
+
+```bash
+sudo dnf install -y fuse fuse-libs alsa-lib
+chmod +x gatewizard-gui-*-linux-x86_64.AppImage
+./gatewizard-gui-*-linux-x86_64.AppImage
+```
+
+Display GPU (splash and Visualize) and renderer memory overrides are in [Troubleshooting](troubleshooting.md#desktop-gui-display-gpu-and-memory).
+
+### macOS desktop app
+
+GateWizard releases from GitHub are not Apple-notarized yet. macOS may block the app the first time.
+
+1. Download the `.dmg` for your Mac from [Releases](https://github.com/franciscoadasme/gatewizard-gui/releases) (Apple Silicon: `*-mac-arm64.dmg`).
+2. Double-click the `.dmg` to open it.
+3. Drag `gatewizard-gui-mac.app` into **Applications**.
+4. Eject the disk image.
+5. Open **Applications** and launch **gatewizard-gui-mac** (do not run the app from inside the `.dmg`).
+
+If macOS says it cannot verify the app:
+
+1. Try to open the app once (it will be blocked).
+2. Open **System Settings → Privacy & Security**.
+3. Scroll down and click **Open Anyway** next to the GateWizard message.
+4. Confirm **Open**, then launch again from **Applications**.
+
+Alternatives: right-click → **Open** → **Open**, or remove the quarantine flag:
+
+```bash
+xattr -cr /Applications/gatewizard-gui-mac.app
+```
+
+Do not click **Move to Trash** in the Gatekeeper dialog — that deletes the app.
+
+Wait on the splash screen until the main window appears (first run often 5–15 minutes). Update the API later from **Settings** (gear) → **Versions & updates** → **Check for updates**.
+
+If the log shows `SSL module is not available` or `libcrypto.3.dylib (not a mach-o file)`, the embedded environment under `~/Library/gatewizard-gui/mamba-env` is corrupted. Quit GateWizard, then:
+
+```bash
+rm -rf ~/Library/gatewizard-gui/mamba-env
+rm -f ~/Library/gatewizard-gui/runtime-state.json
+```
+
+Relaunch from **Applications**. If it happens again, exclude `~/Library/gatewizard-gui` from **iCloud Desktop & Documents** sync. Verify with:
+
+```bash
+~/Library/gatewizard-gui/mamba-env/bin/python -c "import ssl; print(ssl.OPENSSL_VERSION)"
+```
 
 ## Dependencies
 
@@ -171,14 +248,14 @@ GateWizard equilibration works with either a **CPU** or **CUDA** `gmx`. Prefer t
 
 ### Desktop GUI runtime (GROMACS / CUDA)
 
-[gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui) bootstraps an embedded micromamba env on first launch (see that repo’s README and `runtime-install.log`).
+[gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui) bootstraps an embedded micromamba env on first launch (see [Desktop GUI](#desktop-gui) and `runtime-install.log`).
 
 - **OpenMM:** on Linux/WSL, if `nvidia-smi` sees a GPU, the GUI installs `openmm` + `cudatoolkit` into the embedded env (unless `GATEWIZARD_SKIP_CONDA_CUDA=1`).
 - **GROMACS (default):** the GUI installs the **CPU** conda-forge build. This avoids multi-hour CUDA solver hangs next to OpenMM’s toolkit.
 - **GROMACS CUDA (opt-in):** set `GATEWIZARD_CONDA_GROMACS_CUDA=1` before launching the GUI. The bootstrap tries a frozen CUDA install with a short timeout, then falls back to CPU GROMACS if the solve stalls.
 - Quitting mid-install kills leftover `micromamba` processes for that env so a relaunch is not blocked by an orphaned solver.
 - Linux/WSL log: `~/.config/gatewizard-gui/runtime-install.log` (look for `[gromacs] starting…` / `failed` / `installed`).
-- The embedded env is `~/.config/gatewizard-gui/mamba-env`. `sudo apt remove gatewizard-gui-linux` leaves it. `sudo apt purge gatewizard-gui-linux` deletes that directory for the user who ran sudo. It does not remove a separate conda env such as `~/miniconda3/envs/gatewizard`.
+- The embedded env is `~/.config/gatewizard-gui/mamba-env`. To delete it with the package, use `sudo apt purge gatewizard-gui-linux` — see [Uninstall the `.deb`](#uninstall-the-deb).
 
 Manual API environments should follow the same preference: install **CPU** `gromacs` by default; only add the CUDA matchspec if you accept a long or fragile solve.
 
@@ -336,15 +413,37 @@ python -c "import gatewizard; print(gatewizard.__version__)"
 
 ## Uninstallation
 
-To completely remove GateWizard:
+### Python API (conda)
 
 ```bash
-# Remove conda environment
 conda deactivate
 conda env remove -n gatewizard
-
-# Remove repository (if desired)
+# Optional: remove a git checkout
 rm -rf /path/to/gatewizard
+```
+
+### Desktop GUI (Linux / WSL `.deb`)
+
+Keep the embedded runtime (reinstall later without a full download):
+
+```bash
+sudo apt remove gatewizard-gui-linux
+```
+
+Remove the package **and** the embedded environment under `~/.config/gatewizard-gui` (including `mamba-env`):
+
+```bash
+sudo apt purge gatewizard-gui-linux
+```
+
+Purge uses the home directory of the user who ran `sudo`. It does not remove `~/miniconda3/envs/gatewizard` or system libraries. Details: [Uninstall the `.deb`](#uninstall-the-deb).
+
+### Desktop GUI (macOS)
+
+Quit the app, move **gatewizard-gui-mac** out of **Applications**, then optionally delete the embedded environment:
+
+```bash
+rm -rf ~/Library/gatewizard-gui
 ```
 
 ## Next Steps

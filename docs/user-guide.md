@@ -355,9 +355,87 @@ Time, which energy terms are drawn, and the plotted window apply to the active l
 
 ## Settings and clusters
 
-Gear → **Clusters**: host, user, key, remote workdir, optional scratch. GPU safe mode is session-only unless you change it here.
+Gear → **Clusters**: host, user, SSH identity file, remote work directory, and optional scratch. Passwords are session-only and are never saved in the profile. An identity file lets GateWizard log in without asking every time. GPU safe mode is session-only unless you change it here.
 
 ![Settings clusters](images/user-guide/settings_clusters.png)
+
+GateWizard uses these profiles for **Connect & probe**, **Run on cluster**, and remote job progress.
+
+### What you need from your cluster
+
+Ask your HPC support or check your cluster docs for:
+
+| GateWizard field | Example | You replace with |
+|------------------|---------|------------------|
+| **Host** | `login.hpc.university.edu` | Your cluster’s SSH hostname |
+| **Port** | `22` | Usually `22` (only change if your site says otherwise) |
+| **Username** | `jsmith` | Your cluster login name (often your university ID) |
+| **SSH identity file** | `~/.ssh/id_ed25519` | Path to your private key (see below) |
+
+### Generate an SSH identity file
+
+An SSH identity file is your **private key**. You create it once, copy the matching **public** key to the cluster, then point GateWizard at the private key path.
+
+Run these commands on the **same machine where GateWizard runs** (if you use WSL, open a WSL terminal — not Windows PowerShell).
+
+**Step 1 — Create a key pair**
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519
+```
+
+When prompted:
+
+- **Passphrase** — optional. Press Enter for none, or type a password to protect the key. GateWizard can still use a passphrase if `ssh-agent` has the key loaded.
+- **File location** — the `-f ~/.ssh/id_ed25519` line already picks the default path. Just press Enter if `ssh-keygen` asks again.
+
+This creates two files:
+
+| File | Purpose |
+|------|---------|
+| `~/.ssh/id_ed25519` | **Private key** — keep secret; this is what you type in GateWizard’s **SSH identity file** |
+| `~/.ssh/id_ed25519.pub` | **Public key** — safe to copy to the cluster |
+
+The optional `-C "some label"` flag on `ssh-keygen` is only a comment inside the key. You do not need a special label for GateWizard.
+
+**RSA (only if your cluster does not accept Ed25519):**
+
+```bash
+ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa
+```
+
+Use `~/.ssh/id_rsa` as the identity file in GateWizard instead.
+
+**Step 2 — Copy the public key to the cluster**
+
+Replace `YOUR_USERNAME` and `YOUR_CLUSTER_HOST` with the same values you use in the cluster profile:
+
+```bash
+ssh-copy-id -i ~/.ssh/id_ed25519.pub YOUR_USERNAME@YOUR_CLUSTER_HOST
+```
+
+Example (username `jsmith`, host `login.hpc.university.edu`):
+
+```bash
+ssh-copy-id -i ~/.ssh/id_ed25519.pub jsmith@login.hpc.university.edu
+```
+
+If `ssh-copy-id` is not available, paste the **one line** from `~/.ssh/id_ed25519.pub` into `~/.ssh/authorized_keys` on the cluster.
+
+**Step 3 — Set permissions (Linux / WSL / macOS)**
+
+```bash
+chmod 700 ~/.ssh
+chmod 600 ~/.ssh/id_ed25519
+```
+
+**Step 4 — Test login**
+
+```bash
+ssh -i ~/.ssh/id_ed25519 YOUR_USERNAME@YOUR_CLUSTER_HOST
+```
+
+If that opens a shell on the cluster without errors, set **SSH identity file** in GateWizard to `~/.ssh/id_ed25519` (or `~/.ssh/id_rsa` if you used RSA).
 
 ## Status bar
 

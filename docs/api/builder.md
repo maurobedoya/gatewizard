@@ -218,7 +218,7 @@ The `lipid_ratios` string specifies molar ratios for each leaflet:
 - Ratios are normalized automatically (don't need to sum to 1.0)
 - Use `//` to separate upper and lower leaflet ratios
 
-**Available lipids:**
+#### Available lipids
 
 GateWizard supports **4028** atomistic lipids from `packmol-memgen --available_lipids_all` (version 2025.1.29). Each row has the residue name, the charge, and the full chemical name. `ForceFieldManager.get_available_lipids()` returns the residue names, and `get_lipid_catalog()` returns the charge, the chemical name, and the note.
 

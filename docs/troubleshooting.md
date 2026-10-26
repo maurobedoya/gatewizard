@@ -70,7 +70,7 @@ export DISPLAY=:0
 **On macOS**:
 ```bash
 # For the desktop app, use gatewizard-gui from Applications
-# See https://github.com/franciscoadasme/gatewizard-gui#macos
+# See Installation → Desktop GUI → macOS
 ```
 
 **On Windows WSL**:
@@ -96,7 +96,7 @@ python -c "import MDAnalysis"
 python -c "import parmed"
 ```
 
-**Check 3**: For the desktop app, check install logs (see [gatewizard-gui README](https://github.com/franciscoadasme/gatewizard-gui#install))
+**Check 3**: For the desktop app, check install logs (see [Desktop GUI](installation.md#desktop-gui))
 
 ### Issue: GUI appears but is unresponsive
 
@@ -360,15 +360,55 @@ sudo chown -R $USER:$USER ~/miniconda3
 
 ### macOS
 
-**Issue**: App not trusted
-**Solution**:
-```bash
-# Allow running from unidentified developer
-xattr -d com.apple.quarantine /path/to/gatewizard
-```
+**Issue**: App not trusted (Gatekeeper)
+
+GateWizard releases are not Apple-notarized. See [Desktop GUI → macOS](installation.md#macos-desktop-app) for Open Anyway and the `xattr` steps.
 
 **Issue**: Retina display scaling
 **Solution**: Adjust display settings in System Preferences
+
+**Issue**: `SSL module is not available` / `libcrypto.3.dylib (not a mach-o file)` on first launch
+
+The embedded environment under `~/Library/gatewizard-gui/mamba-env` is corrupted (often by iCloud). See [Desktop GUI → macOS](installation.md#macos-desktop-app) for the reset commands.
+
+### Desktop GUI display GPU and memory
+
+This is the Electron / WebGL path for the splash screen and Visualize, not OpenMM or GROMACS compute. There is no native Windows app — on Windows, use WSL.
+
+| Runtime | What the app does |
+|---------|-------------------|
+| WSL with `/dev/dxg` and `/usr/lib/wsl/lib/libd3d12.so` | Sets `GALLIUM_DRIVER=d3d12` before Chromium starts (fixes Ubuntu 26.04 Mesa defaulting to llvmpipe). Mesa picks the adapter — the app does not hardcode NVIDIA. |
+| WSL without those files | Leaves Mesa (often software GL; 3D is slower). |
+| Native Linux | Unchanged (Mesa or the NVIDIA driver). |
+| macOS | Unchanged (Metal). |
+
+If Chromium’s GPU process crashes after the Python environment is ready, that session relaunches once in software mode (SwiftShader). A crash during the first install does not quit the app, so the install can finish. The next launch tries the GPU again.
+
+Overrides (always win):
+
+| Variable | Effect |
+|----------|--------|
+| `GATEWIZARD_GPU_SAFE_MODE=1` | SwiftShader software rendering |
+| `GATEWIZARD_GALLIUM_DRIVER=llvmpipe` | Force Mesa software GL (empty value disables auto d3d12) |
+| `GALLIUM_DRIVER` | Left as-is if already set |
+| `MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA` | Optional, if Mesa picked the wrong GPU on a hybrid laptop |
+| `GATEWIZARD_MAX_OLD_SPACE_SIZE` | Renderer V8 heap limit in **MB** (default **4096**, clamp 2048–16384) |
+
+If the console shows `JavaScript heap out of memory` / `renderer process gone` while loading many structures, raise the heap before launching (`8192` = 8 GB):
+
+```bash
+GATEWIZARD_MAX_OLD_SPACE_SIZE=8192 gatewizard-gui-linux
+```
+
+To keep it across sessions, add `export GATEWIZARD_MAX_OLD_SPACE_SIZE=8192` to your shell profile.
+
+WSL often has no session D-Bus. The app reuses one `gatewizard-bus` socket. An older package can leave many `dbus-daemon` processes behind; stop them with `pkill -f gatewizard-bus || true`, then run `wsl.exe --shutdown` from Windows PowerShell.
+
+If the splash screen appears but the main window never opens on WSL, force software rendering:
+
+```bash
+GATEWIZARD_GPU_SAFE_MODE=1 gatewizard-gui-linux --ozone-platform=wayland
+```
 
 ### Windows (WSL)
 
@@ -449,7 +489,7 @@ Then reopen your WSL terminal and launch **gatewizard-gui-linux** again. WSLg re
 
 If you're still experiencing issues:
 
-1. **Check logs**: GUI runtime log at `~/.config/gatewizard-gui/runtime-install.log` (Linux/WSL) — see [gatewizard-gui install docs](https://github.com/franciscoadasme/gatewizard-gui#install)
+1. **Check logs**: GUI runtime log at `~/.config/gatewizard-gui/runtime-install.log` (Linux/WSL) — see [Desktop GUI](installation.md#desktop-gui)
 2. **Search existing threads**: [Discussions](https://github.com/maurobedoya/gatewizard/discussions) and [GitHub issues](https://github.com/maurobedoya/gatewizard/issues)
 3. **Ask the community**: Post in [Discussions](https://github.com/maurobedoya/gatewizard/discussions) (use labels `api` or `gui` as appropriate).
 4. **Provide details**: When asking for help, include:
@@ -482,4 +522,4 @@ A: No. EULA / Terms-of-Service lines in the log are not interactive prompts (`-y
 A: DCD, XTC, TRR, NetCDF, and others via MDAnalysis.
 
 **Q: How do I cite GateWizard?**
-A: Citation information to be added.
+A: Software DOI [https://doi.org/10.5281/zenodo.18264074](https://doi.org/10.5281/zenodo.18264074). Publication to be added.

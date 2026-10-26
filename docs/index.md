@@ -115,9 +115,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 If you use GateWizard in your research, please cite:
 
-```
-[Citation information to be added]
-```
+- **Software:** [https://doi.org/10.5281/zenodo.18264074](https://doi.org/10.5281/zenodo.18264074)
+- **Publication:** to be added
 
 ---
 
