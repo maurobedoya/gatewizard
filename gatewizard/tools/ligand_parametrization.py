@@ -1359,6 +1359,16 @@ def build_ligand_param_args(ligand_files: Dict[str, Dict[str, str]]) -> List[str
     return args
 
 
+def tleap_quote_path(path: str) -> str:
+    """Quote a path for tleap so spaces and hyphens stay one argument.
+
+    Always wraps in double quotes (plain paths stay valid). Embedded ``"``
+    become ``\\"``.
+    """
+    text = str(path or "").replace("\\", "/").replace('"', '\\"')
+    return f'"{text}"'
+
+
 def build_tleap_ligand_lines(
     ligand_files: Dict[str, Dict[str, str]],
     atom_type: str = DEFAULT_ATOM_TYPE,
@@ -1367,6 +1377,8 @@ def build_tleap_ligand_lines(
     Build tleap input lines to load ligand parameters.
 
     These lines should be inserted BEFORE ``loadPDB`` in the tleap input.
+    ``frcmod`` and ``lib`` paths are always quoted so folders with spaces
+    (for example OneDrive) work the same as plain paths.
 
     Args:
         ligand_files: Dict mapping ligand name to file paths
@@ -1384,8 +1396,8 @@ def build_tleap_ligand_lines(
         >>> print(lines)
         # Load GAFF2 and ligand parameters
         source leaprc.gaff2
-        loadamberparams AAA/AAA.frcmod
-        loadoff AAA/AAA.lib
+        loadamberparams "AAA/AAA.frcmod"
+        loadoff "AAA/AAA.lib"
     """
     if not ligand_files:
         return ""
@@ -1406,9 +1418,9 @@ def build_tleap_ligand_lines(
         frcmod = files.get("frcmod", "")
         lib = files.get("lib", "")
         if frcmod:
-            lines.append(f"loadamberparams {frcmod}")
+            lines.append(f"loadamberparams {tleap_quote_path(frcmod)}")
         if lib:
-            lines.append(f"loadoff {lib}")
+            lines.append(f"loadoff {tleap_quote_path(lib)}")
 
     return "\n".join(lines)
 

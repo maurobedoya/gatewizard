@@ -9,6 +9,7 @@ from gatewizard.tools.ligand_parametrization import (
     _load_gaff_mol2,
     build_tleap_ligand_lines,
     forcefield_charge_warning,
+    tleap_quote_path,
 )
 
 
@@ -43,9 +44,30 @@ def test_mixed_ligand_force_fields_source_both_leaprc():
     )
     assert "source leaprc.gaff2" in lines
     assert "source leaprc.gaff" in lines
-    assert lines.index("source leaprc.gaff2") < lines.index("loadamberparams AAA.frcmod")
-    assert "loadamberparams BBB.frcmod" in lines
-    assert "loadoff BBB.lib" in lines
+    assert lines.index("source leaprc.gaff2") < lines.index('loadamberparams "AAA.frcmod"')
+    assert 'loadamberparams "BBB.frcmod"' in lines
+    assert 'loadoff "BBB.lib"' in lines
+
+
+def test_tleap_paths_with_spaces_are_quoted():
+    spaced = (
+        "/mnt/c/Users/kcoru/OneDrive - Universidad Catolica del Maule/"
+        "project/ligand_params/NFX/NFX.frcmod"
+    )
+    lines = build_tleap_ligand_lines(
+        {
+            "NFX": {
+                "frcmod": spaced,
+                "lib": spaced.replace(".frcmod", ".lib"),
+                "atom_type": "gaff2",
+            }
+        }
+    )
+    assert f'loadamberparams "{spaced}"' in lines
+    assert f'loadoff "{spaced.replace(".frcmod", ".lib")}"' in lines
+    assert "loadamberparams /mnt/c" not in lines
+    assert tleap_quote_path("AAA/AAA.frcmod") == '"AAA/AAA.frcmod"'
+    assert tleap_quote_path('weird"name.frcmod') == '"weird\\"name.frcmod"'
 
 
 def _hexagon(radius, origin):

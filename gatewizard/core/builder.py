@@ -32,6 +32,7 @@ from gatewizard.tools.validators import SystemValidator
 from gatewizard.tools.ligand_parametrization import (
     build_ligand_param_args,
     build_tleap_ligand_lines,
+    tleap_quote_path,
 )
 from gatewizard.tools.peptide_cap_parametrization import peptide_cap_params_charge_delta
 from gatewizard.tools.namd_water import tleap_flexible_water_lines
@@ -2078,7 +2079,7 @@ source {water_leaprc}"""
 {ligand_lines}
 
 # Load PDB file (protein + membrane + water + neutralized)
-system = loadPDB {pdb_path}
+system = loadPDB {tleap_quote_path(pdb_path)}
 
 # Box and disulfide bonds (tleap_geometry.in, written next to this file).
 source tleap_geometry.in
@@ -2105,17 +2106,7 @@ quit
         ligand_params = dict(config.get("ligand_params") or {})
         peptide_cap_params = dict(config.get("peptide_cap_params") or {})
         merged = {**ligand_params, **peptide_cap_params}
-        if not merged:
-            return ""
-        lines = ["# Load GAFF2 and ligand / peptide-cap parameters", "source leaprc.gaff2"]
-        for name, files in merged.items():
-            frcmod = files.get("frcmod", "")
-            lib = files.get("lib", "")
-            if frcmod:
-                lines.append(f"loadamberparams {frcmod}")
-            if lib:
-                lines.append(f"loadoff {lib}")
-        return "\n".join(lines)
+        return build_tleap_ligand_lines(merged)
 
     def prepare_system_stage1_for_propka(
         self,

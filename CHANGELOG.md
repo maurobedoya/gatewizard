@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Maestro properties:** `list_maestro_entries`, `read_maestro_properties`, and `pick_headline_property` read Glide, MM/GBSA, IFD / Prime, and other CT-level scores from `.mae` / `.maegz` files (RDKit). The Visualize page uses the same module. Docs: `docs/api/maestro.md`.
+
+### Fixed
+
+- **Builder tleap:** `loadamberparams`, `loadoff`, and `loadPDB` paths in the system leap input are always quoted. Folders with spaces or hyphens no longer split into extra tleap tokens; plain paths keep working.
+
 ### Changed
 
 - **README:** MemPrO is listed with the other `[full]` packages. The install notes no longer call it out separately. The membrane-builder line points at the lipid catalog instead of repeating the counts. Install, dependencies, SSH cluster setup, and desktop install steps point at the documentation pages instead of duplicating them.
