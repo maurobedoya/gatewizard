@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **README:** MemPrO is listed with the other `[full]` packages. The install notes no longer call it out separately. The membrane-builder line points at the lipid catalog instead of repeating the counts. Install, dependencies, SSH cluster setup, and desktop install steps point at the documentation pages instead of duplicating them.
 - **Docs:** Installation covers the desktop GUI installers (WSL, `.deb`, AppImage, macOS) and asks for at least 8 GB of free disk for the first-run environment. Under Linux / WSL, install steps (`.deb`, AppImage, Fedora) come before uninstall. The user guide covers SSH identity files for cluster profiles. Troubleshooting covers display GPU and renderer memory overrides. Uninstallation documents `sudo apt remove` vs `sudo apt purge` for the Linux `.deb`.
+- **User guide:** Visualize Open mentions Maestro files, the auto score order, and how to pick another property; it links to the Maestro properties API. Open also lists GRO, MOL2, SDF/SD, XYZ, TPR topologies, Amber restart coordinates with a topology, same-stem companions, **Coordinates only** (skip companion), and the multi-molecule SDF entry picker.
 
 ## [1.0.56] - 2026-10-25
 
