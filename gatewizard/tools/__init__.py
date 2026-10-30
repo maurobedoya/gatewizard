@@ -47,6 +47,16 @@ from gatewizard.tools.packmol_hydration import (
     run_packmol,
     PackmolHydrationError,
 )
+from gatewizard.tools.maestro import (
+    HEADLINE_PROPERTY_NAMES,
+    MAESTRO_PROP_STRING_MAX,
+    MaestroError,
+    is_maestro_path,
+    list_maestro_entries,
+    maestro_ct_properties,
+    pick_headline_property,
+    read_maestro_properties,
+)
 
 __all__ = [
     "ForceFieldManager",
@@ -85,4 +95,12 @@ __all__ = [
     "run_custom_packmol",
     "run_packmol",
     "PackmolHydrationError",
+    "HEADLINE_PROPERTY_NAMES",
+    "MAESTRO_PROP_STRING_MAX",
+    "MaestroError",
+    "is_maestro_path",
+    "list_maestro_entries",
+    "maestro_ct_properties",
+    "pick_headline_property",
+    "read_maestro_properties",
 ]

@@ -34,6 +34,19 @@ INVENTORY: list[tuple[str, str, str, list[str], list[str]]] = [
         ["diagnose_structure", "apply_altloc_choices", "keep_most_likely_altlocs"],
     ),
     (
+        "Maestro properties",
+        "maestro.md",
+        "gatewizard/tools/maestro.py",
+        [],
+        [
+            "is_maestro_path",
+            "list_maestro_entries",
+            "maestro_ct_properties",
+            "pick_headline_property",
+            "read_maestro_properties",
+        ],
+    ),
+    (
         "Biological assembly",
         "assembly.md",
         "gatewizard/core/assembly.py",

@@ -36,6 +36,17 @@ Report missing atoms, gaps, alternate conformations, and chain differences in a 
 
 ---
 
+### [Maestro properties](maestro.md)
+Read Glide, MM/GBSA, IFD / Prime, and other connection-table scores from `.mae` / `.maegz` files.
+
+**Key Features:**
+
+- List every CT with title, atom count, and typed properties
+- Drop oversized embedded-string properties
+- Same headline score order as the Visualize entry picker
+
+---
+
 ### [Biological assembly](assembly.md)
 Expand the oligomer or capsid from operators already stored in a PDB or mmCIF file.
 

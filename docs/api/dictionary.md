@@ -43,6 +43,14 @@ Regenerate with `python scripts/gen_api_dictionary.py`.
 - [`diagnose_structure`](structure_checker.md#diagnose_structure)
 - [`keep_most_likely_altlocs`](structure_checker.md#keep_most_likely_altlocs)
 
+## Maestro properties
+
+- [`is_maestro_path`](maestro.md#is_maestro_path)
+- [`list_maestro_entries`](maestro.md#list_maestro_entries)
+- [`maestro_ct_properties`](maestro.md#maestro_ct_properties)
+- [`pick_headline_property`](maestro.md#pick_headline_property)
+- [`read_maestro_properties`](maestro.md#read_maestro_properties)
+
 ## Biological assembly
 
 - [`build_assembly`](assembly.md#build_assembly)

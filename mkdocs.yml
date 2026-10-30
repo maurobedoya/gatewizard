@@ -74,6 +74,7 @@ nav:
       - Method dictionary: api/dictionary.md
       - Structure Manager: api/structure_manager.md
       - Structure checker: api/structure_checker.md
+      - Maestro properties: api/maestro.md
       - Biological assembly: api/assembly.md
       - Preparation Module: api/preparation.md
       - Builder Module: api/builder.md
