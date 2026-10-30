@@ -657,7 +657,7 @@ plot_rmsf(
 | `xaxis_type` | str | `"residue_number"` | X-axis type: `"residue_number"`, `"residue_type_number"`, `"atom_index"` |
 | `show_residue_labels` | bool | `True` | Show residue labels on X-axis |
 | `residue_name_format` | str | `"single"` | Residue format: `"single"` (A, G, V) or `"triple"` (ALA, GLY, VAL) |
-| `label_frequency` | str | `"auto"` | Label frequency: `"all"`, `"auto"`, `"every_2"`, `"every_5"`, `"every_10"`, `"every_20"` |
+| `label_frequency` | str | `"auto"` | Label frequency: `"all"`, `"auto"`, `"every_2"`, `"every_5"`, `"every_10"`, `"every_20"`, `"every_50"` (or any `"every_N"`) |
 | `distance_units` | str | `"Å"` | Distance units: `"Å"` or `"nm"` |
 | `line_color` | str | `"blue"` | Plot line color (matplotlib color or hex) |
 | `line_width` | float | `1.2` | Line thickness/width |
@@ -685,7 +685,7 @@ plot_rmsf(
 
 - `"all"` - Every residue labeled
 - `"auto"` - Smart frequency based on count (<20: all, <50: every_2, <100: every_5, <200: every_10, else: every_20)
-- `"every_2"`, `"every_5"`, `"every_10"`, `"every_20"` - Specific intervals
+- `"every_2"`, `"every_5"`, `"every_10"`, `"every_20"`, `"every_50"` (or any `"every_N"`) - Specific intervals
 
 ### Example 7: RMSF Plotting
 
@@ -975,7 +975,7 @@ label_frequency="every_2"
 label_frequency="every_5"
 
 # Large protein (> 300 residues)
-label_frequency="every_10" or "every_20"
+label_frequency="every_10", "every_20", or "every_50"
 ```
 
 ### 4. Color Schemes

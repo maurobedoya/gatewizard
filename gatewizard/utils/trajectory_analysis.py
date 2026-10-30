@@ -1421,7 +1421,8 @@ class TrajectoryAnalyzer:
             xaxis_type: X-axis type - 'residue_number', 'residue_type_number', or 'atom_index'
             show_residue_labels: Show residue labels on X-axis
             residue_name_format: 'single' (A, G, V) or 'triple' (ALA, GLY, VAL)
-            label_frequency: 'all', 'auto', 'every_2', 'every_5', 'every_10', 'every_20'
+            label_frequency: 'all', 'auto', 'every_2', 'every_5', 'every_10',
+                'every_20', 'every_50' (or any ``every_N``)
             distance_units: 'Å' (angstrom) or 'nm' (nanometer) for Y-axis
             line_color: Color for the plot line
             line_width: Width of the plot line (default: 1.2)
@@ -1642,9 +1643,16 @@ class TrajectoryAnalyzer:
 
             # Determine label frequency
             n_residues = len(resids)
-            if label_frequency == "all":
+            freq = str(label_frequency or "auto").strip().lower()
+            every_match = None
+            if freq.startswith("every_"):
+                try:
+                    every_match = int(freq.split("_", 1)[1])
+                except ValueError:
+                    every_match = None
+            if freq == "all":
                 step = 1
-            elif label_frequency == "auto":
+            elif freq == "auto":
                 # Auto-determine based on number of residues
                 if n_residues < 20:
                     step = 1
@@ -1656,14 +1664,8 @@ class TrajectoryAnalyzer:
                     step = 10
                 else:
                     step = 20
-            elif label_frequency == "every_2":
-                step = 2
-            elif label_frequency == "every_5":
-                step = 5
-            elif label_frequency == "every_10":
-                step = 10
-            elif label_frequency == "every_20":
-                step = 20
+            elif every_match is not None and every_match >= 1:
+                step = every_match
             else:
                 step = 1
 
