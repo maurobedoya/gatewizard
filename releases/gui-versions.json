@@ -1,10 +1,10 @@
 {
   "schema": 1,
-  "released_at": "2026-10-25",
+  "released_at": "2026-10-30",
   "gatewizard": {
-    "latest": "1.0.56",
-    "min_for_gui": "1.0.56",
-    "install": "gatewizard[full]>=1.0.56"
+    "latest": "1.0.57",
+    "min_for_gui": "1.0.57",
+    "install": "gatewizard[full]>=1.0.57"
   },
   "mempro": {
     "latest": "0.3.1",
@@ -14,16 +14,16 @@
   },
   "notes": "Bump gatewizard before each GUI release. MemPrO is optional and must not block startup. GUI releases: Linux + macOS only; Windows users install via WSL (no native .exe). CI copies the built manifest to maurobedoya/gatewizard/releases/gui-versions.json when UPDATE_MANIFEST_TOKEN is set.",
   "gui": {
-    "latest": "1.0.15",
-    "min_gatewizard": "1.0.56",
-    "release_page": "https://github.com/franciscoadasme/gatewizard-gui/releases/tag/v1.0.15",
+    "latest": "1.0.16",
+    "min_gatewizard": "1.0.57",
+    "release_page": "https://github.com/franciscoadasme/gatewizard-gui/releases/tag/v1.0.16",
     "downloads": {
-      "linux_appimage": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.15/gatewizard-gui-1.0.15-linux-x86_64.AppImage",
-      "linux_deb": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.15/gatewizard-gui-1.0.15-linux-amd64.deb",
-      "linux": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.15/gatewizard-gui-1.0.15-linux-amd64.deb",
-      "mac": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.15/gatewizard-gui-1.0.15-mac-arm64.dmg",
-      "mac_arm64": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.15/gatewizard-gui-1.0.15-mac-arm64.dmg",
-      "mac_x64": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.15/gatewizard-gui-1.0.15-mac-x64.dmg"
+      "linux_appimage": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.16/gatewizard-gui-1.0.16-linux-x86_64.AppImage",
+      "linux_deb": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.16/gatewizard-gui-1.0.16-linux-amd64.deb",
+      "linux": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.16/gatewizard-gui-1.0.16-linux-amd64.deb",
+      "mac": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.16/gatewizard-gui-1.0.16-mac-arm64.dmg",
+      "mac_arm64": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.16/gatewizard-gui-1.0.16-mac-arm64.dmg",
+      "mac_x64": "https://github.com/franciscoadasme/gatewizard-gui/releases/download/v1.0.16/gatewizard-gui-1.0.16-mac-x64.dmg"
     },
     "platform_notes": {
       "win": "No native Windows installer. Install the Linux .deb or AppImage inside WSL 2 (Ubuntu 24.04 recommended)."
