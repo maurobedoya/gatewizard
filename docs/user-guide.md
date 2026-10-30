@@ -39,7 +39,7 @@ The Representations dock adds a view of the loaded atoms. The styles are points,
 
 ### Trajectories
 
-**Open → Trajectory…** takes a topology plus one or more DCD, XTC, TRR, or NetCDF files. A companion `.prmtop` or `.psf` in the same folder is used when you open a structure that has one. Each file can keep every frame or a stride.
+**Open → Trajectory…** takes a topology plus one or more DCD, XTC, TRR, or NetCDF files. A companion `.prmtop` or `.psf` in the same folder is used when you open a structure that has one. Each file can keep every frame or a stride. Drag ⠿ to reorder files so they concatenate in the order you want.
 
 Play stays off until the frame cache is ready. The status line says Indexing, then Loading frames into RAM. The slider and the play button then move through the frames. **Traj-smooth** on a representation card follows the movie instead of jumping each frame. **Tools → Align / RMSD…** aligns that trajectory or reports the RMSD.
 

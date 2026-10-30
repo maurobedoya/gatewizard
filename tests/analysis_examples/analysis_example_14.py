@@ -22,6 +22,10 @@ trajectory_files = [
     data_dir / "step1_equilibration.dcd",
     data_dir / "step2_equilibration.dcd",
     data_dir / "step3_equilibration.dcd",
+    data_dir / "step4_equilibration.dcd",
+    data_dir / "step5_equilibration.dcd",
+    data_dir / "step6_equilibration.dcd",
+    data_dir / "step7_production.dcd",
 ]
 
 # POPC headgroup phosphorus atoms in the AMBER lipid parametrization
@@ -29,11 +33,17 @@ LIPID_SEL = "resname PC and name P31"
 # FATSLiM is optional; EVAPL stays in-process for a clean clone.
 APL_METHOD = "fatslim" if fatslim_is_available() else "evapl"
 
+# Default protocol stage times (ns); production set to 200 ns for this dataset.
 file_times = {
-    "step1_equilibration.dcd": 0.1,  # 0.1 ns
-    "step2_equilibration.dcd": 0.1,  # 0.1 ns
-    "step3_equilibration.dcd": 0.1,  # 0.1 ns
+    "step1_equilibration.dcd": 0.125,
+    "step2_equilibration.dcd": 0.5,
+    "step3_equilibration.dcd": 0.25,
+    "step4_equilibration.dcd": 0.5,
+    "step5_equilibration.dcd": 1.0,
+    "step6_equilibration.dcd": 47.625,
+    "step7_production.dcd": 200.0,
 }
+file_strides = {name: 1 for name in file_times}
 
 # ------------------------------------------------------------------
 # 1. Class API — calculate area per lipid
@@ -42,6 +52,7 @@ analyzer = BilayerTrajectoryAnalyzer(
     topology_file,
     trajectory_files,
     file_times=file_times,
+    file_strides=file_strides,
 )
 data = analyzer.calculate_area_per_lipid(lipid_sel=LIPID_SEL, apl_method=APL_METHOD)
 
@@ -72,6 +83,7 @@ result = run_bilayer_analysis(
     analysis_type="area_per_lipid",
     lipid_sel=LIPID_SEL,
     file_times=file_times,
+    file_strides=file_strides,
     apl_method=APL_METHOD,
 )
 print(f"JSON API mean area: {result['stats']['mean']:.1f} Å²")

@@ -21,15 +21,25 @@ trajectory_files = [
     data_dir / "step1_equilibration.dcd",
     data_dir / "step2_equilibration.dcd",
     data_dir / "step3_equilibration.dcd",
+    data_dir / "step4_equilibration.dcd",
+    data_dir / "step5_equilibration.dcd",
+    data_dir / "step6_equilibration.dcd",
+    data_dir / "step7_production.dcd",
 ]
 
 LIPID_SEL = "resname PC and name P31"
 
+# Default protocol stage times (ns); production set to 200 ns for this dataset.
 file_times = {
-    "step1_equilibration.dcd": 0.1,  # 0.1 ns
-    "step2_equilibration.dcd": 0.1,  # 0.1 ns
-    "step3_equilibration.dcd": 0.1,  # 0.1 ns
+    "step1_equilibration.dcd": 0.125,
+    "step2_equilibration.dcd": 0.5,
+    "step3_equilibration.dcd": 0.25,
+    "step4_equilibration.dcd": 0.5,
+    "step5_equilibration.dcd": 1.0,
+    "step6_equilibration.dcd": 47.625,
+    "step7_production.dcd": 200.0,
 }
+file_strides = {name: 1 for name in file_times}
 
 # ------------------------------------------------------------------
 # 1. Class API — calculate membrane thickness
@@ -38,6 +48,7 @@ analyzer = BilayerTrajectoryAnalyzer(
     topology_file,
     trajectory_files,
     file_times=file_times,
+    file_strides=file_strides,
 )
 data = analyzer.calculate_membrane_thickness(lipid_sel=LIPID_SEL)
 
@@ -65,5 +76,6 @@ result = run_bilayer_analysis(
     analysis_type="membrane_thickness",
     lipid_sel=LIPID_SEL,
     file_times=file_times,
+    file_strides=file_strides,
 )
 print(f"JSON API mean thickness: {result['stats']['mean']:.1f} Å")

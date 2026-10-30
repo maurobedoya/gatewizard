@@ -30,14 +30,15 @@ log_files = [
 
 # Provide real stage durations (ns) to override the "Time (ps)" column
 # — useful when logs lack the time column or have restarted counters.
+# Default protocol stage times (ns); production set to 200 ns for this dataset.
 file_times = {
     "step1_equilibration.log": 0.125,
-    "step2_equilibration.log": 0.125,
-    "step3_equilibration.log": 0.125,
-    "step4_equilibration.log": 0.25,
-    "step5_equilibration.log": 0.25,
-    "step6_equilibration.log": 0.5,
-    "step7_production.log": 50.0,
+    "step2_equilibration.log": 0.5,
+    "step3_equilibration.log": 0.25,
+    "step4_equilibration.log": 0.5,
+    "step5_equilibration.log": 1.0,
+    "step6_equilibration.log": 47.625,
+    "step7_production.log": 200.0,
 }
 
 analyzer = OpenMMLogAnalyzer(log_files, file_times=file_times)
@@ -63,7 +64,7 @@ for key in ("potential", "kinetic", "total", "temp", "volume", "density"):
 analyzer.plot_energy(
     save="energy_multistage_example_12.png",
     show=False,
-    title="Full equilibration + production (51.375 ns)",
+    title="Full equilibration + production (250 ns)",
     target_temperature=303.15,
 )
 

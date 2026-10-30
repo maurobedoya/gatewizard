@@ -31,26 +31,24 @@ from gatewizard.utils.lipid_bilayer_analysis import (  # noqa: E402
 )
 
 LIPID_SEL = "resname PC and name P31"
+# equilibration_folder bilayer: PC headgroup phosphorus count (system.pdb / prmtop).
+N_PC_LIPIDS = 181
 
 
 @pytest.fixture(scope="module")
 def equilibration_bilayer_data():
-    data_dir = Path(__file__).parent / "analysis_examples" / "equilibration_folder"
-    topology = data_dir / "system.pdb"
-    trajectories = [
-        data_dir / "step1_equilibration.dcd",
-        data_dir / "step2_equilibration.dcd",
-        data_dir / "step3_equilibration.dcd",
-    ]
-    if not topology.exists() or not all(t.exists() for t in trajectories):
+    from tests.analysis_examples.equilibration_folder_meta import (
+        FILE_STRIDES,
+        FILE_TIMES,
+        TOPOLOGY,
+        data_available,
+        trajectory_paths,
+    )
+
+    if not data_available():
         pytest.skip("equilibration_folder test data not found")
 
-    file_times = {
-        "step1_equilibration.dcd": 0.1,
-        "step2_equilibration.dcd": 0.1,
-        "step3_equilibration.dcd": 0.1,
-    }
-    return topology, trajectories, file_times
+    return TOPOLOGY, trajectory_paths(), dict(FILE_TIMES), dict(FILE_STRIDES)
 
 
 class TestBilayerAnalysisExports:
@@ -331,22 +329,26 @@ class TestAreaPerLipid:
         monkeypatch.setattr(
             "gatewizard.utils.fatslim_apl.resolve_fatslim_executable", lambda: None
         )
-        topology, trajectories, file_times = equilibration_bilayer_data
-        analyzer = BilayerTrajectoryAnalyzer(topology, trajectories, file_times=file_times)
+        topology, trajectories, file_times, file_strides = equilibration_bilayer_data
+        analyzer = BilayerTrajectoryAnalyzer(
+            topology, trajectories, file_times=file_times, file_strides=file_strides
+        )
         with pytest.raises(FatslimError, match="GATEWIZARD_FATSLIM|install_fatslim_env"):
             analyzer.calculate_area_per_lipid(
                 lipid_sel=LIPID_SEL, exclude_sel="", start=0, stop=2
             )
 
     def test_calculate_area_per_lipid(self, equilibration_bilayer_data):
-        topology, trajectories, file_times = equilibration_bilayer_data
-        analyzer = BilayerTrajectoryAnalyzer(topology, trajectories, file_times=file_times)
+        topology, trajectories, file_times, file_strides = equilibration_bilayer_data
+        analyzer = BilayerTrajectoryAnalyzer(
+            topology, trajectories, file_times=file_times, file_strides=file_strides
+        )
         data = analyzer.calculate_area_per_lipid(
             lipid_sel=LIPID_SEL, exclude_sel="", apl_method="lipyphilic", start=0, stop=2
         )
 
-        assert len(data["resids"]) == 122
-        assert data["areas"].shape[0] == 122
+        assert len(data["resids"]) == N_PC_LIPIDS
+        assert data["areas"].shape[0] == N_PC_LIPIDS
         assert data["areas"].shape[1] >= 1
         mean_area = float(data["mean_area_per_lipid"].mean())
         assert 40.0 < mean_area < 120.0
@@ -364,8 +366,10 @@ class TestAreaPerLipid:
                 super().__init__(*args, **kwargs)
 
         monkeypatch.setattr(apl_mod, "AreaPerLipid", Spy)
-        topology, trajectories, file_times = equilibration_bilayer_data
-        analyzer = BilayerTrajectoryAnalyzer(topology, trajectories, file_times=file_times)
+        topology, trajectories, file_times, file_strides = equilibration_bilayer_data
+        analyzer = BilayerTrajectoryAnalyzer(
+            topology, trajectories, file_times=file_times, file_strides=file_strides
+        )
         data = analyzer.calculate_area_per_lipid(
             lipid_sel=LIPID_SEL, exclude_sel="", apl_method="lipyphilic", start=0, stop=2
         )
@@ -375,8 +379,10 @@ class TestAreaPerLipid:
     def test_lipyphilic_exclude_requires_upstream_support(self, equilibration_bilayer_data):
         if _lipyphilic_areaperlipid_supports_exclude():
             pytest.skip("installed lipyphilic already supports exclude_sel")
-        topology, trajectories, file_times = equilibration_bilayer_data
-        analyzer = BilayerTrajectoryAnalyzer(topology, trajectories, file_times=file_times)
+        topology, trajectories, file_times, file_strides = equilibration_bilayer_data
+        analyzer = BilayerTrajectoryAnalyzer(
+            topology, trajectories, file_times=file_times, file_strides=file_strides
+        )
         with pytest.raises(ValueError, match="exclude support|requirements-lipyphilic-git|fatslim|evapl"):
             analyzer.calculate_area_per_lipid(
                 lipid_sel=LIPID_SEL,
@@ -391,8 +397,10 @@ class TestAreaPerLipid:
         reason="needs lipyphilic from requirements-lipyphilic-git.txt (PR #164)",
     )
     def test_lipyphilic_exclude_lowers_mean_when_supported(self, equilibration_bilayer_data):
-        topology, trajectories, file_times = equilibration_bilayer_data
-        analyzer = BilayerTrajectoryAnalyzer(topology, trajectories, file_times=file_times)
+        topology, trajectories, file_times, file_strides = equilibration_bilayer_data
+        analyzer = BilayerTrajectoryAnalyzer(
+            topology, trajectories, file_times=file_times, file_strides=file_strides
+        )
         no_excl = analyzer.calculate_area_per_lipid(
             lipid_sel=LIPID_SEL, exclude_sel="", apl_method="lipyphilic", start=0, stop=2
         )
@@ -409,12 +417,16 @@ class TestAreaPerLipid:
         assert mean_prot < mean_no - 0.5
 
     def test_evapl_protein_exclude_lowers_mean_apl(self, equilibration_bilayer_data):
-        topology, trajectories, file_times = equilibration_bilayer_data
-        analyzer = BilayerTrajectoryAnalyzer(topology, trajectories, file_times=file_times)
+        topology, trajectories, file_times, file_strides = equilibration_bilayer_data
+        analyzer = BilayerTrajectoryAnalyzer(
+            topology, trajectories, file_times=file_times, file_strides=file_strides
+        )
         lipyphilic = analyzer.calculate_area_per_lipid(
             lipid_sel=LIPID_SEL, exclude_sel="", apl_method="lipyphilic", start=0, stop=2
         )
-        analyzer2 = BilayerTrajectoryAnalyzer(topology, trajectories, file_times=file_times)
+        analyzer2 = BilayerTrajectoryAnalyzer(
+            topology, trajectories, file_times=file_times, file_strides=file_strides
+        )
         evapl = analyzer2.calculate_area_per_lipid(
             lipid_sel=LIPID_SEL,
             exclude_sel="protein",
@@ -428,8 +440,10 @@ class TestAreaPerLipid:
         assert 40.0 < mean_evapl < 120.0
 
     def test_gridmat_apl_on_equilibration(self, equilibration_bilayer_data):
-        topology, trajectories, file_times = equilibration_bilayer_data
-        analyzer = BilayerTrajectoryAnalyzer(topology, trajectories, file_times=file_times)
+        topology, trajectories, file_times, file_strides = equilibration_bilayer_data
+        analyzer = BilayerTrajectoryAnalyzer(
+            topology, trajectories, file_times=file_times, file_strides=file_strides
+        )
         no_excl = analyzer.calculate_area_per_lipid(
             lipid_sel=LIPID_SEL, exclude_sel="", apl_method="gridmat", start=0, stop=2
         )
@@ -447,8 +461,10 @@ class TestAreaPerLipid:
         assert mean_prot < mean_no
 
     def test_vtmc_apl_on_equilibration(self, equilibration_bilayer_data):
-        topology, trajectories, file_times = equilibration_bilayer_data
-        analyzer = BilayerTrajectoryAnalyzer(topology, trajectories, file_times=file_times)
+        topology, trajectories, file_times, file_strides = equilibration_bilayer_data
+        analyzer = BilayerTrajectoryAnalyzer(
+            topology, trajectories, file_times=file_times, file_strides=file_strides
+        )
         no_excl = analyzer.calculate_area_per_lipid(
             lipid_sel=LIPID_SEL,
             exclude_sel="",
@@ -472,7 +488,7 @@ class TestAreaPerLipid:
         assert mean_prot < mean_no
 
     def test_run_bilayer_analysis_area_per_lipid(self, equilibration_bilayer_data):
-        topology, trajectories, file_times = equilibration_bilayer_data
+        topology, trajectories, file_times, file_strides = equilibration_bilayer_data
         result = run_bilayer_analysis(
             topology,
             trajectories,
@@ -481,6 +497,7 @@ class TestAreaPerLipid:
             exclude_sel="",
             apl_method="lipyphilic",
             file_times=file_times,
+            file_strides=file_strides,
             start=0,
             stop=2,
         )
@@ -488,16 +505,18 @@ class TestAreaPerLipid:
         assert result["analysis_type"] == "area_per_lipid"
         assert result["x_label"] == "Time (ns)"
         assert result["y_label"] == "Area per lipid (Å²)"
-        assert len(result["lipid_resids"]) == 122
-        assert len(result["per_lipid_areas"]) == 122
+        assert len(result["lipid_resids"]) == N_PC_LIPIDS
+        assert len(result["per_lipid_areas"]) == N_PC_LIPIDS
         assert 40.0 < result["stats"]["mean"] < 120.0
         assert "mean" in result["stats"]
 
 
 class TestMembraneThickness:
     def test_calculate_membrane_thickness(self, equilibration_bilayer_data):
-        topology, trajectories, file_times = equilibration_bilayer_data
-        analyzer = BilayerTrajectoryAnalyzer(topology, trajectories, file_times=file_times)
+        topology, trajectories, file_times, file_strides = equilibration_bilayer_data
+        analyzer = BilayerTrajectoryAnalyzer(
+            topology, trajectories, file_times=file_times, file_strides=file_strides
+        )
         data = analyzer.calculate_membrane_thickness(lipid_sel=LIPID_SEL)
 
         assert len(data["thickness"]) >= 1
@@ -505,13 +524,14 @@ class TestMembraneThickness:
         assert 30.0 < mean_thickness < 60.0
 
     def test_run_bilayer_analysis_membrane_thickness(self, equilibration_bilayer_data):
-        topology, trajectories, file_times = equilibration_bilayer_data
+        topology, trajectories, file_times, file_strides = equilibration_bilayer_data
         result = run_bilayer_analysis(
             topology,
             trajectories,
             analysis_type="membrane_thickness",
             lipid_sel=LIPID_SEL,
             file_times=file_times,
+            file_strides=file_strides,
         )
 
         assert result["analysis_type"] == "membrane_thickness"
@@ -522,7 +542,7 @@ class TestMembraneThickness:
 
     def test_bilayer_time_axis_spans_file_times(self, equilibration_bilayer_data):
         """Regression: x-axis must honor file_times, not fall back to 0.01 ns/frame."""
-        topology, trajectories, file_times = equilibration_bilayer_data
+        topology, trajectories, file_times, file_strides = equilibration_bilayer_data
         expected_total = sum(file_times.values())
         result = run_bilayer_analysis(
             topology,
@@ -530,6 +550,7 @@ class TestMembraneThickness:
             analysis_type="membrane_thickness",
             lipid_sel=LIPID_SEL,
             file_times=file_times,
+            file_strides=file_strides,
         )
         x = result["x"]
         assert len(x) == len(result["y"])
@@ -555,7 +576,7 @@ class TestMembraneThickness:
 
 class TestBilayerAnalysisValidation:
     def test_unsupported_analysis_type(self, equilibration_bilayer_data):
-        topology, trajectories, file_times = equilibration_bilayer_data
+        topology, trajectories, file_times, file_strides = equilibration_bilayer_data
         with pytest.raises(ValueError, match="Unsupported bilayer analysis type"):
             run_bilayer_analysis(
                 topology,
@@ -563,4 +584,5 @@ class TestBilayerAnalysisValidation:
                 analysis_type="flip_flop",
                 lipid_sel=LIPID_SEL,
                 file_times=file_times,
+                file_strides=file_strides,
             )

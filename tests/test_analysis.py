@@ -198,41 +198,89 @@ class TestTrajectoryAnalyzerStride:
         """Aligned RMSD must error on 0 atoms (not return silent NaNs)."""
         pytest.importorskip("MDAnalysis")
         from gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer
+        from tests.analysis_examples.equilibration_folder_meta import (
+            FILE_TIMES,
+            TOPOLOGY,
+            data_available,
+            trajectory_paths,
+        )
 
-        data_dir = Path(__file__).parent / "analysis_examples" / "equilibration_folder"
-        topology = data_dir / "system.pdb"
-        traj = data_dir / "step1_equilibration.dcd"
-        if not topology.exists() or not traj.exists():
+        if not data_available():
             pytest.skip("equilibration_folder test data not found")
 
+        traj = trajectory_paths()[0]
         analyzer = TrajectoryAnalyzer(
-            topology,
+            TOPOLOGY,
             [traj],
-            file_times={"step1_equilibration.dcd": 0.0},
+            file_times={traj.name: FILE_TIMES[traj.name]},
+            file_strides={traj.name: 1},
         )
         with pytest.raises(ValueError, match="matched 0 atoms"):
             analyzer.calculate_rmsd(
                 selection="resname NOTAREAL",
                 align=True,
-                reference_structure=str(topology),
+                reference_structure=str(TOPOLOGY),
             )
+
+    def test_rmsd_protein_ca_full_protocol(self):
+        """RMSD on protein CA across all default-protocol DCDs (stride=1, prod 200 ns)."""
+        pytest.importorskip("MDAnalysis")
+        import numpy as np
+        from gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer
+        from tests.analysis_examples.equilibration_folder_meta import (
+            FILE_STRIDES,
+            FILE_TIMES,
+            TOPOLOGY,
+            TOTAL_TIME_NS,
+            data_available,
+            trajectory_paths,
+        )
+
+        if not data_available():
+            pytest.skip("equilibration_folder test data not found")
+
+        trajectories = trajectory_paths()
+        analyzer = TrajectoryAnalyzer(
+            TOPOLOGY,
+            trajectories,
+            file_times=FILE_TIMES,
+            file_strides=FILE_STRIDES,
+        )
+        n_ca = len(analyzer.universe.select_atoms("protein and name CA"))
+        if n_ca < 3:
+            pytest.skip("equilibration_folder has no protein CA atoms")
+
+        data = analyzer.calculate_rmsd(
+            selection="protein and name CA",
+            align=True,
+            reference_frame=0,
+        )
+        assert len(data["rmsd"]) == len(data["time"]) >= 1
+        assert np.isfinite(data["rmsd"]).all()
+        assert float(data["rmsd"][0]) == pytest.approx(0.0, abs=1e-3)
+        assert float(data["time"][-1]) == pytest.approx(TOTAL_TIME_NS, rel=0.02, abs=0.05)
 
     def test_rmsf_prepare_runs_on_equilibration_data(self):
         """On-the-fly unwrap+align RMSF returns finite values (same length as raw)."""
         pytest.importorskip("MDAnalysis")
         import numpy as np
         from gatewizard.utils.trajectory_analysis import TrajectoryAnalyzer
+        from tests.analysis_examples.equilibration_folder_meta import (
+            FILE_TIMES,
+            TOPOLOGY,
+            data_available,
+            trajectory_paths,
+        )
 
-        data_dir = Path(__file__).parent / "analysis_examples" / "equilibration_folder"
-        topology = data_dir / "system.pdb"
-        traj = data_dir / "step1_equilibration.dcd"
-        if not topology.exists() or not traj.exists():
+        if not data_available():
             pytest.skip("equilibration_folder test data not found")
 
+        traj = trajectory_paths()[0]
         analyzer = TrajectoryAnalyzer(
-            topology,
+            TOPOLOGY,
             [traj],
-            file_times={"step1_equilibration.dcd": 0.1},
+            file_times={traj.name: FILE_TIMES[traj.name]},
+            file_strides={traj.name: 1},
         )
         try:
             n_prot = len(analyzer.universe.select_atoms("protein and name CA"))
@@ -251,16 +299,19 @@ class TestTrajectoryAnalyzerStride:
         """Empty selection must fail on topology before opening DCD files."""
         pytest.importorskip("MDAnalysis")
         from gatewizard.utils.trajectory_analysis import run_structural_analysis
+        from tests.analysis_examples.equilibration_folder_meta import (
+            TOPOLOGY,
+            data_available,
+            trajectory_paths,
+        )
 
-        data_dir = Path(__file__).parent / "analysis_examples" / "equilibration_folder"
-        topology = data_dir / "system.pdb"
-        traj = data_dir / "step1_equilibration.dcd"
-        if not topology.exists() or not traj.exists():
+        if not data_available():
             pytest.skip("equilibration_folder test data not found")
 
+        traj = trajectory_paths()[0]
         with pytest.raises(ValueError, match="matched 0 atoms"):
             run_structural_analysis(
-                topology_file=str(topology),
+                topology_file=str(TOPOLOGY),
                 trajectory_files=[str(traj)],
                 analysis_type="rmsd",
                 selection="protein and resid 99999",

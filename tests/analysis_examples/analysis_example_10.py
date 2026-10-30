@@ -10,31 +10,44 @@ data_dir = script_dir / "equilibration_folder"
 # ============================================================================
 
 topology_file = data_dir / "system.pdb"
-# Multiple trajectory files from equilibration_folder
+# Full default-protocol trajectories (Eq1–6 + production)
 trajectory_files = [
     data_dir / "step1_equilibration.dcd",
     data_dir / "step2_equilibration.dcd",
     data_dir / "step3_equilibration.dcd",
+    data_dir / "step4_equilibration.dcd",
+    data_dir / "step5_equilibration.dcd",
+    data_dir / "step6_equilibration.dcd",
+    data_dir / "step7_production.dcd",
 ]
 
-# Initialize analyzer with custom time for each file (in nanoseconds)
+# Default protocol stage times (ns); production set to 200 ns for this dataset.
+# DCDs were exported with stride already applied — analyse every stored frame.
+file_times = {
+    "step1_equilibration.dcd": 0.125,
+    "step2_equilibration.dcd": 0.5,
+    "step3_equilibration.dcd": 0.25,
+    "step4_equilibration.dcd": 0.5,
+    "step5_equilibration.dcd": 1.0,
+    "step6_equilibration.dcd": 47.625,
+    "step7_production.dcd": 200.0,
+}
+file_strides = {name: 1 for name in file_times}
+
 analyzer = TrajectoryAnalyzer(
     topology_file,
     trajectory_files,
-    file_times={
-        "step1_equilibration.dcd": 0.1,  # 0.1 ns
-        "step2_equilibration.dcd": 0.1,  # 0.1 ns
-        "step3_equilibration.dcd": 0.1,  # 0.1 ns
-    },
+    file_times=file_times,
+    file_strides=file_strides,
 )
 
 # RMSD plot with full dark theme customization
 analyzer.plot_rmsd(
-    selection="protein and backbone",
+    selection="protein and name CA",
     reference_frame=0,
     align=True,
     distance_units="Å",
-    time_units="ps",
+    time_units="ns",
     line_color="#00d9ff",  # Bright cyan
     line_width=2.0,
     line_style="-",
@@ -45,7 +58,7 @@ analyzer.plot_rmsd(
     xlim=None,
     ylim=None,
     title="Dark Theme RMSD - Full Customization",
-    xlabel="Time (ps)",
+    xlabel="Time (ns)",
     ylabel="RMSD (Å)",
     highlight_threshold=None,
     highlight_color="orange",
@@ -75,10 +88,10 @@ print(f"Dark theme RMSD plot saved: dark_theme_rmsd_example_10.png")
 # ============================================================================
 
 analyzer.plot_rmsd(
-    selection="protein and backbone",
+    selection="protein and name CA",
     align=True,
     distance_units="Å",
-    time_units="ps",
+    time_units="ns",
     line_color="#7fff00",  # Chartreuse
     line_width=1.8,
     line_style="-",
@@ -87,17 +100,17 @@ analyzer.plot_rmsd(
     text_color="#c9d1d9",
     show_grid=True,
     title="Dark Theme RMSD - With Threshold and Reference Lines",
-    xlabel="Time (ps)",
+    xlabel="Time (ns)",
     ylabel="RMSD (Å)",
-    highlight_threshold=0.25,  # Highlight regions > 0.25 Å
+    highlight_threshold=2.0,
     highlight_color="#ff6b6b",  # Red highlight
     highlight_alpha=0.5,
     show_convergence=True,
     convergence_color="#ffd700",  # Gold
     convergence_style="-.",
     convergence_width=1.5,
-    hlines=[0.1, 0.2, 0.25],  # Horizontal reference lines
-    hline_colors=["#4ecdc4", "#95e1d3", "#ff6b6b"],  # Teal to red gradient
+    hlines=[1.0, 2.0, 3.0],
+    hline_colors=["#4ecdc4", "#95e1d3", "#ff6b6b"],
     hline_styles=[":", ":", ":"],
     hline_widths=[1.0, 1.0, 1.0],
     save="dark_theme_rmsd_with_lines_example_10.png",
@@ -112,10 +125,10 @@ print(f"Dark theme RMSD with lines saved: dark_theme_rmsd_with_lines_example_10.
 # ============================================================================
 
 analyzer.plot_rmsd(
-    selection="protein and backbone",
+    selection="protein and name CA",
     align=True,
     distance_units="Å",
-    time_units="ps",
+    time_units="ns",
     line_color="#ffffff",  # Pure white line
     line_width=1.5,
     line_style="-",

@@ -20,13 +20,13 @@ log_files = [
 analyzer = EnergyAnalyzer(
     [str(f) for f in log_files],
     file_times={
-        "step1_equilibration.log": 0.1,  # 100 ps
-        "step2_equilibration.log": 0.1,  # 100 ps
-        "step3_equilibration.log": 0.1,  # 100 ps
-        "step4_equilibration.log": 0.1,  # 100 ps
-        "step5_equilibration.log": 0.1,  # 100 ps
-        "step6_equilibration.log": 0.1,  # 100 ps
-        "step7_production.log": 0.1,  # 100 ps
+        "step1_equilibration.log": 0.125,
+        "step2_equilibration.log": 0.5,
+        "step3_equilibration.log": 0.25,
+        "step4_equilibration.log": 0.5,
+        "step5_equilibration.log": 1.0,
+        "step6_equilibration.log": 47.625,
+        "step7_production.log": 200.0,
     },
 )
 
@@ -34,7 +34,7 @@ analyzer = EnergyAnalyzer(
 analyzer.plot_properties(
     properties=["bond energy", "angle energy", "dihedral energy"],
     energy_units="kcal/mol",
-    time_units="ps",
+    time_units="ns",
     bg_color="#ffffff",
     fig_bg_color="#FFFFFF",
     save="energy_analysis_example_03.png",
