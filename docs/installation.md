@@ -251,8 +251,8 @@ GateWizard equilibration works with either a **CPU** or **CUDA** `gmx`. Prefer t
 [gatewizard-gui](https://github.com/franciscoadasme/gatewizard-gui) bootstraps an embedded micromamba env on first launch (see [Desktop GUI](#desktop-gui) and `runtime-install.log`).
 
 - **OpenMM:** on Linux/WSL, if `nvidia-smi` sees a GPU, the GUI installs `openmm` + `cudatoolkit` into the embedded env (unless `GATEWIZARD_SKIP_CONDA_CUDA=1`).
-- **GROMACS (default):** the GUI installs the **CPU** conda-forge build. This avoids multi-hour CUDA solver hangs next to OpenMM’s toolkit.
-- **GROMACS CUDA (opt-in):** set `GATEWIZARD_CONDA_GROMACS_CUDA=1` before launching the GUI. The bootstrap tries a frozen CUDA install with a short timeout, then falls back to CPU GROMACS if the solve stalls.
+- **GROMACS (default):** the GUI installs a **modern CPU** conda-forge build (`gromacs>=2023`). Older freezes could land on 2019.x, which cannot read many current `.tpr` files. Relaunching the app after an update re-syncs the embedded GROMACS when the install policy revision changes.
+- **GROMACS CUDA (opt-in):** set `GATEWIZARD_CONDA_GROMACS_CUDA=1` before launching the GUI. The bootstrap tries a frozen CUDA install with a short timeout, then falls back to CPU GROMACS (≥2023) if the solve stalls or the CUDA build is too old.
 - Quitting mid-install kills leftover `micromamba` processes for that env so a relaunch is not blocked by an orphaned solver.
 - Linux/WSL log: `~/.config/gatewizard-gui/runtime-install.log` (look for `[gromacs] starting…` / `failed` / `installed`).
 - The embedded env is `~/.config/gatewizard-gui/mamba-env`. To delete it with the package, use `sudo apt purge gatewizard-gui-linux` — see [Uninstall the `.deb`](#uninstall-the-deb).

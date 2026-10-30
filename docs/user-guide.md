@@ -273,8 +273,8 @@ The batch script is [`render_batch_script`](api/equilibration.md#remote-cluster-
 
 **Engine.** Auto-detect reads the topology and trajectory and picks a method. The line under the menu is that detection. You can force an engine:
 
-- **GROMACS** uses `gmx trjconv`. It needs the topology that holds the molecule definitions.
-- **Amber, NAMD, and OpenMM** use `cpptraj autoimage`.
+- **GROMACS** uses `gmx trjconv`. It needs the topology that holds the molecule definitions. Pick which `gmx` under **gmx executable** when more than one is installed (same style as Equilibration). Use a GROMACS at least as new as the one that wrote the `.tpr`.
+- **Amber, NAMD, and OpenMM** use `cpptraj autoimage`. Pick **cpptraj executable** the same way when several installs exist.
 - **MDAnalysis** is the fallback when those binaries are not the right tool for the files.
 
 **Input** is the topology plus the trajectory list. Stride `1` keeps every frame. `2`, `5`, or `10` writes a smaller file. Drag a row to reorder. A PDB or GRO in the list is ignored for a tool that needs a trajectory with a periodic box.

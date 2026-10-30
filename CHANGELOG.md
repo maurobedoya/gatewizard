@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Builder tleap:** `loadamberparams`, `loadoff`, and `loadPDB` paths in the system leap input are always quoted. Folders with spaces or hyphens no longer split into extra tleap tokens; plain paths keep working.
+- **Engine discovery:** GROMACS candidates include the desktop GUI micromamba env and are sorted newest-first. `cpptraj` can be listed for Fix PBC the same way.
 
 ### Changed
 

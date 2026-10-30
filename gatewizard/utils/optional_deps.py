@@ -816,6 +816,18 @@ def list_md_engine_candidates(engine: str) -> List[Dict[str, Any]]:
                 candidates.append(
                     (str(conda_gmx.resolve()), None, "conda")
                 )
+        # Desktop GUI embedded micromamba env (even when CONDA_PREFIX differs).
+        xdg = os.environ.get("XDG_CONFIG_HOME")
+        gui_mamba_roots = [
+            Path.home() / ".config" / "gatewizard-gui" / "mamba-env",
+            Path(xdg) / "gatewizard-gui" / "mamba-env" if xdg else None,
+        ]
+        for root in gui_mamba_roots:
+            if root is None:
+                continue
+            gui_gmx = root / "bin" / "gmx"
+            if gui_gmx.is_file():
+                candidates.append((str(gui_gmx.resolve()), None, "gui-mamba"))
         for name in ("gmx", "gmx_mpi"):
             which = shutil.which(name)
             if which:
@@ -869,6 +881,17 @@ def list_md_engine_candidates(engine: str) -> List[Dict[str, Any]]:
                     "available": True,
                 }
             )
+        # Prefer newer GROMACS first (Fix PBC / Equilibration default pick).
+        def _gmx_version_key(item: Dict[str, Any]) -> tuple:
+            ver = str(item.get("version") or "")
+            m = re.search(r"(20\d{2})(?:\.(\d+))?(?:\.(\d+))?", ver)
+            if not m:
+                return (0, 0, 0)
+            return (int(m.group(1)), int(m.group(2) or 0), int(m.group(3) or 0))
+
+        results.sort(key=_gmx_version_key, reverse=True)
+        for i, item in enumerate(results):
+            item["id"] = f"gmx-{i}"
         return results
 
     if engine == "namd":
@@ -1038,6 +1061,55 @@ def list_md_engine_candidates(engine: str) -> List[Dict[str, Any]]:
                     "executable": exe,
                     "version": version,
                     "variant": variant,
+                    "source": source,
+                    "available": True,
+                }
+            )
+        return results
+
+    if engine == "cpptraj":
+        candidates: List[Tuple[str, str]] = []
+        which = shutil.which("cpptraj")
+        if which:
+            candidates.append((which, "path"))
+        conda_prefix = os.environ.get("CONDA_PREFIX")
+        if conda_prefix:
+            cand = Path(conda_prefix) / "bin" / "cpptraj"
+            if cand.is_file():
+                candidates.append((str(cand.resolve()), "conda"))
+        amberhome = os.environ.get("AMBERHOME")
+        if amberhome:
+            cand = Path(amberhome) / "bin" / "cpptraj"
+            if cand.is_file():
+                candidates.append((str(cand.resolve()), "AMBERHOME"))
+        xdg = os.environ.get("XDG_CONFIG_HOME")
+        for root in (
+            Path.home() / ".config" / "gatewizard-gui" / "mamba-env",
+            Path(xdg) / "gatewizard-gui" / "mamba-env" if xdg else None,
+        ):
+            if root is None:
+                continue
+            cand = root / "bin" / "cpptraj"
+            if cand.is_file():
+                candidates.append((str(cand.resolve()), "gui-mamba"))
+
+        seen: set[str] = set()
+        for exe, source in candidates:
+            key = str(Path(exe).resolve()) if os.path.isfile(exe) else exe
+            if key in seen or not os.path.isfile(exe):
+                continue
+            seen.add(key)
+            raw = _probe_binary_output(exe, "cpptraj")
+            version = parse_tool_version(raw, "cpptraj") if raw else None
+            results.append(
+                {
+                    "id": f"cpptraj-{len(results)}",
+                    "label": _format_engine_label(
+                        "cpptraj", version, None, source, exe
+                    ),
+                    "executable": exe,
+                    "version": version,
+                    "variant": None,
                     "source": source,
                     "available": True,
                 }
