@@ -71,7 +71,7 @@ If Windows Task Manager shows `VmmemWSL` using several GB after you close the ap
 
 ## Desktop GUI
 
-Get the installer for your platform from [gatewizard-gui Releases](https://github.com/franciscoadasme/gatewizard-gui/releases). The first time you open the app, it sets up its own Python environment (micromamba) and downloads the packages it needs. That can take several minutes — leave the splash screen open and watch the progress there until the main window appears.
+Get the installer for your platform from [gatewizard-gui Releases](https://github.com/franciscoadasme/gatewizard-gui/releases). The first time you open the app, it sets up its own Python environment (micromamba) and downloads the packages it needs. That can take several minutes — leave the splash screen open and watch the progress there until the main window appears. Plan on **at least 8 GB of free disk space** for the app and that embedded environment (under `~/.config/gatewizard-gui` on Linux / WSL, or `~/Library/gatewizard-gui` on macOS).
 
 Install logs:
 
