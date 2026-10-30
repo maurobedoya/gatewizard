@@ -71,7 +71,7 @@ If Windows Task Manager shows `VmmemWSL` using several GB after you close the ap
 
 ## Desktop GUI
 
-Download the installer from [gatewizard-gui Releases](https://github.com/franciscoadasme/gatewizard-gui/releases). **First launch** downloads Python packages into an embedded micromamba environment (several minutes). Keep the splash screen open. Progress appears there.
+Get the installer for your platform from [gatewizard-gui Releases](https://github.com/franciscoadasme/gatewizard-gui/releases). The first time you open the app, it sets up its own Python environment (micromamba) and downloads the packages it needs. That can take several minutes — leave the splash screen open and watch the progress there until the main window appears.
 
 Install logs:
 
@@ -93,23 +93,7 @@ Native Windows installers are not published. On a Windows PC, install **WSL 2** 
 
 Use **WSL 2** with **WSLg** (`wsl --version` lists WSLg). If the window reports `Maximum number of clients reached`, the Windows display is full. From Windows PowerShell run `wsl.exe --shutdown`, open one Ubuntu, and start `gatewizard-gui-linux` once.
 
-#### Uninstall the `.deb`
-
-Remove the app but keep the embedded Python environment (`~/.config/gatewizard-gui/mamba-env`, often several GB):
-
-```bash
-sudo apt remove gatewizard-gui-linux
-```
-
-Remove the app **and** delete that environment for the user who ran `sudo` (including `mamba-env` and the install log):
-
-```bash
-sudo apt purge gatewizard-gui-linux
-```
-
-Purge does not delete a separate conda env such as `~/miniconda3/envs/gatewizard`, and it does not uninstall ALSA, GTK, or other system libraries. For AppImage, delete the AppImage file; the same `~/.config/gatewizard-gui` folder can be removed by hand if you want a clean slate. See also [Uninstallation](#uninstallation).
-
-**`.deb` (Ubuntu/Debian/WSL):**
+#### Install the `.deb` (Ubuntu/Debian/WSL)
 
 ```bash
 sudo apt install ./gatewizard-gui-*-linux-amd64.deb
@@ -118,7 +102,7 @@ gatewizard-gui-linux
 
 The installer checks Electron’s system libraries (including ALSA, `libasound.so.2`) and a C compiler (`cc`) before it unpacks. If anything is missing, the install stops and the console prints `sudo apt update` plus one `apt install` line. Run those commands, then install the `.deb` again. The same check runs when you start `gatewizard-gui-linux`.
 
-**AppImage:**
+#### Install AppImage
 
 ```bash
 chmod +x gatewizard-gui-*-linux-x86_64.AppImage
@@ -134,7 +118,7 @@ sudo apt install libasound2t64 || sudo apt install libasound2
 
 If any other `.so` is missing, `gatewizard-gui-linux` (and the AppImage) print the `apt` / `dnf` command and exit.
 
-**Fedora Linux:**
+#### Fedora Linux
 
 ```bash
 sudo dnf install -y fuse fuse-libs alsa-lib
@@ -143,6 +127,22 @@ chmod +x gatewizard-gui-*-linux-x86_64.AppImage
 ```
 
 Display GPU (splash and Visualize) and renderer memory overrides are in [Troubleshooting](troubleshooting.md#desktop-gui-display-gpu-and-memory).
+
+#### Uninstall the `.deb`
+
+Remove the app but keep the embedded Python environment (`~/.config/gatewizard-gui/mamba-env`, often several GB):
+
+```bash
+sudo apt remove gatewizard-gui-linux
+```
+
+Remove the app **and** delete that environment for the user who ran `sudo` (including `mamba-env` and the install log):
+
+```bash
+sudo apt purge gatewizard-gui-linux
+```
+
+Purge does not delete a separate conda env such as `~/miniconda3/envs/gatewizard`, and it does not uninstall ALSA, GTK, or other system libraries. For AppImage, delete the AppImage file; the same `~/.config/gatewizard-gui` folder can be removed by hand if you want a clean slate. See also [Uninstallation](#uninstallation).
 
 ### macOS desktop app
 
